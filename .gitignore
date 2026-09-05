@@ -1,0 +1,21 @@
+# Sample / working logs and generated reports (not part of the tool)
+*.log
+*.log.bak
+*.analysis.txt
+*.analysis.html
+PVSS_II_Examples/
+PVSS_II*.log*
+*.bak
+
+# Distribution archives (rebuilt when packaging)
+*.zip
+*.7z
+*.rar
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+*.tmp
+*~
+.vscode/
+.idea/

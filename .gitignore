@@ -3,6 +3,7 @@
 *.log.bak
 *.analysis.txt
 *.analysis.html
+docs/PVSS_II_Examples/
 PVSS_II_Examples/
 PVSS_II*.log*
 *.bak
@@ -11,6 +12,9 @@ PVSS_II*.log*
 *.zip
 *.7z
 *.rar
+
+# V2 operator-local live path (do not ship real site paths)
+watch-log-path.txt
 
 # Editor / OS
 .DS_Store

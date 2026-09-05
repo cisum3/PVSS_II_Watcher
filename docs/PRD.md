@@ -1,8 +1,11 @@
 # PRD: PVSS / WinCC OA Log Analyzer Improvements
 
+> **V1 frozen (release V1.1).** This document is the historical V1 PRD.  
+> **V2 work** is locked in [`PRD-V2.md`](PRD-V2.md). Track build in [`PROGRESS-V2.md`](PROGRESS-V2.md).
+
 **Product:** `Analyze-PvssLog.ps1` (+ `Run-Analyze.cmd`, `Run-Analyze-Interactive.cmd`, `readMe.txt`)  
-**Status:** Draft v5 — decisions locked; ready to build  
-**Date:** 2026-09-04  
+**Status:** Locked / shipped as **V1.1**  
+**Date:** 2026-09-04 (freeze noted 2026-09-05)  
 
 **Goal:** One-pass scan, then shape the report by **severity** or by **driver/manager**. Keep severity triage and driver-health statistics as separate sections. Ship BACnet plus thin CNS and CoHo modules. Call out excessive BACnet INFO chatter when volume itself is notable.
 

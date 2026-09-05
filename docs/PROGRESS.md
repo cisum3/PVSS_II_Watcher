@@ -37,24 +37,21 @@ Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.1.
 
 ## Deferred to V2 (not in V1.1)
 
-| Item | Notes |
-|------|--------|
-| Live tail / watch | Console or PowerShell host + Chrome UI |
-| PowerShell host + Chrome dashboard | Charts, live updates, richer triage |
-| Area (SYS/IMPL) breakdown | |
-| Manager instance rollup | |
+See [`PROGRESS-V2.md`](PROGRESS-V2.md) / [`PRD-V2.md`](PRD-V2.md) — live dashboard in progress.
 
 ---
 
 ## V1.1 package contents
 
-Zip for field use (do not include PRD/PROGRESS/examples/logs):
+Zip for field use — batch-only package (do not include PRD/PROGRESS/examples/logs):
 
-- `Analyze-PvssLog.ps1`
-- `Run-Analyze.cmd`
-- `Run-Analyze-Interactive.cmd`
-- `readMe.txt`
-- `VERSION.txt`
+- `batch\Analyze-PvssLog.ps1`
+- `batch\Run-Analyze.cmd`
+- `batch\Run-Analyze-Interactive.cmd`
+- `batch\readMe.txt`
+- `batch\VERSION.txt`
+
+(Or zip the contents of `batch\` as a flat V1.1 folder for sites that only need offline reports.)
 
 ---
 
@@ -69,3 +66,7 @@ Zip for field use (do not include PRD/PROGRESS/examples/logs):
 | 2026-09-04 | First/last timestamp on top patterns; UTF-8 read; HTML reports |
 | 2026-09-04 | Run-Analyze.cmd defaults to HTML; TOC/scroll HTML fixes |
 | 2026-09-05 | **V1.1 tagged** — batch triage freeze; V2 = live web dashboard |
+| 2026-09-05 | `PRD-V2.md` **locked**; progress moves to [`PROGRESS-V2.md`](PROGRESS-V2.md) |
+| 2026-09-05 | V1.1 tools moved under `batch\` |
+| 2026-09-05 | Dev docs (PRD/PROGRESS) moved under `docs\` |
+| 2026-09-05 | Example logs under `docs\PVSS_II_Examples\` |

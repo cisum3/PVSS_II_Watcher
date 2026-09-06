@@ -1165,6 +1165,594 @@ function script:Build-ManagerObject {
     }
 }
 
+function script:HtmlEncode {
+    param([string]$s)
+    if ($null -eq $s) { return '' }
+    return [System.Net.WebUtility]::HtmlEncode($s)
+}
+
+function script:Build-SnapshotObject {
+    param($SevFilter)
+    if (-not $script:Sync['LogPath'] -or -not $script:Sync['Data']) {
+        throw 'Start a session before taking a snapshot.'
+    }
+    if ($script:Sync['Loading']) {
+        throw 'Catch-up still running. Wait until loading finishes, then snapshot.'
+    }
+    $pulse = Build-PulseObject -SevFilter $SevFilter
+    $patterns = Build-SectionObject -Name 'patterns' -SevFilter $SevFilter
+    $managers = Build-SectionObject -Name 'managers' -SevFilter $SevFilter
+    $bacnet = Build-SectionObject -Name 'bacnet' -SevFilter $SevFilter
+    $cns = Build-SectionObject -Name 'cns' -SevFilter $SevFilter
+    $coho = Build-SectionObject -Name 'coho' -SevFilter $SevFilter
+    $apogee = Build-SectionObject -Name 'apogee' -SevFilter $SevFilter
+    $perf = Build-SectionObject -Name 'perf' -SevFilter $SevFilter
+    $sevList = @()
+    foreach ($sk in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+        if ($SevFilter[$sk]) { $sevList += $sk }
+    }
+    return [ordered]@{
+        meta = [ordered]@{
+            tool        = 'PVSS Log Watch'
+            version     = [string]$script:Version
+            generated   = (Get-Date).ToString('yyyy.MM.dd HH:mm:ss')
+            logPath     = [string]$script:Sync['LogPath']
+            fileLength  = [int64]$script:Sync['FileLength']
+            generation  = [int]$script:Sync['Generation']
+            parsedLines = [int]$script:Sync['Data'].ParsedLines
+            severities  = @($sevList)
+        }
+        window          = $pulse.window
+        findings        = @($pulse.findings)
+        severityCounts  = $pulse.severityCounts
+        series          = $pulse.series
+        moduleHeadlines = $pulse.moduleHeadlines
+        topManagers     = @($pulse.topManagers)
+        patternsBySeverity = $patterns.patternsBySeverity
+        managers        = @($managers.managers)
+        bacnet          = $bacnet.bacnet
+        cns             = $cns.cns
+        coho            = $coho.coho
+        apogee          = $apogee.apogee
+        perf            = $perf
+    }
+}
+
+function script:Reduce-SeriesPoints {
+    param(
+        $Points,
+        [int]$MaxBars = 60,
+        [ValidateSet('Max', 'MaxBac', 'Sum')]
+        [string]$Aggregate = 'Max'
+    )
+    $pts = @($Points)
+    if ($pts.Count -le $MaxBars -or $MaxBars -lt 2) { return $pts }
+    $group = [int][math]::Ceiling($pts.Count / [double]$MaxBars)
+    if ($group -lt 1) { $group = 1 }
+    $out = New-Object System.Collections.Generic.List[object]
+    for ($i = 0; $i -lt $pts.Count; $i += $group) {
+        $end = [math]::Min($i + $group - 1, $pts.Count - 1)
+        $chunk = @($pts[$i..$end])
+        $best = $chunk[0]
+        $bestScore = -1
+        foreach ($row in $chunk) {
+            if ($Aggregate -eq 'Sum') { break }
+            if ($Aggregate -eq 'MaxBac') {
+                $score = [int]$row.bacFailed + [int]$row.bacOk
+            }
+            else {
+                $score = [int]$row.FATAL + [int]$row.SEVERE + [int]$row.ERROR + [int]$row.WARNING + [int]$row.INFO
+            }
+            if ($score -gt $bestScore) {
+                $bestScore = $score
+                $best = $row
+            }
+        }
+        if ($Aggregate -eq 'Max' -or $Aggregate -eq 'MaxBac') {
+            $agg = [ordered]@{
+                t         = [string]$best.t
+                FATAL     = [int]$best.FATAL
+                SEVERE    = [int]$best.SEVERE
+                ERROR     = [int]$best.ERROR
+                WARNING   = [int]$best.WARNING
+                INFO      = [int]$best.INFO
+                bacFailed = [int]$best.bacFailed
+                bacOk     = [int]$best.bacOk
+            }
+            [void]$out.Add($agg)
+            continue
+        }
+        $mid = $chunk[[int][math]::Floor(($chunk.Count - 1) / 2)]
+        $agg = [ordered]@{
+            t         = [string]$mid.t
+            FATAL     = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+            bacFailed = 0; bacOk = 0
+        }
+        foreach ($row in $chunk) {
+            foreach ($k in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO', 'bacFailed', 'bacOk')) {
+                $v = [int]$row.$k
+                $agg[$k] = [int]$agg[$k] + $v
+            }
+        }
+        [void]$out.Add($agg)
+    }
+    return @($out.ToArray())
+}
+
+function script:Format-SnapAxisLabel {
+    param([string]$T, [string]$Gran = 'minute')
+    if ([string]::IsNullOrWhiteSpace($T)) { return '' }
+    if ($T.Contains('..')) { $T = ($T -split '\.\.', 2)[0] }
+    switch ($Gran) {
+        'day' {
+            if ($T.Length -ge 10) { return $T.Substring(0, 10) }
+            return $T
+        }
+        'hour' {
+            if ($T.Length -ge 13) { return $T.Substring(5, [math]::Min(8, $T.Length - 5)) }
+            return $T
+        }
+        default {
+            if ($T.Length -ge 16) { return $T.Substring(5, 11) }
+            return $T
+        }
+    }
+}
+
+function script:Get-SeriesPeakSummary {
+    param($Points)
+    $pts = @($Points)
+    $peakVol = $null
+    $peakVolN = -1
+    $peakBac = $null
+    $peakBacN = -1
+    foreach ($row in $pts) {
+        $vol = [int]$row.FATAL + [int]$row.SEVERE + [int]$row.ERROR + [int]$row.WARNING + [int]$row.INFO
+        if ($vol -gt $peakVolN) {
+            $peakVolN = $vol
+            $peakVol = $row
+        }
+        $bf = [int]$row.bacFailed
+        if ($bf -gt $peakBacN) {
+            $peakBacN = $bf
+            $peakBac = $row
+        }
+    }
+    return [ordered]@{
+        buckets  = $pts.Count
+        peakVol  = $peakVol
+        peakVolN = [math]::Max(0, $peakVolN)
+        peakBac  = $peakBac
+        peakBacN = [math]::Max(0, $peakBacN)
+    }
+}
+
+function script:Add-SnapChartAxes {
+    param(
+        [System.Text.StringBuilder]$Sb,
+        [int]$PadL,
+        [int]$PadR,
+        [int]$PadT,
+        [int]$PadB,
+        [int]$Width,
+        [int]$Height,
+        [int]$MaxY,
+        $Points,
+        [string]$Gran
+    )
+    $plotW = $Width - $PadL - $PadR
+    $plotH = $Height - $PadT - $PadB
+    $n = @($Points).Count
+    foreach ($frac in @(0.0, 0.5, 1.0)) {
+        $y = $PadT + $plotH * (1.0 - $frac)
+        $val = [int][math]::Round($MaxY * $frac)
+        [void]$Sb.Append(('<line x1="{0}" y1="{1:0.##}" x2="{2}" y2="{1:0.##}" stroke="rgba(135,155,170,0.25)" stroke-width="1"/>' -f $PadL, [double]$y, ($Width - $PadR)))
+        [void]$Sb.Append(('<text x="{0}" y="{1:0.##}" fill="#879baa" font-size="10" text-anchor="end" dominant-baseline="middle">{2}</text>' -f ($PadL - 4), [double]$y, $val))
+    }
+    if ($n -lt 1) { return }
+    $slot = $plotW / [double]$n
+    $labelIdx = @(0)
+    if ($n -gt 2) { $labelIdx += [int][math]::Floor(($n - 1) / 2.0) }
+    if ($n -gt 1) { $labelIdx += ($n - 1) }
+    foreach ($i in @($labelIdx | Select-Object -Unique)) {
+        $x = $PadL + $i * $slot + $slot / 2.0
+        $label = Format-SnapAxisLabel -T ([string]$Points[$i].t) -Gran $Gran
+        $label = [System.Net.WebUtility]::HtmlEncode($label)
+        $anchor = 'middle'
+        if ($i -eq 0) { $anchor = 'start'; $x = $PadL }
+        elseif ($i -eq ($n - 1)) { $anchor = 'end'; $x = $Width - $PadR }
+        [void]$Sb.Append(('<text x="{0:0.##}" y="{1}" fill="#aaaa96" font-size="10" text-anchor="{2}">{3}</text>' -f [double]$x, ($Height - 10), $anchor, $label))
+    }
+}
+
+function script:Build-VolumeSvg {
+    param($Points, [string]$Gran = 'minute', [int]$Width = 840, [int]$Height = 200)
+    $rawN = @($Points).Count
+    $maxBars = 56
+    $pts = @(Reduce-SeriesPoints -Points $Points -MaxBars $maxBars -Aggregate Max)
+    if ($pts.Count -eq 0) { return '<p class="muted">No volume series.</p>' }
+    $padL = 40; $padR = 12; $padT = 12; $padB = 32
+    $plotW = $Width - $padL - $padR
+    $plotH = $Height - $padT - $padB
+    $maxY = 1
+    foreach ($row in $pts) {
+        $v = [int]$row.FATAL + [int]$row.SEVERE + [int]$row.ERROR + [int]$row.WARNING + [int]$row.INFO
+        if ($v -gt $maxY) { $maxY = $v }
+    }
+    $n = $pts.Count
+    $slot = $plotW / [double]$n
+    $barW = [math]::Max(2.5, $slot * 0.88)
+    $colors = [ordered]@{
+        FATAL = '#e00000'; SEVERE = '#c000a0'; ERROR = '#b00040'; WARNING = '#e07000'; INFO = '#008000'
+    }
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append(('<svg class="chart-svg" viewBox="0 0 {0} {1}" role="img" aria-label="Message volume by bucket">' -f $Width, $Height))
+    [void]$sb.Append('<rect x="0" y="0" width="100%" height="100%" fill="#1c2834"/>')
+    Add-SnapChartAxes -Sb $sb -PadL $padL -PadR $padR -PadT $padT -PadB $padB -Width $Width -Height $Height -MaxY $maxY -Points $pts -Gran $Gran
+    # Chart.js stack order: first dataset at bottom (FATAL .. INFO)
+    for ($i = 0; $i -lt $n; $i++) {
+        $row = $pts[$i]
+        $x = $padL + $i * $slot + ($slot - $barW) / 2.0
+        $yBase = $padT + $plotH
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+            $c = 0
+            if ($null -ne $row[$s]) { $c = [int]$row[$s] }
+            elseif ($null -ne $row.$s) { $c = [int]$row.$s }
+            if ($c -le 0) { continue }
+            $h = ($c / [double]$maxY) * $plotH
+            if ($h -gt 0 -and $h -lt 1.0) { $h = 1.0 }
+            $yBase -= $h
+            [void]$sb.Append(('<rect x="{0:0.##}" y="{1:0.##}" width="{2:0.##}" height="{3:0.##}" fill="{4}"/>' -f [double]$x, [double]$yBase, [double]$barW, [double]$h, [string]$colors[$s]))
+        }
+    }
+    if ($rawN -gt $pts.Count) {
+        [void]$sb.Append(('<text x="{0}" y="14" fill="#879baa" font-size="9" text-anchor="end">display {1}/{2} (peak-preserving)</text>' -f ($Width - $padR), $pts.Count, $rawN))
+    }
+    [void]$sb.Append('</svg>')
+    return $sb.ToString()
+}
+
+function script:Build-BacnetSvg {
+    param($Points, [string]$Gran = 'minute', [int]$Width = 840, [int]$Height = 200)
+    $rawN = @($Points).Count
+    # Lines tolerate denser samples than bars
+    $pts = @(Reduce-SeriesPoints -Points $Points -MaxBars 120 -Aggregate MaxBac)
+    if ($pts.Count -eq 0) { return '<p class="muted">No BACnet series.</p>' }
+    $padL = 40; $padR = 12; $padT = 12; $padB = 32
+    $plotW = $Width - $padL - $padR
+    $plotH = $Height - $padT - $padB
+    $maxY = 1
+    foreach ($row in $pts) {
+        $v = [math]::Max([int]$row.bacFailed, [int]$row.bacOk)
+        if ($v -gt $maxY) { $maxY = $v }
+    }
+    $n = $pts.Count
+    $slot = $plotW / [double]$n
+    $sb = New-Object System.Text.StringBuilder
+    [void]$sb.Append(('<svg class="chart-svg" viewBox="0 0 {0} {1}" role="img" aria-label="BACnet Failed and OK by bucket">' -f $Width, $Height))
+    [void]$sb.Append('<rect x="0" y="0" width="100%" height="100%" fill="#1c2834"/>')
+    Add-SnapChartAxes -Sb $sb -PadL $padL -PadR $padR -PadT $padT -PadB $padB -Width $Width -Height $Height -MaxY $maxY -Points $pts -Gran $Gran
+
+    $failPts = New-Object System.Collections.Generic.List[string]
+    $okPts = New-Object System.Collections.Generic.List[string]
+    for ($i = 0; $i -lt $n; $i++) {
+        $row = $pts[$i]
+        $x = $padL + $i * $slot + $slot / 2.0
+        $yf = $padT + $plotH - (([int]$row.bacFailed / [double]$maxY) * $plotH)
+        $yo = $padT + $plotH - (([int]$row.bacOk / [double]$maxY) * $plotH)
+        [void]$failPts.Add(('{0:0.##},{1:0.##}' -f [double]$x, [double]$yf))
+        [void]$okPts.Add(('{0:0.##},{1:0.##}' -f [double]$x, [double]$yo))
+    }
+    # Match dashboard line colors: Failed=SEVERE magenta, OK=INFO green
+    [void]$sb.Append(('<polyline fill="none" stroke="#c000a0" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="{0}"/>' -f ($failPts -join ' ')))
+    [void]$sb.Append(('<polyline fill="none" stroke="#008000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="{0}"/>' -f ($okPts -join ' ')))
+    if ($rawN -gt $pts.Count) {
+        [void]$sb.Append(('<text x="{0}" y="14" fill="#879baa" font-size="9" text-anchor="end">display {1}/{2} (peak-preserving)</text>' -f ($Width - $padR), $pts.Count, $rawN))
+    }
+    [void]$sb.Append('</svg>')
+    return $sb.ToString()
+}
+
+function script:Convert-SnapshotToHtml {
+    param($Snap)
+    $e = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+    $sb = New-Object System.Text.StringBuilder
+    $win = $Snap.window
+    $winLabel = if ($win.mode -eq 'entire') {
+        'Entire file'
+    }
+    else {
+        ('Last {0} minutes of file' -f $win.lastMinutes)
+    }
+    $span = if ($win.first -or $win.last) {
+        ('{0}  ->  {1}' -f $win.first, $win.last)
+    }
+    else { '' }
+    $sevOn = if ($Snap.meta.severities) { ($Snap.meta.severities -join ', ') } else { '(none)' }
+
+    [void]$sb.AppendLine('<!DOCTYPE html>')
+    [void]$sb.AppendLine('<html lang="en"><head><meta charset="utf-8" />')
+    [void]$sb.AppendLine('<meta name="viewport" content="width=device-width, initial-scale=1" />')
+    [void]$sb.AppendLine('<title>PVSS Log Watch Snapshot</title>')
+    [void]$sb.AppendLine('<style>')
+    [void]$sb.AppendLine(@'
+:root {
+  --siemens-petrol: #009999;
+  --siemens-snow: #ffffff;
+  --siemens-stone: #879baa;
+  --siemens-sand: #aaaa96;
+  --bg-deep: #0f1923;
+  --bg-panel: #15202b;
+  --bg-elevated: #1c2834;
+  --border: rgba(135, 155, 170, 0.35);
+  --text: #ffffff;
+  --text-muted: #879baa;
+  --text-meta: #aaaa96;
+  --sev-fatal: #e00000;
+  --sev-severe: #c000a0;
+  --sev-error: #b00040;
+  --sev-warning: #e07000;
+  --sev-info: #008000;
+  --font: "Segoe UI", "Candara", "Calibri", sans-serif;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+}
+* { box-sizing: border-box; }
+body {
+  margin: 0;
+  font-family: var(--font);
+  color: var(--text);
+  background: var(--bg-deep);
+  line-height: 1.45;
+}
+header {
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 1rem 1.25rem 1.1rem;
+}
+.brand { color: var(--siemens-petrol); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; }
+.meta { color: var(--text-meta); font-size: 0.88rem; }
+.muted { color: var(--text-muted); }
+main { padding: 1rem 1.25rem 2.5rem; max-width: 72rem; }
+h1 { font-size: 1.15rem; margin: 0 0 0.35rem; }
+h2 {
+  font-size: 1rem;
+  color: var(--siemens-petrol);
+  margin: 1.4rem 0 0.55rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid var(--border);
+}
+h3 { font-size: 0.92rem; margin: 0.85rem 0 0.4rem; }
+.findings { margin: 0.5rem 0 1rem; padding-left: 1.1rem; }
+.findings li { margin: 0.25rem 0; }
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7rem, 1fr));
+  gap: 0.5rem;
+  margin: 0.75rem 0 1rem;
+}
+.kpi {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.55rem 0.65rem;
+}
+.kpi .label { font-size: 0.75rem; letter-spacing: 0.04em; color: var(--text-muted); }
+.kpi .value { font-size: 1.25rem; font-variant-numeric: tabular-nums; font-weight: 600; }
+.kpi[data-sev="FATAL"] .value { color: #ffb0b0; }
+.kpi[data-sev="SEVERE"] .value { color: #f0a0e0; }
+.kpi[data-sev="ERROR"] .value { color: #f0a0c0; }
+.kpi[data-sev="WARNING"] .value { color: #ffd0a0; }
+.kpi[data-sev="INFO"] .value { color: #90d090; }
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+  margin: 0.35rem 0 0.85rem;
+}
+table.data th, table.data td {
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.data th {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+.mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-word; }
+.card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.65rem 0.75rem;
+  margin: 0.5rem 0;
+}
+footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
+.chart-svg { width: 100%; max-width: 48rem; height: auto; display: block; margin: 0.35rem 0 0.25rem; border: 1px solid var(--border); border-radius: 2px; }
+.legend { font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0.85rem; }
+.legend span { margin-right: 0.9rem; white-space: nowrap; }
+.swatch { display: inline-block; width: 0.65rem; height: 0.65rem; margin-right: 0.28rem; vertical-align: middle; border-radius: 1px; }
+'@)
+    [void]$sb.AppendLine('</style></head><body>')
+    [void]$sb.AppendLine('<header>')
+    [void]$sb.AppendLine('<div class="brand">PVSS Log Watch</div>')
+    [void]$sb.AppendLine(('<h1>Snapshot report <span class="meta">v{0}</span></h1>' -f (& $e $Snap.meta.version)))
+    [void]$sb.AppendLine(('<p class="meta">Generated {0}</p>' -f (& $e $Snap.meta.generated)))
+    [void]$sb.AppendLine(('<p class="meta">Log: <span class="mono">{0}</span></p>' -f (& $e $Snap.meta.logPath)))
+    [void]$sb.AppendLine(('<p class="meta">{0}  &middot;  {1}</p>' -f (& $e $winLabel), (& $e $span)))
+    [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  parsed lines: {1:N0}  &middot;  gen {2}</p>' -f `
+        (& $e $sevOn), [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
+    [void]$sb.AppendLine('</header><main>')
+
+    [void]$sb.AppendLine('<h2>Findings</h2><ul class="findings">')
+    if (-not $Snap.findings -or @($Snap.findings).Count -eq 0) {
+        [void]$sb.AppendLine('<li class="muted">No findings.</li>')
+    }
+    else {
+        foreach ($f in @($Snap.findings)) {
+            [void]$sb.AppendLine(('<li>{0}</li>' -f (& $e ([string]$f))))
+        }
+    }
+    [void]$sb.AppendLine('</ul>')
+
+    [void]$sb.AppendLine('<h2>Severity counts</h2><div class="kpi-row">')
+    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+        $n = 0
+        if ($Snap.severityCounts -and $Snap.severityCounts.$s -ne $null) { $n = [int]$Snap.severityCounts.$s }
+        [void]$sb.AppendLine(('<div class="kpi" data-sev="{0}"><div class="label">{0}</div><div class="value">{1:N0}</div></div>' -f $s, $n))
+    }
+    [void]$sb.AppendLine('</div>')
+
+    $gran = 'minute'
+    if ($Snap.series -and $Snap.series.granularity) { $gran = [string]$Snap.series.granularity }
+    [void]$sb.AppendLine(('<h2>Activity charts (by {0})</h2>' -f (& $e $gran)))
+    $points = @()
+    if ($Snap.series -and $Snap.series.byMinute) { $points = @($Snap.series.byMinute) }
+    if ($points.Count -eq 0) {
+        [void]$sb.AppendLine('<p class="muted">No series points in window.</p>')
+    }
+    else {
+        $sum = Get-SeriesPeakSummary -Points $points
+        [void]$sb.AppendLine(('<p class="meta">{0:N0} {1} buckets in series. Charts are peak-preserving downsamples (not every bucket drawn).</p>' -f [int]$sum.buckets, (& $e $gran)))
+        if ($sum.peakVol -and $sum.peakVolN -gt 0) {
+            $pv = $sum.peakVol
+            [void]$sb.AppendLine(('<p class="meta">Peak message volume: <strong>{0:N0}</strong> at <span class="mono">{1}</span> (FATAL {2}, SEVERE {3}, ERROR {4}, WARNING {5}, INFO {6}).</p>' -f `
+                [int]$sum.peakVolN, (& $e ([string]$pv.t)), [int]$pv.FATAL, [int]$pv.SEVERE, [int]$pv.ERROR, [int]$pv.WARNING, [int]$pv.INFO))
+        }
+        if ($sum.peakBac -and $sum.peakBacN -gt 0) {
+            [void]$sb.AppendLine(('<p class="meta">Peak BACnet Failed: <strong>{0:N0}</strong> at <span class="mono">{1}</span> (OK in that bucket: {2:N0}).</p>' -f `
+                [int]$sum.peakBacN, (& $e ([string]$sum.peakBac.t)), [int]$sum.peakBac.bacOk))
+        }
+        [void]$sb.AppendLine('<div class="card">')
+        [void]$sb.AppendLine('<h3>Message volume</h3>')
+        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#e00000"></span>FATAL</span><span><span class="swatch" style="background:#c000a0"></span>SEVERE</span><span><span class="swatch" style="background:#b00040"></span>ERROR</span><span><span class="swatch" style="background:#e07000"></span>WARNING</span><span><span class="swatch" style="background:#008000"></span>INFO</span></div>')
+        [void]$sb.AppendLine((Build-VolumeSvg -Points $points -Gran $gran))
+        [void]$sb.AppendLine('</div>')
+        [void]$sb.AppendLine('<div class="card">')
+        [void]$sb.AppendLine('<h3>BACnet Failed / OK</h3>')
+        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#c000a0"></span>Failed</span><span><span class="swatch" style="background:#008000"></span>OK</span></div>')
+        [void]$sb.AppendLine((Build-BacnetSvg -Points $points -Gran $gran))
+        [void]$sb.AppendLine('</div>')
+    }
+
+    [void]$sb.AppendLine('<h2>Patterns by severity</h2>')
+    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
+        $color = switch ($s) {
+            'FATAL' { 'var(--sev-fatal)' }
+            'SEVERE' { 'var(--sev-severe)' }
+            'ERROR' { 'var(--sev-error)' }
+            default { 'var(--sev-warning)' }
+        }
+        $list = @()
+        if ($Snap.patternsBySeverity -and $Snap.patternsBySeverity.$s) { $list = @($Snap.patternsBySeverity.$s) }
+        [void]$sb.AppendLine(('<h3 style="color:{0}">{1} <span class="meta">({2})</span></h3>' -f $color, $s, $list.Count))
+        if ($list.Count -eq 0) {
+            [void]$sb.AppendLine('<p class="muted">No patterns (filtered out or none in window).</p>')
+            continue
+        }
+        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>First</th><th>Last</th><th>Pattern</th></tr></thead><tbody>')
+        foreach ($row in $list) {
+            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td class="meta">{1}</td><td class="meta">{2}</td><td class="mono">{3}</td></tr>' -f `
+                [int]$row.count, (& $e ([string]$row.first)), (& $e ([string]$row.last)), (& $e ([string]$row.pattern))))
+        }
+        [void]$sb.AppendLine('</tbody></table>')
+    }
+
+    [void]$sb.AppendLine('<h2>Top managers</h2>')
+    $mgrs = @($Snap.topManagers)
+    if ($mgrs.Count -eq 0) {
+        [void]$sb.AppendLine('<p class="muted">No managers.</p>')
+    }
+    else {
+        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>Manager</th></tr></thead><tbody>')
+        foreach ($m in $mgrs) {
+            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td class="mono">{1}</td></tr>' -f [int]$m.count, (& $e ([string]$m.name))))
+        }
+        [void]$sb.AppendLine('</tbody></table>')
+    }
+
+    $bac = $Snap.bacnet
+    [void]$sb.AppendLine('<h2>BACnet</h2><div class="card">')
+    if ($bac) {
+        [void]$sb.AppendLine(('<p>Failed: <strong>{0:N0}</strong> &middot; OK: <strong>{1:N0}</strong> &middot; ended Failed: <strong>{2:N0}</strong> &middot; ended OK: <strong>{3:N0}</strong> &middot; flappers: <strong>{4:N0}</strong> &middot; object-list: <strong>{5:N0}</strong></p>' -f `
+            [int]$bac.failed, [int]$bac.ok, [int]$bac.endedFailed, [int]$bac.endedOk, [int]$bac.flappers, [int]$bac.objectList))
+        if ($bac.activity -and @($bac.activity).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>Device status activity</h3><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>')
+            foreach ($row in @($bac.activity)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td></tr>' -f `
+                    (& $e ([string]$row.device)), [int]$row.failed, [int]$row.ok, [int]$row.flips, (& $e ([string]$row.last))))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
+    }
+    else {
+        [void]$sb.AppendLine('<p class="muted">No BACnet data.</p>')
+    }
+    [void]$sb.AppendLine('</div>')
+
+    $cns = $Snap.cns
+    [void]$sb.AppendLine('<h2>CNS</h2><div class="card">')
+    if ($cns) {
+        [void]$sb.AppendLine(('<p>ResolveNodes: <strong>{0:N0}</strong> &middot; ReducedFunction: <strong>{1:N0}</strong> &middot; ICns: <strong>{2:N0}</strong> &middot; TryRenewSession: <strong>{3:N0}</strong></p>' -f `
+            [int]$cns.resolveNodes, [int]$cns.reducedFunction, [int]$cns.icns, [int]$cns.tryRenew))
+    }
+    else { [void]$sb.AppendLine('<p class="muted">No CNS data.</p>') }
+    [void]$sb.AppendLine('</div>')
+
+    $coho = $Snap.coho
+    [void]$sb.AppendLine('<h2>CoHo</h2><div class="card">')
+    if ($coho) {
+        [void]$sb.AppendLine(('<p>Stuck/drop: <strong>{0:N0}</strong></p>' -f [int]$coho.stuck))
+        if ($coho.sample) { [void]$sb.AppendLine(('<p class="mono meta">{0}</p>' -f (& $e ([string]$coho.sample)))) }
+    }
+    else { [void]$sb.AppendLine('<p class="muted">No CoHo data.</p>') }
+    [void]$sb.AppendLine('</div>')
+
+    $apo = $Snap.apogee
+    [void]$sb.AppendLine('<h2>Apogee</h2><div class="card">')
+    if ($apo) {
+        [void]$sb.AppendLine(('<p>Events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; unique PPCL: <strong>{2:N0}</strong></p>' -f `
+            [int]$apo.events, [int]$apo.updatePoints, [int]$apo.uniquePpcl))
+    }
+    else { [void]$sb.AppendLine('<p class="muted">No Apogee data.</p>') }
+    [void]$sb.AppendLine('</div>')
+
+    [void]$sb.AppendLine('<h2>Perf / parse notes</h2><div class="card">')
+    if ($Snap.perf -and $Snap.perf.perfCategories) {
+        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>Category</th></tr></thead><tbody>')
+        foreach ($row in @($Snap.perf.perfCategories)) {
+            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td>{1}</td></tr>' -f [int]$row.count, (& $e ([string]$row.name))))
+        }
+        [void]$sb.AppendLine('</tbody></table>')
+    }
+    if ($Snap.perf -and $null -ne $Snap.perf.unparsedLines) {
+        [void]$sb.AppendLine(('<p class="meta">Unparsed / skipped lines: {0:N0}</p>' -f [int]$Snap.perf.unparsedLines))
+    }
+    [void]$sb.AppendLine('</div>')
+
+    [void]$sb.AppendLine('<footer>Snapshot from live Watch state (no re-scan). Same Siemens dark palette as the dashboard.</footer>')
+    [void]$sb.AppendLine('</main></body></html>')
+    return $sb.ToString()
+}
+
+function script:Write-DownloadResponse {
+    param(
+        $Context,
+        [byte[]]$Bytes,
+        [string]$ContentType,
+        [string]$FileName
+    )
+    $Context.Response.StatusCode = 200
+    $Context.Response.ContentType = $ContentType
+    $Context.Response.Headers['Cache-Control'] = 'no-store'
+    $Context.Response.Headers['Content-Disposition'] = ('attachment; filename="{0}"' -f $FileName)
+    $Context.Response.ContentLength64 = $Bytes.Length
+    $Context.Response.OutputStream.Write($Bytes, 0, $Bytes.Length)
+    $Context.Response.OutputStream.Close()
+}
+
 function script:Write-JsonResponse {
     param($Context, $Object, [int]$StatusCode = 200, [string]$ETag = $null)
     $json = $Object | ConvertTo-Json -Depth 8 -Compress
@@ -1310,7 +1898,7 @@ function script:Handle-Api {
                         if ($body.lastMinutes) { $script:Sync['LastMinutes'] = [math]::Max(1, [int]$body.lastMinutes) }
                     }
                     $wlabel = if ($script:Sync['WindowEntire']) { 'entire' } else { ("{0}m" -f $script:Sync['LastMinutes']) }
-                    Write-WatchLog ("Window change → {0}" -f $wlabel) Cyan
+                    Write-WatchLog ("Window change -> {0}" -f $wlabel) Cyan
                     if ($script:Sync['LogPath']) { Invoke-CatchUp -Path $script:Sync['LogPath'] }
                 }
                 'note' {
@@ -1362,7 +1950,44 @@ function script:Handle-Api {
         return
     }
 
-    Write-StatusResponse -Context $Context -Code 404 -Message 'Not found'
+    
+    if ($path -eq '/api/snapshot' -and $req.HttpMethod -eq 'GET') {
+        try {
+            if (-not $script:Sync['LogPath'] -or -not $script:Sync['Data']) {
+                Write-StatusResponse -Context $Context -Code 400 -Message 'Start a session before taking a snapshot.'
+                return
+            }
+            if ($script:Sync['Loading']) {
+                Write-StatusResponse -Context $Context -Code 409 -Message 'Catch-up still running. Wait until loading finishes, then snapshot.'
+                return
+            }
+            $sev = Parse-QuerySevs -Q $req.QueryString
+            $fmt = ([string]$req.QueryString['format']).ToLowerInvariant()
+            if ([string]::IsNullOrWhiteSpace($fmt)) { $fmt = 'html' }
+            $snap = Build-SnapshotObject -SevFilter $sev
+            $stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
+            if ($fmt -eq 'json') {
+                $json = $snap | ConvertTo-Json -Depth 10 -Compress
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($json)
+                Write-DownloadResponse -Context $Context -Bytes $bytes -ContentType 'application/json; charset=utf-8' -FileName ("PVSS_Log_Watch_Snapshot_{0}.json" -f $stamp)
+            }
+            elseif ($fmt -eq 'html') {
+                $html = Convert-SnapshotToHtml -Snap $snap
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($html)
+                Write-DownloadResponse -Context $Context -Bytes $bytes -ContentType 'text/html; charset=utf-8' -FileName ("PVSS_Log_Watch_Snapshot_{0}.html" -f $stamp)
+            }
+            else {
+                Write-StatusResponse -Context $Context -Code 400 -Message 'format must be html or json'
+            }
+        }
+        catch {
+            Write-WatchLog ("Snapshot failed: {0}" -f $_.Exception.Message) Red
+            Write-StatusResponse -Context $Context -Code 500 -Message $_.Exception.Message
+        }
+        return
+    }
+
+Write-StatusResponse -Context $Context -Code 404 -Message 'Not found'
 }
 
 function script:Handle-Request {

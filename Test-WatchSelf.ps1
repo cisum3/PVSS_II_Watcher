@@ -1,10 +1,10 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Self-tests for Watch phases 2A–2D (no browser).
+  Self-tests for Watch phases 2A–2E (no browser).
 #>
 param(
-    [ValidateSet('2A', '2B', '2C', '2D', 'All')]
+    [ValidateSet('2A', '2B', '2C', '2D', '2E', 'All')]
     [string]$Phase = 'All',
     [string]$LogPath = '',
     [int]$Port = 8799
@@ -12,6 +12,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 $Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$WatchRoot = Join-Path $Root 'Watch'
 $failed = 0
 function Ok($m) { Write-Host "  PASS  $m" -ForegroundColor Green }
 function Bad($m) { Write-Host "  FAIL  $m" -ForegroundColor Red; $script:failed++ }
@@ -25,27 +26,29 @@ Write-Host "=== Self-test phase $Phase ===" -ForegroundColor Cyan
 
 if ($Phase -eq '2A' -or $Phase -eq 'All') {
     Write-Host "`n[2A] UI shell assets"
+    if (-not (Test-Path -LiteralPath $WatchRoot)) { Bad 'Watch\ payload folder missing' }
     foreach ($f in @(
             'ui\index.html', 'ui\app.css', 'ui\app.js', 'ui\vendor\chart.umd.min.js'
         )) {
-        $p = Join-Path $Root $f
-        if (Test-Path -LiteralPath $p) { Ok $f } else { Bad "missing $f" }
+        $p = Join-Path $WatchRoot $f
+        if (Test-Path -LiteralPath $p) { Ok "Watch\$f" } else { Bad "missing Watch\$f" }
     }
-    $html = Get-Content (Join-Path $Root 'ui\index.html') -Raw
-    if ($html -match 'id="chrome"' -and $html -match 'data-view="overview"' -and $html -match 'chart.umd.min.js') {
-        Ok 'index has chrome, nav, chart script'
+    $html = Get-Content (Join-Path $WatchRoot 'ui\index.html') -Raw
+    if ($html -match 'id="chrome"' -and $html -match 'data-view="overview"' -and $html -match 'chart.umd.min.js' -and $html -match 'btnSnapshot') {
+        Ok 'index has chrome, nav, chart script, Snapshot'
     }
     else { Bad 'index missing expected structure' }
-    $css = Get-Content (Join-Path $Root 'ui\app.css') -Raw
+    $css = Get-Content (Join-Path $WatchRoot 'ui\app.css') -Raw
     if ($css -match '--siemens-petrol' -and $css -match '--bg-deep' -and $css -match '--sev-fatal') {
         Ok 'Siemens + severity CSS tokens'
     }
     else { Bad 'app.css missing theme tokens' }
-    $js = Get-Content (Join-Path $Root 'ui\app.js') -Raw
-    if ($js -match 'mockPulse' -and $js -match '/api/pulse' -and $js -match '/api/section' -and $js -match '/api/manager') {
-        Ok 'app.js pulse/section/manager + mock'
+    $js = Get-Content (Join-Path $WatchRoot 'ui\app.js') -Raw
+    if ($js -match 'mockPulse' -and $js -match '/api/pulse' -and $js -match '/api/section' -and $js -match '/api/manager' -and $js -match '/api/snapshot') {
+        Ok 'app.js pulse/section/manager/snapshot + mock'
     }
     else { Bad 'app.js incomplete' }
+    if (Test-Path -LiteralPath (Join-Path $Root 'Run-Watch.cmd')) { Ok 'Run-Watch.cmd at package root' } else { Bad 'Run-Watch.cmd missing at root' }
 }
 
 if ($Phase -eq '2A') {
@@ -54,13 +57,13 @@ if ($Phase -eq '2A') {
     exit 0
 }
 
-# Start host for 2B–2D
-$watch = Join-Path $Root 'Watch-PvssLog.ps1'
-if (-not (Test-Path -LiteralPath $watch)) { throw 'Watch-PvssLog.ps1 missing' }
+# Start host for 2B–2E
+$watch = Join-Path $WatchRoot 'Watch-PvssLog.ps1'
+if (-not (Test-Path -LiteralPath $watch)) { throw 'Watch\Watch-PvssLog.ps1 missing' }
 
 Write-Host "`nStarting host on port $Port (NoBrowser)..."
 $arg = "-NoProfile -ExecutionPolicy Bypass -File `"$watch`" -Port $Port -NoBrowser -NoPause"
-$proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $arg -WorkingDirectory $Root -WindowStyle Hidden -PassThru
+$proc = Start-Process -FilePath 'powershell.exe' -ArgumentList $arg -WorkingDirectory $WatchRoot -WindowStyle Hidden -PassThru
 
 $ready = $false
 for ($i = 0; $i -lt 40; $i++) {
@@ -266,6 +269,59 @@ try {
             # INFO off but bacnet headlines still present possible
             $p2 = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
             if ($null -ne $p2.moduleHeadlines.bacnet) { Ok 'BACnet headlines present with INFO filter off' } else { Bad 'bacnet headlines' }
+        }
+    }
+
+    if ($Phase -eq '2E' -or $Phase -eq 'All') {
+        Write-Host "`n[2E] Snapshot download"
+        if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath)) {
+            Bad 'no log for 2E snapshot'
+        }
+        else {
+            $body = (@{ path = $LogPath; lastMinutes = 120 } | ConvertTo-Json -Compress)
+            if ((Get-Item $LogPath).Length -le 15MB) {
+                $body = (@{ path = $LogPath; window = 'entire' } | ConvertTo-Json -Compress)
+            }
+            [void](Invoke-Api "$base/api/logPath" -Method POST -Body $body)
+            $pulse = $null
+            for ($w = 0; $w -lt 600; $w++) {
+                Start-Sleep -Milliseconds 100
+                $pulse = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
+                if (-not $pulse.loading) { break }
+            }
+            if ($pulse.loading) { Bad '2E catch-up still loading' }
+            else {
+                $outHtml = Join-Path $Root 'docs\PVSS_II_Examples\_snapshot_selftest.html'
+                $outJson = Join-Path $Root 'docs\PVSS_II_Examples\_snapshot_selftest.json'
+                try {
+                    $snapUrl = "$base/api/snapshot?format=html&lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING"
+                    $resp = Invoke-WebRequest -Uri $snapUrl -UseBasicParsing -TimeoutSec 120
+                    if ($resp.StatusCode -ne 200) { Bad "snapshot html status $($resp.StatusCode)" }
+                    elseif ($resp.Headers['Content-Disposition'] -notmatch 'attachment') { Bad 'snapshot missing Content-Disposition attachment' }
+                    elseif ($resp.Content -notmatch 'PVSS Log Watch' -or $resp.Content -notmatch '--siemens-petrol') { Bad 'snapshot html missing brand/theme' }
+                    elseif ($resp.Content -match '<th>Bucket</th>') { Bad 'snapshot still dumps raw chart bucket table' }
+                    elseif ($resp.Content -notmatch 'Activity charts' -or $resp.Content -notmatch '<svg class="chart-svg"') { Bad 'snapshot missing SVG activity charts' }
+                    else {
+                        [System.IO.File]::WriteAllText($outHtml, $resp.Content, [System.Text.Encoding]::UTF8)
+                        Ok 'snapshot HTML download (attachment + Siemens theme + SVG charts)'
+                    }
+
+                    $jUrl = "$base/api/snapshot?format=json&lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING"
+                    $jresp = Invoke-WebRequest -Uri $jUrl -UseBasicParsing -TimeoutSec 120
+                    $j = $jresp.Content | ConvertFrom-Json
+                    if ($j.meta -and $j.findings -and $j.patternsBySeverity) {
+                        [System.IO.File]::WriteAllText($outJson, $jresp.Content, [System.Text.Encoding]::UTF8)
+                        Ok 'snapshot JSON download'
+                    }
+                    else { Bad 'snapshot json shape' }
+                }
+                catch {
+                    Bad "snapshot ($($_.Exception.Message))"
+                }
+                finally {
+                    Remove-Item $outHtml, $outJson -Force -ErrorAction SilentlyContinue
+                }
+            }
         }
     }
 }

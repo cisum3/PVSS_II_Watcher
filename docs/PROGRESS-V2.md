@@ -3,7 +3,7 @@
 **Release target: V2.0** (PowerShell host + browser live dashboard)
 
 Tracks work against locked [`PRD-V2.md`](PRD-V2.md).  
-V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
+V1.1 OfflineAnalyze tool remains under `OfflineAnalyze\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Status | Meaning |
 |--------|---------|
@@ -22,7 +22,7 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 | **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | yes | | Self-test OK |
 | **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | yes | | Self-test OK |
 | **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | yes | | Self-test OK |
-| **2E** | Docs, package polish, `VERSION.txt` → 2.0; Snapshot if time else leave P1 | | | `batch\` layout done early |
+| **2E** | Docs, package polish, `VERSION.txt` → 2.0; Snapshot download | yes | | Awaiting your confirm |
 
 ---
 
@@ -30,10 +30,10 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| V1.1 under `batch\` with own readMe/VERSION | yes | |
-| Root Watch stub `readMe.txt` + `VERSION.txt` (`2.0-dev`) | yes | |
-| `watch-log-path.example.txt` | yes | |
-| `ui\` + `ui\vendor\` placeholder | yes | |
+| V1.1 under `Watch\OfflineAnalyze\` with own readMe/VERSION | yes | |
+| Root Watch stub `readMe.txt` + `VERSION.txt` (`2.0`) | yes | | Runtime under `Watch\`; root has launcher + readMe |
+| `Watch\watch-log-path.example.txt` | yes | |
+| `Watch\ui\` + `Watch\ui\vendor\` placeholder | yes | |
 | Dev docs under `docs\` (PRD / PROGRESS) | yes | |
 | Example/test logs under `docs\PVSS_II_Examples\` | yes | |
 
@@ -92,11 +92,11 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| Move V1.1 into `batch\` with its own readMe/VERSION | yes | | Done early (pre-2A) |
-| Root Watch `readMe.txt` + `watch-log-path.example.txt` | yes | | Stub readMe; expand in 2E |
-| Root `VERSION.txt` → 2.0 | | | Currently `2.0-dev` |
-| Snapshot export (or explicitly deferred to P1) | | |
-| Field zip contents documented (exclude PRD/PROGRESS/examples/logs) | | |
+| Move V1.1 into `OfflineAnalyze\` with its own readMe/VERSION | yes | | Done early (pre-2A) |
+| Root Watch `readMe.txt` + `Watch\watch-log-path.example.txt` | yes | | Root = launcher + readMe; runtime under `Watch\` |
+| Root `VERSION.txt` → 2.0 | yes | | Lives in `Watch\VERSION.txt` |
+| Snapshot HTML/JSON download (`GET /api/snapshot`, UI **Snapshot** button) | yes | | Download-only; Siemens dark theme matching UI |
+| Field zip contents documented (exclude PRD/PROGRESS/examples/logs) | yes | | See root `readMe.txt` |
 
 ---
 
@@ -116,11 +116,10 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 
 | Item | Priority | Notes |
 |------|----------|-------|
-| Snapshot HTML/JSON from live payload | P1 | |
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
-| Catch-up / Entire **%** progress | P1 | Built (async catch-up + pulse `loadProgressPct` / `loadMessage`); single-thread opts ~85s on C2P (~50MB) vs ~80s V1.1; awaiting user confirm |
-| Cache **Entire** analysis when switching windows | P1 | Restore Entire snapshot + incremental tail instead of full re-parse; invalidate on Restart / rotate / path change |
-| File-end window anchor + chart rollup | P1 | Built: rolling window vs log EOF; pulse series minute/hour/day; empty overlay fix — awaiting confirm |
+| Catch-up / Entire **%** progress | P1 | **You confirmed OK** — pulse `loadProgressPct` / `loadMessage`; C2P Entire ~85s |
+| Cache **Entire** analysis when switching windows | P1 | **Next after 2E confirm** — restore Entire snapshot + incremental tail; invalidate on Restart / rotate / path change |
+| File-end window anchor + chart rollup | P1 | **You confirmed OK** — rolling window vs log EOF; series minute/hour/day; empty overlay fix |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
 | Shared parser library batch+Watch | Deferred | Copy/adapt logic for MVP |
@@ -136,10 +135,12 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-05 | `PRD-V2.md` locked; `PROGRESS-V2.md` created |
 | 2026-09-05 | Locked: sectioned UI; pulse/section API; any-manager drill-down |
 | 2026-09-05 | UI theme: Siemens palette + dark surfaces (§7.0.1); Desigo severity retained |
-| 2026-09-05 | Repo layout: V1.1 → `batch\`; `ui\`, watch-log-path.example, root 2.0-dev stubs |
+| 2026-09-05 | Repo layout: V1.1 → `OfflineAnalyze\`; `ui\`, watch-log-path.example, root 2.0-dev stubs |
 | 2026-09-05 | Dev docs moved to `docs\` (PRD / PROGRESS) |
 | 2026-09-05 | Example/test logs under `docs\PVSS_II_Examples\` |
 | 2026-09-06 | File-end window anchor; chart series minute/hour/day rollup; empty overlay fix |
 | 2026-09-06 | P1 noted: cache Entire analysis across window switches |
 | 2026-09-05 | **2A–2D built**; `Test-WatchSelf.ps1` All PASS (Confirmed pending your run) |
-
+| 2026-09-06 | Snapshot download (HTML/JSON) + **2E** polish (`VERSION` 2.0, readMe field-zip); % / file-end / chart rollup confirmed by you |
+| 2026-09-06 | Package layout: root = `Run-Watch.cmd` + `readMe.txt` + `Watch\` payload |
+| 2026-09-06 | Renamed `Watch\batch\` → `Watch\OfflineAnalyze\`; offline HTML report restyled to V2 Siemens dark |

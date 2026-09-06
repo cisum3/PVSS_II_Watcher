@@ -12,7 +12,7 @@ Reports can be shaped after the scan by severity or by driver/manager, with
 BACnet, CNS, CoHo, and Apogee module statistics.
 
 
-Files (package for V1.1 — this `batch\` folder)
+Files (package for V1.1 — this `OfflineAnalyze\` folder)
 ------------------------
   Analyze-PvssLog.ps1            Main analyzer script
   Run-Analyze.cmd                Non-interactive full report as HTML (keeps window open)
@@ -20,7 +20,8 @@ Files (package for V1.1 — this `batch\` folder)
   readMe.txt                     This file
   VERSION.txt                    Version number (1.1)
 
-The live Watch dashboard (V2) lives in the parent folder — see ..\readMe.txt.
+The live Watch dashboard (V2) lives above this folder — see ..\..\readMe.txt
+(package root) or run ..\..\Run-Watch.cmd.
 
 
 Requirements
@@ -36,11 +37,11 @@ Keep this toolset in its own folder (do NOT copy these files into the
 WinCC OA project log directory).
 
 1. Copy PVSS_II.log (or PVSS_II.log.bak) from the project log folder into this
-   `batch\` folder (or pass -LogPath to a copy elsewhere).
+   `OfflineAnalyze\` folder (or pass -LogPath to a copy elsewhere).
    Typical project log path:
      E:\GMSprojects\Project_Name\log\PVSS_II.log
      E:\GMSprojects\Project_Name\log\PVSS_II.log.bak
-   Example destination: D:\Tools\PvssLogAnalyze\batch\PVSS_II.log
+   Example destination: D:\Tools\PvssLogAnalyze\OfflineAnalyze\PVSS_II.log
 
 2. Double-click Run-Analyze.cmd for a full default report (HTML),
    or Run-Analyze-Interactive.cmd to choose Severity / Driver / All after
@@ -164,16 +165,18 @@ Notes
 
 Example layout on the server
 ----------------------------
-  D:\Tools\PvssLogAnalyze\          <-- project root (Watch V2 + batch; not under the project log dir)
-    batch\                          <-- V1.1 offline analyzer
-      Analyze-PvssLog.ps1
-      Run-Analyze.cmd
-      Run-Analyze-Interactive.cmd
-      readMe.txt
-      VERSION.txt
-      PVSS_II.log                   <-- copy log here (or use -LogPath)
-      PVSS_II.log.analysis.html     <-- created after a successful run
-    ui\                             <-- Watch dashboard (V2)
-    docs\                           <-- PRD / PROGRESS / example logs (dev only)
+  D:\Tools\PvssLogAnalyze\          <-- field package root (not under the project log dir)
+    Run-Watch.cmd
     readMe.txt
-    VERSION.txt
+    Watch\                          <-- runtime payload
+      Watch-PvssLog.ps1
+      VERSION.txt
+      ui\                           <-- Watch dashboard (V2)
+      OfflineAnalyze\               <-- V1.1 offline analyzer
+        Analyze-PvssLog.ps1
+        Run-Analyze.cmd
+        Run-Analyze-Interactive.cmd
+        readMe.txt
+        VERSION.txt
+        PVSS_II.log                 <-- copy log here (or use -LogPath)
+        PVSS_II.log.analysis.html   <-- created after a successful run

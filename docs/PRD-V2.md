@@ -3,7 +3,7 @@
 **Product:** PowerShell local host + Chrome UI (`Watch-PvssLog.ps1` / `Run-Watch.cmd`)  
 **Status:** Locked / ready to build  
 **Date:** 2026-09-05  
-**Depends on:** V1.1 batch analyzer (kept under `batch\`; not replaced)
+**Depends on:** V1.1 OfflineAnalyze analyzer (kept under `OfflineAnalyze\`; not replaced)
 
 **Goal:** A **live triage dashboard in Chrome**, fed by a **local PowerShell host** that tails the live `PVSS_II.log`. Charts, filters, and module stats update as the log grows. Fully offline (no CDN, no installs beyond Windows PowerShell + a browser).
 
@@ -17,11 +17,11 @@ V1.1 covers **batch** triage (copy log → report). It does not cover watching a
 
 ## 2. Relationship to V1.1
 
-| | V1.1 (`batch\`) | V2 (this product) |
+| | V1.1 (`OfflineAnalyze\`) | V2 (this product) |
 |--|-----------------|-------------------|
 | Purpose | One-shot analysis + shareable report | Live / interactive dashboard |
 | UI | Static `.analysis.html` / `.txt` | Chrome at `http://127.0.0.1:…` |
-| Docs | Own `batch\readMe.txt` | Own root `readMe.txt` |
+| Docs | Own `OfflineAnalyze\readMe.txt` | Own root `readMe.txt` (+ `Watch\` runtime) |
 
 V2 is a **standalone Watch implementation** (not “run V1 and convert its report to JSON”). It **reuses V1.1 parse rules, module logic, findings thresholds, and triage layout/language**, adapted for incremental/live summary JSON. Batch V1.1 remains for offline one-shot reports.
 
@@ -58,7 +58,7 @@ Run-Watch.cmd
 | Filters | Applied **on the host** when building `/api/summary` (§7.3) |
 | Log rotate | **Auto-reopen**, reset window stats, UI banner |
 | Missing / locked file | Clear error on the web page; tail stops until Restart / fixed Start |
-| Snapshot | HTML/JSON from **current dashboard payload** (no V1 re-scan) — **P1** |
+| Snapshot | HTML/JSON from **current dashboard payload** (no V1 re-scan) — **2E** (download-only) |
 | Charts | Vendored Chart.js (or equivalent) in `ui\vendor\` |
 | Max log size | ~**50 MB** (WinCC rotate); full-file parse OK with loading UI (&lt; ~60 s class) |
 
@@ -109,7 +109,7 @@ After catch-up, keep a file position and **tail** new lines. On rotate (size shr
 - Desigo-aligned **severity** colors (§7.4)
 - Log rotate auto-reopen + banner; missing/locked errors on page
 - Loading spinner during catch-up / Entire / window widen
-- V1.1 remains usable from `batch\`
+- V1.1 remains usable from `OfflineAnalyze\`
 
 ### P1
 
@@ -404,25 +404,26 @@ Watch-PvssLog.ps1
 ## 10. Package layout
 
 ```text
-PvssLogAnalyze\                 ← V2 Watch (project root)
-  VERSION.txt                   → 2.0 when released
-  Watch-PvssLog.ps1
-  Run-Watch.cmd
+PvssLogAnalyze\                 ← field package root (simple)
+  Run-Watch.cmd                 ← double-click launcher
   readMe.txt
-  watch-log-path.example.txt
-  ui\
-    index.html, app.css, app.js
-    vendor\                     ← chart lib (local)
-  batch\                        ← V1.1
-    VERSION.txt                 → 1.1
-    Analyze-PvssLog.ps1
-    Run-Analyze.cmd
-    Run-Analyze-Interactive.cmd
-    readMe.txt
-  docs\                         ← PRD / PROGRESS / test example logs (dev only; not in field zips)
-    PRD.md, PRD-V2.md
-    PROGRESS.md, PROGRESS-V2.md
-    PVSS_II_Examples\
+  Watch\                        ← runtime payload
+    VERSION.txt                 → 2.0 when released
+    Watch-PvssLog.ps1
+    watch-log-path.example.txt
+    ui\
+      index.html, app.css, app.js
+      vendor\                   ← chart lib (local)
+    OfflineAnalyze\                      ← V1.1 (optional in field zip)
+      VERSION.txt               → 1.1
+      Analyze-PvssLog.ps1
+      Run-Analyze.cmd
+      Run-Analyze-Interactive.cmd
+      readMe.txt
+docs\                           ← PRD / PROGRESS / test example logs (dev only; not in field zips)
+  PRD.md, PRD-V2.md
+  PROGRESS.md, PROGRESS-V2.md
+  PVSS_II_Examples\
 ```
 
 Dev-only under `docs\` (not in field zips).---
@@ -448,7 +449,7 @@ Dev-only under `docs\` (not in field zips).---
 6. Sectioned UI (§7.0); V1.1-parity content (§7.5); **any** manager identifiable with top-N pattern drill-down (§7.6).  
 7. Two charts render offline via vendored library; Desigo-like severity colors; BACnet INFO exception for modules/Chart 2.  
 8. Rotate auto-reopen with banner; spinner during catch-up/Entire.  
-9. `batch\` V1.1 still runs for offline reports.  
+9. `OfflineAnalyze\` V1.1 still runs for offline reports.  
 10. Watch `readMe.txt` documents path setup, port fallback, and offline use.
 
 ---
@@ -461,7 +462,7 @@ Dev-only under `docs\` (not in field zips).---
 | **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (catch-up, filters, generation/304) |
 | **2C** | Tail + polling rules + path/Start + Pause/Resume/Restart + rotate + errors |
 | **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors |
-| **2E** | Docs, `batch\` layout, version **2.0**; Snapshot if time (else P1) |
+| **2E** | Docs, `OfflineAnalyze\` layout, version **2.0**; Snapshot download |
 
 ---
 
@@ -471,7 +472,7 @@ Dev-only under `docs\` (not in field zips).---
 - [x] Path/Start + Pause/Resume/Restart; watch-log-path persist  
 - [x] Catch-up from EOF for rolling window; Entire = host full parse; spinner  
 - [x] Time window presets + Entire + custom; read-only log open  
-- [x] Package: V2 root + `batch\`; separate readMes; offline vendor charts  
+- [x] Package: V2 root + `OfflineAnalyze\`; separate readMes; offline vendor charts  
 - [x] Snapshot from live payload (**P1**); rotate auto-reopen  
 - [x] UI §7 (sectioned IA, Siemens dark theme, charts, filters, Desigo severity, V1.1 parity)  
 - [x] Any manager discoverable + top-N pattern drill-down  

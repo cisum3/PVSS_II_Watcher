@@ -416,104 +416,129 @@ function Convert-AnalysisReportToHtml {
     [void]$sb.AppendLine('<head>')
     [void]$sb.AppendLine('<meta charset="utf-8" />')
     [void]$sb.AppendLine('<meta name="viewport" content="width=device-width, initial-scale=1" />')
-    [void]$sb.AppendLine('<title>PVSS / WinCC OA Log Analysis</title>')
+    [void]$sb.AppendLine('<title>PVSS_II Offline analysis report</title>')
     [void]$sb.AppendLine('<style>')
     [void]$sb.AppendLine(@'
 :root {
-  --bg: #f4f6f8;
-  --card: #ffffff;
-  --ink: #1c2430;
-  --muted: #5a6a7a;
-  --line: #d5dde6;
-  --accent: #0b6e4f;
-  --fatal: #8b1e1e;
-  --severe: #a15c00;
-  --warn: #8a6d00;
+  --siemens-petrol: #009999;
+  --siemens-snow: #ffffff;
+  --siemens-stone: #879baa;
+  --siemens-sand: #aaaa96;
+  --bg-deep: #0f1923;
+  --bg-panel: #15202b;
+  --bg-elevated: #1c2834;
+  --border: rgba(135, 155, 170, 0.35);
+  --text: #ffffff;
+  --text-muted: #879baa;
+  --text-meta: #aaaa96;
+  --sev-fatal: #e00000;
+  --sev-severe: #c000a0;
+  --sev-error: #b00040;
+  --sev-warning: #e07000;
+  --sev-info: #008000;
   --mono: "Cascadia Mono", "Consolas", "Courier New", monospace;
-  --sans: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
+  --sans: "Segoe UI", "Candara", "Calibri", sans-serif;
+  --chrome-h: 4.75rem;
 }
 * { box-sizing: border-box; }
-html { scroll-padding-top: 6.5rem; }
+/* Only one scroll offset — padding + margin were stacking and landing TOC jumps too low. */
+html { scroll-padding-top: calc(var(--chrome-h) + 0.5rem); }
 body {
   margin: 0;
   font-family: var(--sans);
-  color: var(--ink);
-  background:
-    radial-gradient(1200px 500px at 10% -10%, #e7eef5 0%, transparent 55%),
-    linear-gradient(180deg, #eef2f6 0%, var(--bg) 40%);
+  color: var(--text);
+  background: var(--bg-deep);
   line-height: 1.45;
 }
 header.app {
-  padding: 1.5rem 1.25rem 1rem;
-  border-bottom: 1px solid var(--line);
-  background: rgba(255,255,255,0.88);
-  backdrop-filter: blur(6px);
+  padding: 0.55rem 1.15rem 0.5rem;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg-panel);
   position: sticky;
   top: 0;
   z-index: 2;
 }
 header.app h1 {
-  margin: 0 0 0.35rem;
-  font-size: 1.35rem;
+  margin: 0 0 0.2rem;
+  font-size: 1.05rem;
+  font-weight: 700;
   letter-spacing: 0.01em;
-  color: var(--accent);
+  color: var(--siemens-petrol);
 }
-header.app .meta { color: var(--muted); font-size: 0.92rem; }
+header.app .meta {
+  color: var(--text-meta);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+header.app .meta .mono {
+  font-family: var(--mono);
+  font-size: 0.76rem;
+  word-break: break-all;
+}
 .layout {
   display: grid;
   grid-template-columns: minmax(200px, 260px) 1fr;
   gap: 1rem;
   max-width: 1200px;
   margin: 0 auto;
-  padding: 1rem 1.25rem 2.5rem;
+  padding: 0.85rem 1.15rem 2.5rem;
 }
 nav.toc {
   position: sticky;
-  top: 5.5rem;
+  top: calc(var(--chrome-h) + 0.35rem);
   align-self: start;
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.85rem 0.9rem;
-  max-height: calc(100vh - 6.5rem);
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.75rem 0.85rem;
+  max-height: calc(100vh - var(--chrome-h) - 1rem);
   overflow: auto;
 }
 nav.toc h2 {
-  margin: 0 0 0.5rem;
-  font-size: 0.8rem;
+  margin: 0 0 0.45rem;
+  font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: var(--muted);
+  color: var(--text-muted);
 }
 nav.toc a {
   display: block;
-  color: var(--ink);
+  color: var(--text);
   text-decoration: none;
   font-size: 0.88rem;
-  padding: 0.22rem 0.2rem;
-  border-radius: 4px;
+  padding: 0.22rem 0.28rem;
+  border-radius: 2px;
 }
-nav.toc a:hover { background: #eef5f1; color: var(--accent); }
-nav.toc a.sub { padding-left: 0.85rem; color: var(--muted); font-size: 0.82rem; }
+nav.toc a:hover {
+  background: var(--bg-elevated);
+  color: var(--siemens-petrol);
+}
+nav.toc a.sub {
+  padding-left: 0.85rem;
+  color: var(--text-muted);
+  font-size: 0.82rem;
+}
 main section {
-  background: var(--card);
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  padding: 0.9rem 1rem 1rem;
-  margin-bottom: 0.9rem;
-  box-shadow: 0 1px 0 rgba(28,36,48,0.03);
-  scroll-margin-top: 6.5rem;
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.85rem 0.95rem 0.95rem;
+  margin-bottom: 0.85rem;
+  scroll-margin-top: 0;
 }
 main section h2, main section h3 {
-  margin: 0 0 0.65rem;
-  font-size: 1.05rem;
-  border-bottom: 1px solid var(--line);
-  padding-bottom: 0.4rem;
+  margin: 0 0 0.55rem;
+  font-size: 1.02rem;
+  border-bottom: 1px solid var(--border);
+  padding-bottom: 0.35rem;
+  color: var(--siemens-petrol);
 }
-main section h3 { font-size: 0.98rem; color: var(--muted); }
-main section.sev-FATAL h3 { color: var(--fatal); }
-main section.sev-SEVERE h3 { color: var(--severe); }
-main section.sev-WARNING h3 { color: var(--warn); }
+main section h3 { font-size: 0.95rem; color: var(--text-muted); }
+main section.sev-FATAL h3 { color: var(--sev-fatal); }
+main section.sev-SEVERE h3 { color: var(--sev-severe); }
+main section.sev-ERROR h3 { color: var(--sev-error); }
+main section.sev-WARNING h3 { color: var(--sev-warning); }
+main section.sev-INFO h3 { color: var(--sev-info); }
 pre.block {
   margin: 0;
   white-space: pre-wrap;
@@ -521,13 +546,17 @@ pre.block {
   font-family: var(--mono);
   font-size: 0.78rem;
   line-height: 1.4;
-  color: #243040;
+  color: var(--text);
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.65rem 0.75rem;
 }
 footer {
   max-width: 1200px;
   margin: 0 auto 2rem;
-  padding: 0 1.25rem;
-  color: var(--muted);
+  padding: 0 1.15rem;
+  color: var(--text-meta);
   font-size: 0.85rem;
 }
 @media (max-width: 860px) {
@@ -539,8 +568,8 @@ footer {
     [void]$sb.AppendLine('</head>')
     [void]$sb.AppendLine('<body>')
     [void]$sb.AppendLine('<header class="app">')
-    [void]$sb.AppendLine('<h1>PVSS / WinCC OA Log Analysis</h1>')
-    [void]$sb.AppendLine(('<div class="meta">Log: {0}<br/>Generated: {1}</div>' -f (& $enc $LogFile), (& $enc $Generated)))
+    [void]$sb.AppendLine('<h1>PVSS_II Offline analysis report</h1>')
+    [void]$sb.AppendLine(('<div class="meta">Log: <span class="mono">{0}</span> &middot; Generated: {1}</div>' -f (& $enc $LogFile), (& $enc $Generated)))
     [void]$sb.AppendLine('</header>')
     [void]$sb.AppendLine('<div class="layout">')
     [void]$sb.AppendLine('<nav class="toc">')

@@ -7,4 +7,4 @@ Development docs & test assets (not shipped in field packages)
   PROGRESS-V2.md      V2 implementation tracker
   PVSS_II_Examples\   Sample / site logs for local testing only
 
-Ship/runtime files live in the repo root, batch\, and ui\.
+Field package root: Run-Watch.cmd + readMe.txt + Watch\ (ui, host, OfflineAnalyze).

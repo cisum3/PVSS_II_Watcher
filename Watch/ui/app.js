@@ -237,7 +237,64 @@
     $('btnPause').disabled = !state.running || state.paused || state.starting;
     $('btnResume').disabled = !state.running || !state.paused || state.starting;
     $('btnRestart').disabled = (!state.running && !state.pulse && !state.starting);
+    var snapOk = !!state.pulse && !state.starting && !(state.pulse && state.pulse.loading);
+    $('btnSnapshot').disabled = !snapOk;
     $('logPath').readOnly = (state.running || state.starting) && !state.useMock;
+  }
+
+  function triggerDownload(blob, fileName) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = fileName;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
+  }
+
+  function downloadSnapshot() {
+    var stamp = (function () {
+      var d = new Date();
+      function p(n) { return (n < 10 ? '0' : '') + n; }
+      return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' +
+        p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
+    })();
+    var fileName = 'PVSS_Log_Watch_Snapshot_' + stamp + '.html';
+
+    if (state.useMock) {
+      var html = [
+        '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>PVSS Log Watch Snapshot (mock)</title>',
+        '<style>body{font-family:Segoe UI,sans-serif;background:#0f1923;color:#fff;padding:1.25rem}',
+        'h1{color:#009999} .meta{color:#aaaa96}</style></head><body>',
+        '<h1>PVSS Log Watch — mock snapshot</h1>',
+        '<p class="meta">Open via Run-Watch.cmd for a full styled snapshot from live analysis.</p>',
+        '<pre>' + JSON.stringify(mockPulse(), null, 2).replace(/</g, '&lt;') + '</pre>',
+        '</body></html>'
+      ].join('');
+      triggerDownload(new Blob([html], { type: 'text/html;charset=utf-8' }), fileName);
+      return;
+    }
+
+    setBanner('bannerError', '');
+    var url = '/api/snapshot?format=html&' + qsPulse();
+    fetch(url, { headers: { Accept: 'text/html' } }).then(function (r) {
+      if (!r.ok) {
+        return r.json().then(function (j) {
+          throw new Error((j && j.error) || ('HTTP ' + r.status));
+        }, function () {
+          throw new Error('HTTP ' + r.status);
+        });
+      }
+      var cd = r.headers.get('Content-Disposition') || '';
+      var m = /filename=\"?([^\";]+)\"?/i.exec(cd);
+      if (m && m[1]) fileName = m[1];
+      return r.blob();
+    }).then(function (blob) {
+      triggerDownload(blob, fileName);
+    }).catch(function (e) {
+      setBanner('bannerError', 'Snapshot failed: ' + (e.message || e));
+    });
   }
 
   function setStatus(html) {
@@ -960,6 +1017,7 @@
     $('btnResume').addEventListener('click', function () {
       apiPost('/api/control', { action: 'resume' }).then(pollPulse);
     });
+    $('btnSnapshot').addEventListener('click', downloadSnapshot);
     $('btnRestart').addEventListener('click', function () {
       stopPolling();
       state.starting = false;

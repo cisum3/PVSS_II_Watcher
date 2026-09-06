@@ -15,7 +15,9 @@ PVSS_II*.log*
 
 # V2 operator-local live path (do not ship real site paths)
 watch-log-path.txt
+Watch/watch-log-path.txt
 watch-host.log
+Watch/watch-host.log
 
 # Editor / OS
 .DS_Store

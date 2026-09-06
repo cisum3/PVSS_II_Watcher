@@ -47,13 +47,13 @@ Notable V2 backlog (tracked there): cache Entire analysis across window switches
 
 Zip for field use — batch-only package (do not include PRD/PROGRESS/examples/logs):
 
-- `batch\Analyze-PvssLog.ps1`
-- `batch\Run-Analyze.cmd`
-- `batch\Run-Analyze-Interactive.cmd`
-- `batch\readMe.txt`
-- `batch\VERSION.txt`
+- `OfflineAnalyze\Analyze-PvssLog.ps1`
+- `OfflineAnalyze\Run-Analyze.cmd`
+- `OfflineAnalyze\Run-Analyze-Interactive.cmd`
+- `OfflineAnalyze\readMe.txt`
+- `OfflineAnalyze\VERSION.txt`
 
-(Or zip the contents of `batch\` as a flat V1.1 folder for sites that only need offline reports.)
+(Or zip the contents of `OfflineAnalyze\` as a flat V1.1 folder for sites that only need offline reports.)
 
 ---
 
@@ -69,6 +69,6 @@ Zip for field use — batch-only package (do not include PRD/PROGRESS/examples/l
 | 2026-09-04 | Run-Analyze.cmd defaults to HTML; TOC/scroll HTML fixes |
 | 2026-09-05 | **V1.1 tagged** — batch triage freeze; V2 = live web dashboard |
 | 2026-09-05 | `PRD-V2.md` **locked**; progress moves to [`PROGRESS-V2.md`](PROGRESS-V2.md) |
-| 2026-09-05 | V1.1 tools moved under `batch\` |
+| 2026-09-05 | V1.1 tools moved under `OfflineAnalyze\` |
 | 2026-09-05 | Dev docs (PRD/PROGRESS) moved under `docs\` |
 | 2026-09-05 | Example logs under `docs\PVSS_II_Examples\` |

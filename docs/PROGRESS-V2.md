@@ -118,7 +118,7 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 |------|----------|-------|
 | Snapshot HTML/JSON from live payload | P1 | |
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
-| Catch-up / Entire **%** progress | P1 | Built (async catch-up + pulse `loadProgressPct` / `loadMessage`); awaiting user confirm |
+| Catch-up / Entire **%** progress | P1 | Built (async catch-up + pulse `loadProgressPct` / `loadMessage`); single-thread opts ~85s on C2P (~50MB) vs ~80s V1.1; awaiting user confirm |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
 | Shared parser library batch+Watch | Deferred | Copy/adapt logic for MVP |
@@ -138,3 +138,4 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-05 | Dev docs moved to `docs\` (PRD / PROGRESS) |
 | 2026-09-05 | Example/test logs under `docs\PVSS_II_Examples\` |
 | 2026-09-05 | **2A–2D built**; `Test-WatchSelf.ps1` All PASS (Confirmed pending your run) |
+

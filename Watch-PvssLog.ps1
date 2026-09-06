@@ -26,37 +26,55 @@ $script:Version = (Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorActi
 if (-not $script:Version) { $script:Version = '2.0-dev' }
 
 # --- helpers (V1.1-aligned) ---
+$script:ReNormTs = [regex]'\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+'
+$script:ReNormTime = [regex]'\b\d{2}:\d{2}:\d{2}\.\d+\b'
+$script:ReNormKv = [regex]'\b(?:tid|cc|Sys|Page|ViewId|#DpIdentifier)=[^\s,;)]+'
+$script:ReNormDevice = [regex]'(?i)\bdevice\s+\d+\b'
+$script:ReNormDp = [regex]'\bDP=\d+\.\d+:[^;\s]+'
+$script:ReNormNum = [regex]'\b\d{5,}\b'
+$script:ReNormSpace = [regex]'\s+'
+$script:ReCohoLockCollapse = [regex]':\s*[\d, ]+'
+$script:ReInfoBacStatus = [regex]'Status is now (Failed|OK)'
+$script:ReCnsResolve = [regex]'ResolveNodes'
+$script:ReCnsReduced = [regex]'ReducedFunction'
+$script:ReCnsICns = [regex]'(?i)\bICns\b|ICns\.'
+$script:ReCnsRenew = [regex]'TryRenewSession'
+$script:ReCohoStuck = [regex]'(?i)got stuck|dropping it'
+$script:ReApogeeUpdate = [regex]'(?i)UpdatePoints'
+$script:ReApogeeRep = [regex]'(?i)Repetition'
+
+$script:PerfRules = @(
+    @{ Name = 'Timeout'; Re = [regex]'(?i)\btimeout\b|\btimed?\s*out\b' }
+    @{ Name = 'Buffer/Overrun'; Re = [regex]'(?i)overrun|buffer\s*(full|overflow|overrun)|BufferOverrun' }
+    @{ Name = 'Queue/Pending'; Re = [regex]'(?i)pending|backlog|queue\s*(full|overflow)|maxInput|maxPend' }
+    @{ Name = 'CNS/Resolve'; Re = [regex]'(?i)ResolveNodes|ReducedFunction|ICns\.|\.cns=' }
+    @{ Name = 'Session/Logon'; Re = [regex]'(?i)TryRenewSession|LogonManager|session' }
+    @{ Name = 'Memory'; Re = [regex]'(?i)\bmemory\b|\bOOM\b|out of memory|WorkingSet' }
+    @{ Name = 'Connection'; Re = [regex]'(?i)disconnect|connection\s*(lost|refused|reset)|cannot connect|Could not get' }
+    @{ Name = 'Driver/Device'; Re = [regex]'(?i)object list|device\s+\d+|BACnet|Apogee' }
+    @{ Name = 'Restart/Kill'; Re = [regex]'(?i)SecKill|restart|killed|emergency|emergencyKill' }
+    @{ Name = 'Slow/Delay'; Re = [regex]'(?i)\bslow\b|\bdelay\b|\blatency\b|took\s+\d+\s*ms' }
+)
+
 function Normalize-Message {
     param([string]$Text)
     if ([string]::IsNullOrEmpty($Text)) { return '' }
     $t = $Text
-    $t = [regex]::Replace($t, '\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+', '<TS>')
-    $t = [regex]::Replace($t, '\b\d{2}:\d{2}:\d{2}\.\d+\b', '<TIME>')
-    $t = [regex]::Replace($t, '\b(?:tid|cc|Sys|Page|ViewId|#DpIdentifier)=[^\s,;)]+', '<KV>')
-    $t = [regex]::Replace($t, '\bdevice\s+\d+\b', 'device <N>', 'IgnoreCase')
-    $t = [regex]::Replace($t, '\bDP=\d+\.\d+:[^;\s]+', 'DP=<ID>')
-    $t = [regex]::Replace($t, '\b\d{5,}\b', '<NUM>')
-    $t = [regex]::Replace($t, '\s+', ' ')
+    $t = $script:ReNormTs.Replace($t, '<TS>')
+    $t = $script:ReNormTime.Replace($t, '<TIME>')
+    $t = $script:ReNormKv.Replace($t, '<KV>')
+    $t = $script:ReNormDevice.Replace($t, 'device <N>')
+    $t = $script:ReNormDp.Replace($t, 'DP=<ID>')
+    $t = $script:ReNormNum.Replace($t, '<NUM>')
+    $t = $script:ReNormSpace.Replace($t, ' ')
     if ($t.Length -gt 180) { $t = $t.Substring(0, 180) + '...' }
     return $t.Trim()
 }
 
 function Get-PerfCategory {
     param([string]$Line)
-    $rules = @(
-        @{ Name = 'Timeout'; Pattern = '(?i)\btimeout\b|\btimed?\s*out\b' }
-        @{ Name = 'Buffer/Overrun'; Pattern = '(?i)overrun|buffer\s*(full|overflow|overrun)|BufferOverrun' }
-        @{ Name = 'Queue/Pending'; Pattern = '(?i)pending|backlog|queue\s*(full|overflow)|maxInput|maxPend' }
-        @{ Name = 'CNS/Resolve'; Pattern = '(?i)ResolveNodes|ReducedFunction|ICns\.|\.cns=' }
-        @{ Name = 'Session/Logon'; Pattern = '(?i)TryRenewSession|LogonManager|session' }
-        @{ Name = 'Memory'; Pattern = '(?i)\bmemory\b|\bOOM\b|out of memory|WorkingSet' }
-        @{ Name = 'Connection'; Pattern = '(?i)disconnect|connection\s*(lost|refused|reset)|cannot connect|Could not get' }
-        @{ Name = 'Driver/Device'; Pattern = '(?i)object list|device\s+\d+|BACnet|Apogee' }
-        @{ Name = 'Restart/Kill'; Pattern = '(?i)SecKill|restart|killed|emergency|emergencyKill' }
-        @{ Name = 'Slow/Delay'; Pattern = '(?i)\bslow\b|\bdelay\b|\blatency\b|took\s+\d+\s*ms' }
-    )
-    foreach ($r in $rules) {
-        if ($Line -match $r.Pattern) { return $r.Name }
+    foreach ($r in $script:PerfRules) {
+        if ($r.Re.IsMatch($Line)) { return $r.Name }
     }
     return $null
 }
@@ -204,8 +222,10 @@ $script:Sync = [hashtable]::Synchronized(@{
         LoadSkipped    = 0
         LoadSw         = $null
         LoadLastLogPct = -1
+        LoadLastLogMs  = 0L
         LoadEnforce    = $false
         LoadCutoff     = [datetime]::MinValue
+        LoadCutoffCompare = ''
         CatchUpActive  = $false
         Paused         = $false
         TailRunning    = $false
@@ -248,44 +268,55 @@ function script:Ensure-Minute {
 }
 
 function script:Process-LogLine {
-    param([string]$Line, [datetime]$CutoffLocal = [datetime]::MinValue, [bool]$EnforceCutoff = $false)
-    $data = $script:Sync['Data']
+    param(
+        [string]$Line,
+        [hashtable]$Data = $null,
+        [bool]$EnforceCutoff = $false,
+        [string]$CutoffCompare = ''
+    )
+    if ($null -eq $Data) { $Data = $script:Sync['Data'] }
     $m = $script:LineRe.Match($Line)
     if (-not $m.Success) {
-        $data.UnparsedLines++
+        $Data.UnparsedLines++
         return
     }
     $comp = $m.Groups[1].Value.Trim()
-    $ts = $m.Groups[2].Value.Trim()
+    $ts = $m.Groups[2].Value
     $sev = $m.Groups[4].Value.Trim().ToUpperInvariant()
     if ($sev -eq 'WARN') { $sev = 'WARNING' }
 
-    $dt = ConvertFrom-LogTimestamp -Ts $ts
-    if ($EnforceCutoff -and $dt -and $CutoffLocal -ne [datetime]::MinValue -and $dt -lt $CutoffLocal) {
+    # String compare is far cheaper than Get-Date (V1.1 skips timestamp parse on full-file scans).
+    if ($EnforceCutoff -and $CutoffCompare -and $ts.Length -ge 19 -and $ts.Substring(0, 19) -lt $CutoffCompare) {
         return
     }
 
-    $data.ParsedLines++
-    if (-not $data.Severity.ContainsKey($sev)) { $data.Severity[$sev] = 0 }
-    $data.Severity[$sev]++
-    if (-not $data.Components.ContainsKey($comp)) { $data.Components[$comp] = 0 }
-    $data.Components[$comp]++
-    if (-not $data.CompSev.ContainsKey($comp)) { $data.CompSev[$comp] = @{} }
-    if (-not $data.CompSev[$comp].ContainsKey($sev)) { $data.CompSev[$comp][$sev] = 0 }
-    $data.CompSev[$comp][$sev]++
+    $Data.ParsedLines++
+    if (-not $Data.Severity.ContainsKey($sev)) { $Data.Severity[$sev] = 0 }
+    $Data.Severity[$sev]++
+    if (-not $Data.Components.ContainsKey($comp)) { $Data.Components[$comp] = 0 }
+    $Data.Components[$comp]++
+    if (-not $Data.CompSev.ContainsKey($comp)) { $Data.CompSev[$comp] = @{} }
+    if (-not $Data.CompSev[$comp].ContainsKey($sev)) { $Data.CompSev[$comp][$sev] = 0 }
+    $Data.CompSev[$comp][$sev]++
 
-    $mk = Get-MinuteKey -Ts $ts
-    $bucket = Ensure-Minute -Data $data -Key $mk
+    $mk = if ($ts.Length -ge 16) { $ts.Substring(0, 16) } else { $ts }
+    if (-not $Data.ByMinute.ContainsKey($mk)) {
+        $Data.ByMinute[$mk] = @{
+            FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+            bacFailed = 0; bacOk = 0
+        }
+    }
+    $bucket = $Data.ByMinute[$mk]
     if ($bucket.ContainsKey($sev)) { $bucket[$sev]++ }
 
     $isWarning = ($sev -eq 'WARNING')
     $isSevere = ($sev -eq 'SEVERE' -or $sev -eq 'FATAL' -or $sev -eq 'ERROR')
-    if ($isSevere) { $data.SevereLines++ }
+    if ($isSevere) { $Data.SevereLines++ }
 
     $perf = Get-PerfCategory -Line $Line
     if ($perf) {
-        if (-not $data.PerfCats.ContainsKey($perf)) { $data.PerfCats[$perf] = 0 }
-        $data.PerfCats[$perf]++
+        if (-not $Data.PerfCats.ContainsKey($perf)) { $Data.PerfCats[$perf] = 0 }
+        $Data.PerfCats[$perf]++
     }
 
     $sevBucket = $null
@@ -297,80 +328,80 @@ function script:Process-LogLine {
 
     if ($sevBucket -and $sevBucket -ne 'INFO') {
         $norm = Normalize-Message -Text $Line
-        Add-Pattern -CountMap $data.PatternsBySev[$sevBucket] -SampleMap $data.PatternSampleBySev[$sevBucket] `
-            -TimeMap $data.PatternTimeBySev[$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
-        if (-not $data.CompPatterns.ContainsKey($comp)) {
-            $data.CompPatterns[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
-            $data.CompPatternSamples[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
-            $data.CompPatternTimes[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
+        Add-Pattern -CountMap $Data.PatternsBySev[$sevBucket] -SampleMap $Data.PatternSampleBySev[$sevBucket] `
+            -TimeMap $Data.PatternTimeBySev[$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        if (-not $Data.CompPatterns.ContainsKey($comp)) {
+            $Data.CompPatterns[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
+            $Data.CompPatternSamples[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
+            $Data.CompPatternTimes[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
         }
-        if ($data.CompPatterns[$comp].ContainsKey($sevBucket)) {
-            Add-Pattern -CountMap $data.CompPatterns[$comp][$sevBucket] -SampleMap $data.CompPatternSamples[$comp][$sevBucket] `
-                -TimeMap $data.CompPatternTimes[$comp][$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        if ($Data.CompPatterns[$comp].ContainsKey($sevBucket)) {
+            Add-Pattern -CountMap $Data.CompPatterns[$comp][$sevBucket] -SampleMap $Data.CompPatternSamples[$comp][$sevBucket] `
+                -TimeMap $Data.CompPatternTimes[$comp][$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
         }
     }
-    elseif ($sevBucket -eq 'INFO' -and $Line -match 'Status is now (Failed|OK)') {
+    elseif ($sevBucket -eq 'INFO' -and $script:ReInfoBacStatus.IsMatch($Line)) {
         $norm = Normalize-Message -Text $Line
-        Add-Pattern -CountMap $data.PatternsBySev['INFO'] -SampleMap $data.PatternSampleBySev['INFO'] `
-            -TimeMap $data.PatternTimeBySev['INFO'] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        Add-Pattern -CountMap $Data.PatternsBySev['INFO'] -SampleMap $Data.PatternSampleBySev['INFO'] `
+            -TimeMap $Data.PatternTimeBySev['INFO'] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
     }
 
-    if ($comp -match 'BACnet') {
+    if ($comp.IndexOf('BACnet', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
         $bacNewStatus = $null
         $bacDevId = $null
         $mf = $script:ReBacFailed.Match($Line)
         if ($mf.Success) {
-            $data.BacFailed++
+            $Data.BacFailed++
             $bacDevId = $mf.Groups[1].Value
             $bacNewStatus = 'Failed'
-            if (-not $data.BacFailedByDevice.ContainsKey($bacDevId)) { $data.BacFailedByDevice[$bacDevId] = 0 }
-            $data.BacFailedByDevice[$bacDevId]++
-            if (-not $data.BacFailedSample) { $data.BacFailedSample = $Line }
+            if (-not $Data.BacFailedByDevice.ContainsKey($bacDevId)) { $Data.BacFailedByDevice[$bacDevId] = 0 }
+            $Data.BacFailedByDevice[$bacDevId]++
+            if (-not $Data.BacFailedSample) { $Data.BacFailedSample = $Line }
             $bucket.bacFailed++
         }
         else {
             $mo = $script:ReBacOk.Match($Line)
             if ($mo.Success) {
-                $data.BacOk++
+                $Data.BacOk++
                 $bacDevId = $mo.Groups[1].Value
                 $bacNewStatus = 'OK'
-                if (-not $data.BacOkByDevice.ContainsKey($bacDevId)) { $data.BacOkByDevice[$bacDevId] = 0 }
-                $data.BacOkByDevice[$bacDevId]++
-                if (-not $data.BacOkSample) { $data.BacOkSample = $Line }
+                if (-not $Data.BacOkByDevice.ContainsKey($bacDevId)) { $Data.BacOkByDevice[$bacDevId] = 0 }
+                $Data.BacOkByDevice[$bacDevId]++
+                if (-not $Data.BacOkSample) { $Data.BacOkSample = $Line }
                 $bucket.bacOk++
             }
         }
         if ($bacDevId -and $bacNewStatus) {
-            if ($data.BacLastStatus.ContainsKey($bacDevId) -and $data.BacLastStatus[$bacDevId] -ne $bacNewStatus) {
-                if (-not $data.BacFlipByDevice.ContainsKey($bacDevId)) { $data.BacFlipByDevice[$bacDevId] = 0 }
-                $data.BacFlipByDevice[$bacDevId]++
+            if ($Data.BacLastStatus.ContainsKey($bacDevId) -and $Data.BacLastStatus[$bacDevId] -ne $bacNewStatus) {
+                if (-not $Data.BacFlipByDevice.ContainsKey($bacDevId)) { $Data.BacFlipByDevice[$bacDevId] = 0 }
+                $Data.BacFlipByDevice[$bacDevId]++
             }
-            $data.BacLastStatus[$bacDevId] = $bacNewStatus
+            $Data.BacLastStatus[$bacDevId] = $bacNewStatus
         }
         $ml = $script:ReBacObjList.Match($Line)
         if ($ml.Success) {
-            $data.BacObjectList++
+            $Data.BacObjectList++
             $id = $ml.Groups[1].Value
-            if (-not $data.BacObjectListByDevice.ContainsKey($id)) { $data.BacObjectListByDevice[$id] = 0 }
-            $data.BacObjectListByDevice[$id]++
-            if (-not $data.BacObjectListSample) { $data.BacObjectListSample = $Line }
+            if (-not $Data.BacObjectListByDevice.ContainsKey($id)) { $Data.BacObjectListByDevice[$id] = 0 }
+            $Data.BacObjectListByDevice[$id]++
+            if (-not $Data.BacObjectListSample) { $Data.BacObjectListSample = $Line }
         }
     }
 
     $isCnsLine = $false
-    if ($Line -match 'ResolveNodes') { $data.CnsResolve++; $isCnsLine = $true }
-    if ($Line -match 'ReducedFunction') { $data.CnsReduced++; $isCnsLine = $true }
-    if ($Line -match '(?i)\bICns\b|ICns\.') { $data.CnsICns++; $isCnsLine = $true }
-    if ($Line -match 'TryRenewSession') { $data.CnsTryRenew++; $isCnsLine = $true }
+    if ($script:ReCnsResolve.IsMatch($Line)) { $Data.CnsResolve++; $isCnsLine = $true }
+    if ($script:ReCnsReduced.IsMatch($Line)) { $Data.CnsReduced++; $isCnsLine = $true }
+    if ($script:ReCnsICns.IsMatch($Line)) { $Data.CnsICns++; $isCnsLine = $true }
+    if ($script:ReCnsRenew.IsMatch($Line)) { $Data.CnsTryRenew++; $isCnsLine = $true }
     if ($isCnsLine) {
         $norm = Normalize-Message -Text $Line
-        Add-Pattern -CountMap $data.CnsPatterns -SampleMap $data.CnsPatternSamples -TimeMap $data.CnsPatternTimes `
+        Add-Pattern -CountMap $Data.CnsPatterns -SampleMap $Data.CnsPatternSamples -TimeMap $Data.CnsPatternTimes `
             -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
     }
 
-    if ($comp -match 'CoHo' -and $Line -match '(?i)got stuck|dropping it') {
-        $data.CohoStuck++
-        if (-not $data.CohoSample) { $data.CohoSample = $Line }
+    if ($comp.IndexOf('CoHo', [StringComparison]::OrdinalIgnoreCase) -ge 0 -and $script:ReCohoStuck.IsMatch($Line)) {
+        $Data.CohoStuck++
+        if (-not $Data.CohoSample) { $Data.CohoSample = $Line }
         $name = $null
         $mLoc = $script:ReCohoDiscoveryLoc.Match($Line)
         if ($mLoc.Success) { $name = 'DiscoveryLoc:' + $mLoc.Groups[1].Value }
@@ -378,31 +409,31 @@ function script:Process-LogLine {
             $mCycle = $script:ReCohoDiscoveryCycle.Match($Line)
             if ($mCycle.Success) {
                 $name = $mCycle.Groups[1].Value.Trim()
-                $name = [regex]::Replace($name, ':\s*[\d, ]+', ': <N>')
+                $name = $script:ReCohoLockCollapse.Replace($name, ': <N>')
             }
         }
         if (-not [string]::IsNullOrWhiteSpace($name)) {
-            if (-not $data.CohoStuckNames.ContainsKey($name)) { $data.CohoStuckNames[$name] = 0 }
-            $data.CohoStuckNames[$name]++
+            if (-not $Data.CohoStuckNames.ContainsKey($name)) { $Data.CohoStuckNames[$name] = 0 }
+            $Data.CohoStuckNames[$name]++
         }
     }
 
     if ($script:ReApogeeComp.IsMatch($Line)) {
-        $data.ApogeeEvents++
-        if (-not $data.ApogeeSample) { $data.ApogeeSample = $Line }
-        if ($Line -match '(?i)UpdatePoints') {
-            $data.ApogeeUpdatePoints++
+        $Data.ApogeeEvents++
+        if (-not $Data.ApogeeSample) { $Data.ApogeeSample = $Line }
+        if ($script:ReApogeeUpdate.IsMatch($Line)) {
+            $Data.ApogeeUpdatePoints++
             $mPpcl = $script:ReApogeePpcl.Match($Line)
             if ($mPpcl.Success) {
                 $pn = $mPpcl.Groups[1].Value.Trim()
                 if ($pn) {
-                    if (-not $data.ApogeePpcl.ContainsKey($pn)) { $data.ApogeePpcl[$pn] = 0 }
-                    $data.ApogeePpcl[$pn]++
+                    if (-not $Data.ApogeePpcl.ContainsKey($pn)) { $Data.ApogeePpcl[$pn] = 0 }
+                    $Data.ApogeePpcl[$pn]++
                 }
             }
         }
-        elseif ($Line -match '(?i)Repetition') { $data.ApogeeRepetition++ }
-        else { $data.ApogeeOther++ }
+        elseif ($script:ReApogeeRep.IsMatch($Line)) { $Data.ApogeeRepetition++ }
+        else { $Data.ApogeeOther++ }
     }
 }
 
@@ -419,7 +450,7 @@ function script:Open-LogStream {
     Close-LogStream
     $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
     if ($Position -gt 0 -and $Position -le $fs.Length) { [void]$fs.Seek($Position, [System.IO.SeekOrigin]::Begin) }
-    $reader = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true, 65536, $true)
+    $reader = New-Object System.IO.StreamReader($fs, [System.Text.Encoding]::UTF8, $true, 1048576, $true)
     $script:Sync['Stream'] = $fs
     $script:Sync['Reader'] = $reader
     $script:Sync['FilePos'] = $fs.Position
@@ -539,15 +570,16 @@ function script:Update-LoadProgress {
 
     $lastPct = [int]$script:Sync['LoadLastLogPct']
     $sw = $script:Sync['LoadSw']
-    $dueConsole = $ForceLog -or ($pct -ge ($lastPct + 10))
+    $elapsedMs = if ($sw) { $sw.ElapsedMilliseconds } else { 0L }
+    $lastLogMs = [int64]$script:Sync['LoadLastLogMs']
+    $dueConsole = $ForceLog -or ($pct -ge ($lastPct + 10)) -or ($elapsedMs -ge ($lastLogMs + 3000))
     if ($dueConsole) {
         $script:Sync['LoadLastLogPct'] = $pct
+        $script:Sync['LoadLastLogMs'] = $elapsedMs
         $elapsed = if ($sw) { [math]::Round($sw.Elapsed.TotalSeconds, 1) } else { 0 }
         Write-WatchLog ("Catch-up ... {0}%  scanned={1:N0}  parsed={2:N0}  {3}s" -f `
             $pct, $script:Sync['LoadLines'], $script:Sync['Data'].ParsedLines, $elapsed)
     }
-    # No generation bump on % ticks — pulse skips 304 while loading so the UI
-    # can refresh progress without refetching heavy sections every percent.
 }
 
 function script:Begin-CatchUp {
@@ -593,8 +625,10 @@ function script:Begin-CatchUp {
     $script:Sync['LoadSkipped'] = 0
     $script:Sync['LoadEnforce'] = $enforce
     $script:Sync['LoadCutoff'] = $cutoff
+    $script:Sync['LoadCutoffCompare'] = if ($enforce) { $cutoff.ToString('yyyy.MM.dd HH:mm:ss') } else { '' }
     $script:Sync['LoadSw'] = [System.Diagnostics.Stopwatch]::StartNew()
     $script:Sync['LoadLastLogPct'] = -1
+    $script:Sync['LoadLastLogMs'] = 0L
     $script:Sync['CatchUpActive'] = $true
     $script:Sync['FileLength'] = $totalBytes
 
@@ -628,7 +662,10 @@ function script:Finish-CatchUp {
 }
 
 function script:Step-CatchUp {
-    param([int]$MaxLines = 2500)
+    param(
+        [int]$MaxLines = 8000,
+        [int]$MaxMilliseconds = 200
+    )
     if (-not $script:Sync['CatchUpActive']) { return }
     try {
         $reader = $script:Sync['Reader']
@@ -636,29 +673,34 @@ function script:Step-CatchUp {
             Finish-CatchUp -Outcome 'FAIL'
             return
         }
+        $data = $script:Sync['Data']
         $enforce = [bool]$script:Sync['LoadEnforce']
-        $cutoff = [datetime]$script:Sync['LoadCutoff']
+        $cutoffCmp = [string]$script:Sync['LoadCutoffCompare']
         $n = 0
+        $skipped = 0
+        $slice = [System.Diagnostics.Stopwatch]::StartNew()
         while ($n -lt $MaxLines) {
+            if ($MaxMilliseconds -gt 0 -and $slice.ElapsedMilliseconds -ge $MaxMilliseconds) { break }
             $line = $reader.ReadLine()
             if ($null -eq $line) {
+                $script:Sync['LoadLines'] = [int]$script:Sync['LoadLines'] + $n
+                if ($skipped -gt 0) { $script:Sync['LoadSkipped'] = [int]$script:Sync['LoadSkipped'] + $skipped }
                 Finish-CatchUp -Outcome 'DONE'
                 return
             }
-            $before = $script:Sync['Data'].ParsedLines
-            Process-LogLine -Line $line -CutoffLocal $cutoff -EnforceCutoff:$enforce
-            $script:Sync['LoadLines'] = [int]$script:Sync['LoadLines'] + 1
+            $before = $data.ParsedLines
+            Process-LogLine -Line $line -Data $data -EnforceCutoff:$enforce -CutoffCompare $cutoffCmp
             $n++
-            if ($enforce -and $script:Sync['Data'].ParsedLines -eq $before) {
+            if ($enforce -and $data.ParsedLines -eq $before) {
                 $m = $script:LineRe.Match($line)
                 if ($m.Success) {
-                    $dt = ConvertFrom-LogTimestamp -Ts $m.Groups[2].Value.Trim()
-                    if ($dt -and $dt -lt $cutoff) {
-                        $script:Sync['LoadSkipped'] = [int]$script:Sync['LoadSkipped'] + 1
-                    }
+                    $ts = $m.Groups[2].Value
+                    if ($cutoffCmp -and $ts.Length -ge 19 -and $ts.Substring(0, 19) -lt $cutoffCmp) { $skipped++ }
                 }
             }
         }
+        $script:Sync['LoadLines'] = [int]$script:Sync['LoadLines'] + $n
+        if ($skipped -gt 0) { $script:Sync['LoadSkipped'] = [int]$script:Sync['LoadSkipped'] + $skipped }
         Update-LoadProgress
     }
     catch {
@@ -813,6 +855,44 @@ function script:Parse-QuerySevs {
 function script:Build-PulseObject {
     param($SevFilter)
     $d = $script:Sync['Data']
+    $win = if ($script:Sync['WindowEntire']) {
+        [ordered]@{ mode = 'entire'; lastMinutes = 0 }
+    }
+    else {
+        [ordered]@{ mode = 'minutes'; lastMinutes = [int]$script:Sync['LastMinutes'] }
+    }
+
+    # While catch-up runs, keep pulse cheap so % updates do not stall the scan.
+    if ($script:Sync['Loading']) {
+        $sevCounts = [ordered]@{}
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+            $sevCounts[$s] = if ($d.Severity.ContainsKey($s)) { [int]$d.Severity[$s] } else { 0 }
+        }
+        return [ordered]@{
+            generation      = [int]$script:Sync['Generation']
+            window          = $win
+            loading         = $true
+            loadProgressPct = [int]$script:Sync['LoadProgressPct']
+            loadMessage     = [string]$script:Sync['LoadMessage']
+            paused          = [bool]$script:Sync['Paused']
+            tailRunning     = $false
+            rotated         = [bool]$script:Sync['Rotated']
+            lastError       = $script:Sync['LastError']
+            logPath         = $script:Sync['LogPath']
+            fileLength      = [int64]$script:Sync['FileLength']
+            findings        = @()
+            severityCounts  = $sevCounts
+            moduleHeadlines = [ordered]@{
+                bacnet = [ordered]@{ failed = $d.BacFailed; ok = $d.BacOk; endedFailed = 0; endedOk = 0; flappers = 0; objectList = $d.BacObjectList }
+                cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
+                coho   = [ordered]@{ stuck = $d.CohoStuck }
+                apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
+            }
+            topManagers     = @()
+            series          = [ordered]@{ byMinute = @() }
+        }
+    }
+
     $sevCounts = [ordered]@{}
     foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
         $sevCounts[$s] = if ($d.Severity.ContainsKey($s)) { [int]$d.Severity[$s] } else { 0 }
@@ -835,12 +915,6 @@ function script:Build-PulseObject {
             $row
         }
     )
-    $win = if ($script:Sync['WindowEntire']) {
-        [ordered]@{ mode = 'entire'; lastMinutes = 0 }
-    }
-    else {
-        [ordered]@{ mode = 'minutes'; lastMinutes = [int]$script:Sync['LastMinutes'] }
-    }
     return [ordered]@{
         generation      = [int]$script:Sync['Generation']
         window          = $win
@@ -1288,13 +1362,17 @@ if (-not $NoBrowser) {
     if (-not $opened) { Start-Process $url | Out-Null }
 }
 
-# Interleave HTTP with catch-up chunks so /api/pulse can report load % during Entire reads.
-# WaitOne(50) keeps the loop responsive without a dedicated worker thread (STA-safe).
+# Interleave HTTP with short catch-up time-slices (~200ms) so /api/pulse can report %
+# about every UI poll without sleeping between work (WaitOne(0) while loading).
 try {
     $iar = $listener.BeginGetContext($null, $null)
     while ($listener.IsListening) {
-        try { Step-CatchUp } catch { }
-        if ($iar.AsyncWaitHandle.WaitOne(50)) {
+        $catchingUp = [bool]$script:Sync['CatchUpActive']
+        if ($catchingUp) {
+            try { Step-CatchUp -MaxLines 100000 -MaxMilliseconds 200 } catch { }
+        }
+        $waitMs = if ($catchingUp) { 0 } else { 50 }
+        if ($iar.AsyncWaitHandle.WaitOne($waitMs)) {
             try {
                 $ctx = $listener.EndGetContext($iar)
                 Handle-Request -Context $ctx

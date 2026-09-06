@@ -119,6 +119,8 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | Snapshot HTML/JSON from live payload | P1 | |
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
 | Catch-up / Entire **%** progress | P1 | Built (async catch-up + pulse `loadProgressPct` / `loadMessage`); single-thread opts ~85s on C2P (~50MB) vs ~80s V1.1; awaiting user confirm |
+| Cache **Entire** analysis when switching windows | P1 | Restore Entire snapshot + incremental tail instead of full re-parse; invalidate on Restart / rotate / path change |
+| File-end window anchor + chart rollup | P1 | Built: rolling window vs log EOF; pulse series minute/hour/day; empty overlay fix — awaiting confirm |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
 | Shared parser library batch+Watch | Deferred | Copy/adapt logic for MVP |
@@ -137,5 +139,7 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-05 | Repo layout: V1.1 → `batch\`; `ui\`, watch-log-path.example, root 2.0-dev stubs |
 | 2026-09-05 | Dev docs moved to `docs\` (PRD / PROGRESS) |
 | 2026-09-05 | Example/test logs under `docs\PVSS_II_Examples\` |
+| 2026-09-06 | File-end window anchor; chart series minute/hour/day rollup; empty overlay fix |
+| 2026-09-06 | P1 noted: cache Entire analysis across window switches |
 | 2026-09-05 | **2A–2D built**; `Test-WatchSelf.ps1` All PASS (Confirmed pending your run) |
 

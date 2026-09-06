@@ -168,6 +168,8 @@ function New-EmptyState {
         CompPatternTimes  = @{}
         PerfCats          = @{}
         ByMinute          = @{}  # minuteKey -> counts
+        FirstTs           = $null
+        LastTs            = $null
         ParsedLines       = 0
         UnparsedLines     = 0
         SevereLines       = 0
@@ -291,6 +293,8 @@ function script:Process-LogLine {
     }
 
     $Data.ParsedLines++
+    if (-not $Data.FirstTs) { $Data.FirstTs = $ts }
+    $Data.LastTs = $ts
     if (-not $Data.Severity.ContainsKey($sev)) { $Data.Severity[$sev] = 0 }
     $Data.Severity[$sev]++
     if (-not $Data.Components.ContainsKey($comp)) { $Data.Components[$comp] = 0 }
@@ -508,6 +512,16 @@ function script:Get-ProbeTimestamps {
     finally { $fs.Close() }
 }
 
+function script:Get-LogFileEndTimestamp {
+    param([string]$Path)
+    $fi = Get-Item -LiteralPath $Path
+    $len = [int64]$fi.Length
+    if ($len -le 0) { return $null }
+    $seek = [math]::Max([int64]0, $len - 1048576L)
+    $probe = Get-ProbeTimestamps -Path $Path -SeekPos $seek -MaxBytes 1048576L
+    return $probe.Last
+}
+
 function script:Find-WindowStartPosition {
     param(
         [string]$Path,
@@ -601,7 +615,18 @@ function script:Begin-CatchUp {
     $enforce = $false
     $startPos = 0L
     if (-not $entire) {
-        $cutoff = (Get-Date).AddMinutes(-[double]$script:Sync['LastMinutes'])
+        # Anchor to newest timestamp in the file (not wall clock) so copied/old logs
+        # and live tails both mean "last N minutes of this log."
+        $anchor = Get-LogFileEndTimestamp -Path $Path
+        if ($anchor) {
+            $cutoff = $anchor.AddMinutes(-[double]$script:Sync['LastMinutes'])
+            Write-WatchLog ("Window anchored to file end {0:yyyy.MM.dd HH:mm:ss}; cutoff {1:yyyy.MM.dd HH:mm:ss}" -f `
+                $anchor, $cutoff)
+        }
+        else {
+            $cutoff = (Get-Date).AddMinutes(-[double]$script:Sync['LastMinutes'])
+            Write-WatchLog ("No EOF timestamp found; wall-clock cutoff {0:yyyy.MM.dd HH:mm:ss}" -f $cutoff) Yellow
+        }
         $enforce = $true
         $script:Sync['Cutoff'] = $cutoff
         Write-WatchLog ("Seeking from EOF for cutoff {0:yyyy.MM.dd HH:mm:ss} ..." -f $cutoff)
@@ -852,14 +877,78 @@ function script:Parse-QuerySevs {
     return $set
 }
 
+function script:Get-ChartGranularity {
+    param(
+        [string]$FirstTs,
+        [string]$LastTs,
+        [int]$MinuteBucketCount
+    )
+    $dtFirst = ConvertFrom-LogTimestamp -Ts $FirstTs
+    $dtLast = ConvertFrom-LogTimestamp -Ts $LastTs
+    if ($dtFirst -and $dtLast -and $dtLast -ge $dtFirst) {
+        $hours = ($dtLast - $dtFirst).TotalHours
+        if ($hours -le 6) { return 'minute' }
+        if ($hours -le (14 * 24)) { return 'hour' }
+        return 'day'
+    }
+    if ($MinuteBucketCount -gt 400) { return 'hour' }
+    if ($MinuteBucketCount -gt 2000) { return 'day' }
+    return 'minute'
+}
+
+function script:Build-ChartSeries {
+    param($Data, $SevFilter)
+    $gran = Get-ChartGranularity -FirstTs $Data.FirstTs -LastTs $Data.LastTs -MinuteBucketCount $Data.ByMinute.Count
+    if ($gran -eq 'minute' -and $Data.ByMinute.Count -gt 400) { $gran = 'hour' }
+
+    $acc = @{}
+    foreach ($e in $Data.ByMinute.GetEnumerator()) {
+        $src = $e.Key
+        $key = switch ($gran) {
+            'day' {
+                if ($src.Length -ge 10) { $src.Substring(0, 10) } else { $src }
+            }
+            'hour' {
+                if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src }
+            }
+            default { $src }
+        }
+        if (-not $acc.ContainsKey($key)) {
+            $acc[$key] = @{
+                FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+                bacFailed = 0; bacOk = 0
+            }
+        }
+        $dst = $acc[$key]
+        $v = $e.Value
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+            $dst[$s] += [int]$v[$s]
+        }
+        $dst.bacFailed += [int]$v.bacFailed
+        $dst.bacOk += [int]$v.bacOk
+    }
+
+    $rows = @(
+        $acc.GetEnumerator() | Sort-Object Name | ForEach-Object {
+            $v = $_.Value
+            $row = [ordered]@{ t = $_.Key; bacFailed = [int]$v.bacFailed; bacOk = [int]$v.bacOk }
+            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+                if ($SevFilter[$s]) { $row[$s] = [int]$v[$s] } else { $row[$s] = 0 }
+            }
+            $row
+        }
+    )
+    return [ordered]@{ granularity = $gran; byMinute = $rows }
+}
+
 function script:Build-PulseObject {
     param($SevFilter)
     $d = $script:Sync['Data']
     $win = if ($script:Sync['WindowEntire']) {
-        [ordered]@{ mode = 'entire'; lastMinutes = 0 }
+        [ordered]@{ mode = 'entire'; lastMinutes = 0; first = $d.FirstTs; last = $d.LastTs }
     }
     else {
-        [ordered]@{ mode = 'minutes'; lastMinutes = [int]$script:Sync['LastMinutes'] }
+        [ordered]@{ mode = 'minutes'; lastMinutes = [int]$script:Sync['LastMinutes']; first = $d.FirstTs; last = $d.LastTs }
     }
 
     # While catch-up runs, keep pulse cheap so % updates do not stall the scan.
@@ -889,7 +978,7 @@ function script:Build-PulseObject {
                 apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
             }
             topManagers     = @()
-            series          = [ordered]@{ byMinute = @() }
+            series          = [ordered]@{ granularity = 'minute'; byMinute = @() }
         }
     }
 
@@ -905,16 +994,7 @@ function script:Build-PulseObject {
             [ordered]@{ name = $_.Key; count = [int]$_.Value }
         }
     )
-    $series = @(
-        $d.ByMinute.GetEnumerator() | Sort-Object Name | ForEach-Object {
-            $v = $_.Value
-            $row = [ordered]@{ t = $_.Key; bacFailed = [int]$v.bacFailed; bacOk = [int]$v.bacOk }
-            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
-                if ($SevFilter[$s]) { $row[$s] = [int]$v[$s] } else { $row[$s] = 0 }
-            }
-            $row
-        }
-    )
+    $series = Build-ChartSeries -Data $d -SevFilter $SevFilter
     return [ordered]@{
         generation      = [int]$script:Sync['Generation']
         window          = $win
@@ -936,7 +1016,7 @@ function script:Build-PulseObject {
             apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
         }
         topManagers     = $topMgr
-        series          = [ordered]@{ byMinute = $series }
+        series          = $series
     }
 }
 
@@ -1204,7 +1284,9 @@ function script:Handle-Api {
         try {
             $body = Read-RequestBody -Request $req | ConvertFrom-Json
             $action = [string]$body.action
-            Write-WatchLog ("Control action={0}" -f $action) DarkCyan
+            if ($action -ne 'note') {
+                Write-WatchLog ("Control action={0}" -f $action) DarkCyan
+            }
             switch ($action) {
                 'pause' { $script:Sync['Paused'] = $true; Bump-Generation }
                 'resume' { $script:Sync['Paused'] = $false; Bump-Generation }
@@ -1230,6 +1312,12 @@ function script:Handle-Api {
                     $wlabel = if ($script:Sync['WindowEntire']) { 'entire' } else { ("{0}m" -f $script:Sync['LastMinutes']) }
                     Write-WatchLog ("Window change → {0}" -f $wlabel) Cyan
                     if ($script:Sync['LogPath']) { Invoke-CatchUp -Path $script:Sync['LogPath'] }
+                }
+                'note' {
+                    $msg = [string]$body.message
+                    if (-not [string]::IsNullOrWhiteSpace($msg)) {
+                        Write-WatchLog $msg DarkCyan
+                    }
                 }
                 default { throw "Unknown action: $action" }
             }

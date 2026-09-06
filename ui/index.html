@@ -20,25 +20,34 @@
       <button type="button" id="btnResume" disabled>Resume</button>
       <button type="button" id="btnRestart" class="danger" disabled>Restart</button>
     </div>
-    <div class="chrome-row">
-      <span class="muted">Window</span>
-      <div class="seg" id="windowPresets" role="group" aria-label="Time window">
-        <button type="button" class="chip" data-minutes="15">15m</button>
-        <button type="button" class="chip" data-minutes="30">30m</button>
-        <button type="button" class="chip active" data-minutes="60">60m</button>
-        <button type="button" class="chip" data-minutes="120">120m</button>
-        <button type="button" class="chip" data-entire="1">Entire</button>
+    <div class="chrome-row filter-row" aria-label="Dashboard filters">
+      <span class="filter-row-label">Filters</span>
+      <div class="filter-group">
+        <span class="filter-group-title" id="lblWindow">Time window</span>
+        <div class="seg" id="windowPresets" role="group" aria-labelledby="lblWindow">
+          <button type="button" class="chip" data-minutes="15" aria-pressed="false">15m</button>
+          <button type="button" class="chip" data-minutes="30" aria-pressed="false">30m</button>
+          <button type="button" class="chip active" data-minutes="60" aria-pressed="true">60m</button>
+          <button type="button" class="chip" data-minutes="120" aria-pressed="false">120m</button>
+          <button type="button" class="chip" data-entire="1" aria-pressed="false">Entire</button>
+        </div>
+        <label class="muted" for="customWindowValue">Custom</label>
+        <input id="customWindowValue" class="custom-mins" type="number" min="1" max="10080" placeholder="60" aria-label="Custom window amount" />
+        <div class="seg unit-seg" id="customWindowUnit" role="group" aria-label="Custom window unit">
+          <button type="button" class="chip unit-chip active" data-unit="minutes" aria-pressed="true">min</button>
+          <button type="button" class="chip unit-chip" data-unit="hours" aria-pressed="false">hr</button>
+        </div>
+        <button type="button" id="btnApplyWindow">Apply</button>
       </div>
-      <label class="muted" for="customMinutes">Custom</label>
-      <input id="customMinutes" class="custom-mins" type="number" min="1" max="10080" placeholder="min" />
-      <button type="button" id="btnApplyWindow">Apply</button>
-      <span class="muted">Severity</span>
-      <div class="seg" id="sevChips" role="group" aria-label="Severity filters">
-        <button type="button" class="chip active" data-sev="FATAL">FATAL</button>
-        <button type="button" class="chip active" data-sev="SEVERE">SEVERE</button>
-        <button type="button" class="chip active" data-sev="ERROR">ERROR</button>
-        <button type="button" class="chip active" data-sev="WARNING">WARNING</button>
-        <button type="button" class="chip" data-sev="INFO">INFO</button>
+      <div class="filter-group filter-group-sev">
+        <span class="filter-group-title" id="lblSeverity">Severity filters</span>
+        <div class="seg sev-seg" id="sevChips" role="group" aria-labelledby="lblSeverity">
+          <button type="button" class="chip chip-sev active" data-sev="FATAL" aria-pressed="true" title="Include FATAL in charts and patterns">FATAL</button>
+          <button type="button" class="chip chip-sev active" data-sev="SEVERE" aria-pressed="true" title="Include SEVERE in charts and patterns">SEVERE</button>
+          <button type="button" class="chip chip-sev active" data-sev="ERROR" aria-pressed="true" title="Include ERROR in charts and patterns">ERROR</button>
+          <button type="button" class="chip chip-sev active" data-sev="WARNING" aria-pressed="true" title="Include WARNING in charts and patterns">WARNING</button>
+          <button type="button" class="chip chip-sev" data-sev="INFO" aria-pressed="false" title="Include INFO in volume chart (default off)">INFO</button>
+        </div>
       </div>
     </div>
     <div class="chrome-row">
@@ -69,18 +78,19 @@
         </div>
         <div id="overviewBody" hidden>
           <h1>Overview</h1>
+          <p id="overviewWindow" class="meta window-span" hidden></p>
           <ul id="findingsList" class="findings"></ul>
           <div id="kpiRow" class="kpi-row"></div>
           <div class="charts">
             <div class="chart-panel">
-              <h3>Message volume by minute</h3>
+              <h3 id="chartVolumeTitle">Message volume by minute</h3>
               <div class="chart-wrap">
                 <canvas id="chartVolume"></canvas>
                 <div id="chartVolumeEmpty" class="chart-empty" hidden>No data in window</div>
               </div>
             </div>
             <div class="chart-panel">
-              <h3>BACnet Failed / OK</h3>
+              <h3 id="chartBacnetTitle">BACnet Failed / OK</h3>
               <div class="chart-wrap">
                 <canvas id="chartBacnet"></canvas>
                 <div id="chartBacnetEmpty" class="chart-empty" hidden>No data in window</div>

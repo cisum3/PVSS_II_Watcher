@@ -144,17 +144,72 @@ input:focus, button:focus {
   opacity: 0.85;
 }
 
+.filter-row {
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.filter-row-label {
+  align-self: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--siemens-petrol);
+  margin-right: 0.15rem;
+}
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.filter-group-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-right: 0.15rem;
+}
+
 .seg {
   display: inline-flex;
   flex-wrap: wrap;
-  gap: 0.25rem;
+  gap: 0.3rem;
 }
 
 .chip {
   border-radius: 2px;
-  padding: 0.28rem 0.55rem;
+  border: 1px solid var(--border);
+  padding: 0.32rem 0.65rem;
+  min-height: 1.85rem;
   font-size: 0.82rem;
+  font-weight: 600;
   letter-spacing: 0.02em;
+  cursor: pointer;
+  /* Off state: fill darker than chrome/panel so inactive chips read clearly */
+  background: #0a1118;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
+}
+
+.chip:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 1px rgba(0, 153, 153, 0.35);
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+.chip.active {
+  box-shadow: inset 0 -2px 0 rgba(0, 153, 153, 0.85);
 }
 
 .chip[data-sev="FATAL"] { border-color: var(--sev-fatal); color: #ffb0b0; }
@@ -163,11 +218,19 @@ input:focus, button:focus {
 .chip[data-sev="WARNING"] { border-color: var(--sev-warning); color: #ffd0a0; }
 .chip[data-sev="INFO"] { border-color: var(--sev-info); color: #90d090; }
 
-.chip.active[data-sev="FATAL"] { background: rgba(224, 0, 0, 0.25); }
-.chip.active[data-sev="SEVERE"] { background: rgba(192, 0, 160, 0.25); }
-.chip.active[data-sev="ERROR"] { background: rgba(176, 0, 64, 0.25); }
-.chip.active[data-sev="WARNING"] { background: rgba(224, 112, 0, 0.25); }
-.chip.active[data-sev="INFO"] { background: rgba(0, 128, 0, 0.25); }
+.chip.active[data-sev="FATAL"] { background: rgba(224, 0, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-fatal); }
+.chip.active[data-sev="SEVERE"] { background: rgba(192, 0, 160, 0.28); box-shadow: inset 0 -2px 0 var(--sev-severe); }
+.chip.active[data-sev="ERROR"] { background: rgba(176, 0, 64, 0.28); box-shadow: inset 0 -2px 0 var(--sev-error); }
+.chip.active[data-sev="WARNING"] { background: rgba(224, 112, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-warning); }
+.chip.active[data-sev="INFO"] { background: rgba(0, 128, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-info); }
+
+.chip-sev:not(.active) {
+  opacity: 0.78;
+}
+
+.chip-sev:not(.active):hover {
+  opacity: 1;
+}
 
 .status-line {
   color: var(--text-muted);
@@ -249,6 +312,13 @@ h3 { font-size: 0.92rem; color: var(--text-muted); }
 .muted { color: var(--text-muted); }
 .meta { color: var(--text-meta); font-size: 0.85rem; }
 
+.window-span {
+  margin: -0.35rem 0 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
@@ -317,6 +387,13 @@ h3 { font-size: 0.92rem; color: var(--text-muted); }
   justify-content: center;
   color: var(--text-meta);
   font-size: 0.9rem;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(15, 25, 35, 0.55);
+}
+
+.chart-empty[hidden] {
+  display: none !important;
 }
 
 table.data {
@@ -417,7 +494,24 @@ table.data .mono { font-family: var(--mono); font-size: 0.8rem; word-break: brea
   line-height: 1.5;
 }
 
-.custom-mins { width: 5.5rem; }
+.custom-mins { width: 5rem; }
+
+.unit-seg {
+  gap: 0.2rem;
+}
+
+.unit-chip {
+  min-width: 2.6rem;
+  padding: 0.32rem 0.5rem;
+  font-weight: 600;
+}
+
+.unit-chip.active {
+  background: rgba(0, 153, 153, 0.28);
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+  box-shadow: inset 0 -2px 0 var(--siemens-petrol);
+}
 
 @media (max-width: 900px) {
   .layout { grid-template-columns: 1fr; }

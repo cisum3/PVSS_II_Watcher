@@ -80,7 +80,7 @@ Ship `watch-log-path.example.txt`. Operator file `watch-log-path.txt` is local (
 The log is **append-only / sequential** (oldest near the top, newest at the bottom). Catch-up does **not** need random calendar indexing:
 
 1. Open read-only; note file length.
-2. For a rolling window (e.g. 60m): **seek backward from EOF** in expanding chunks until timestamps reach (or pass) the cutoff, then parse **forward** from that byte offset through EOF into live counters. Do **not** scan the whole file when a shorter window is selected.
+2. For a rolling window (e.g. 60m): determine cutoff from the **newest timestamp near EOF** (file-end anchor), not wall-clock time — so copied/old logs and live files both mean “last N minutes **of this log**.” Then **seek backward from EOF** in expanding chunks until timestamps reach (or pass) the cutoff, and parse **forward** from that byte offset through EOF into live counters. Do **not** scan the whole file when a shorter window is selected. If no EOF timestamp can be read, fall back to wall-clock cutoff.
 3. For **Entire**: parse from the start of the file once, then tail new bytes.
 4. Show a **loading / spinner** state while catch-up runs (byte **% progress** is nice-to-have later — not MVP).
 
@@ -228,8 +228,8 @@ INFO series only if INFO filter is on (default off).
 
 | Control | Behavior |
 |---------|----------|
-| **Presets** | Segmented: `[ 15m ] [ 30m ] [ 60m ] [ 120m ] [ Entire ]` — default **60m** |
-| **Custom** | Numeric **minutes** field (e.g. 1–10080) + Apply / Enter — for values outside presets |
+| **Presets** | Segmented: `[ 15m ] [ 30m ] [ 60m ] [ 120m ] [ Entire ]` — default **60m** — minutes are relative to **file end** (newest log timestamp), not wall clock |
+| **Custom** | Numeric amount + **minutes / hours** unit + Apply / Enter (max 10080 minutes / 168 hours) — for values outside presets |
 | **Entire** | Host parses from start of file, then keeps tailing. On ~50 MB expect &lt; ~60 s class; show spinner. |
 
 Changing the window re-scopes summary/charts. Widening or switching to Entire may trigger additional back-read; show “Loading window…”.
@@ -238,7 +238,7 @@ Selecting a preset or custom minutes clears Entire; selecting Entire clears the 
 
 **API:** `lastMinutes=60` for a rolling window; `window=entire` for the whole file.
 
-**Series size:** Logs rotate ~50 MB. Minute buckets for Entire of one file are acceptable for MVP. After rotate, counters reset. No special downsampling required for MVP.
+**Series size:** Pulse chart series auto-aggregate by span: **minute** (≤ ~6h), **hour** (≤ ~14d), **day** (longer / Entire multi-week). Host still keeps per-minute analysis maps; only the serialized chart points roll up. Payload includes `series.granularity`. After rotate, counters reset.
 
 ### 7.3 Filters (host-side)
 

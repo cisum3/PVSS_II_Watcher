@@ -46,7 +46,7 @@
   function mockPulse() {
     return {
       generation: 1,
-      window: { mode: 'minutes', lastMinutes: 60 },
+      window: { mode: 'minutes', lastMinutes: 60, first: '2026.09.05 14:00:00.000', last: '2026.09.05 15:02:00.000' },
       loading: false,
       loadProgressPct: 0,
       loadMessage: '',
@@ -74,6 +74,7 @@
         { name: 'Site.CustomDriver', count: 400 }
       ],
       series: {
+        granularity: 'minute',
         byMinute: [
           { t: '2026.09.05 15:00', FATAL: 0, SEVERE: 2, ERROR: 1, WARNING: 10, INFO: 80, bacFailed: 5, bacOk: 4 },
           { t: '2026.09.05 15:01', FATAL: 0, SEVERE: 4, ERROR: 0, WARNING: 12, INFO: 90, bacFailed: 8, bacOk: 6 },
@@ -247,6 +248,21 @@
     return SEVS.filter(function (s) { return state.severities[s]; });
   }
 
+  function renderWindowSpan(w) {
+    var el = $('overviewWindow');
+    if (!el) return;
+    if (!w || (!w.first && !w.last)) {
+      el.hidden = true;
+      el.textContent = '';
+      return;
+    }
+    var mode = (w.mode === 'entire')
+      ? 'Entire file'
+      : ('Last ' + (w.lastMinutes || state.lastMinutes || '?') + ' minutes of file');
+    el.hidden = false;
+    el.textContent = mode + '  ·  ' + (w.first || '—') + '  →  ' + (w.last || '—');
+  }
+
   function renderFindings(list) {
     var ul = $('findingsList');
     ul.innerHTML = '';
@@ -300,71 +316,110 @@
     Chart.defaults.font.family = 'Segoe UI, Candara, Calibri, sans-serif';
   }
 
+  function formatChartLabel(t, gran) {
+    if (!t) return '';
+    if (gran === 'day') {
+      return t.length >= 10 ? t.slice(0, 10) : t;
+    }
+    if (gran === 'hour') {
+      if (t.length >= 13) return t.slice(5, 13); // MM.dd HH
+      return t;
+    }
+    if (t.length >= 16) return t.slice(5, 16); // MM.dd HH:mm for multi-hour readability
+    return t;
+  }
+
+  function granLabel(gran) {
+    if (gran === 'day') return 'day';
+    if (gran === 'hour') return 'hour';
+    return 'minute';
+  }
+
   function updateCharts(series) {
     ensureCharts();
     var rows = (series && series.byMinute) || [];
+    var gran = (series && series.granularity) || 'minute';
     var sevList = selectedSeverities().filter(function (s) { return s !== 'INFO' || state.severities.INFO; });
-    var labels = rows.map(function (r) { return (r.t || '').slice(11, 16) || r.t; });
+    var labels = rows.map(function (r) { return formatChartLabel(r.t, gran); });
     var hasVol = rows.some(function (r) {
       return sevList.some(function (s) { return (r[s] || 0) > 0; });
     });
+    var volTitle = $('chartVolumeTitle');
+    if (volTitle) volTitle.textContent = 'Message volume by ' + granLabel(gran);
     $('chartVolumeEmpty').hidden = hasVol;
     if (typeof Chart !== 'undefined') {
-      var datasets = sevList.map(function (s) {
+      var datasets = hasVol ? sevList.map(function (s) {
         return {
           label: s,
           data: rows.map(function (r) { return r[s] || 0; }),
           backgroundColor: SEV_COLORS[s],
           stack: 's'
         };
-      });
+      }) : [];
+      var volOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: hasVol, position: 'bottom', labels: { boxWidth: 10 } } },
+        scales: {
+          x: { stacked: true, ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 45, minRotation: 0 } },
+          y: { stacked: true, beginAtZero: true }
+        }
+      };
       if (!state.chartVolume) {
         state.chartVolume = new Chart($('chartVolume'), {
           type: 'bar',
-          data: { labels: labels, datasets: datasets },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
-            scales: { x: { stacked: true }, y: { stacked: true, beginAtZero: true } }
-          }
+          data: { labels: hasVol ? labels : [], datasets: datasets },
+          options: volOpts
         });
       } else {
-        state.chartVolume.data.labels = labels;
+        state.chartVolume.data.labels = hasVol ? labels : [];
         state.chartVolume.data.datasets = datasets;
+        state.chartVolume.options.plugins.legend.display = hasVol;
         state.chartVolume.update('none');
       }
     }
 
     var hasBac = rows.some(function (r) { return (r.bacFailed || 0) + (r.bacOk || 0) > 0; });
     var hasSevFallback = !hasBac && rows.some(function (r) { return (r.SEVERE || 0) > 0; });
-    $('chartBacnetEmpty').hidden = hasBac || hasSevFallback;
+    var hasLine = hasBac || hasSevFallback;
+    var bacTitle = $('chartBacnetTitle');
+    if (bacTitle) {
+      bacTitle.textContent = hasBac
+        ? ('BACnet Failed / OK by ' + granLabel(gran))
+        : ('SEVERE volume by ' + granLabel(gran));
+    }
+    $('chartBacnetEmpty').hidden = hasLine;
     if (typeof Chart !== 'undefined') {
-      var ds2;
+      var ds2 = [];
       if (hasBac) {
         ds2 = [
-          { label: 'Failed', data: rows.map(function (r) { return r.bacFailed || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2 },
-          { label: 'OK', data: rows.map(function (r) { return r.bacOk || 0; }), borderColor: SEV_COLORS.INFO, backgroundColor: 'transparent', tension: 0.2 }
+          { label: 'Failed', data: rows.map(function (r) { return r.bacFailed || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 },
+          { label: 'OK', data: rows.map(function (r) { return r.bacOk || 0; }), borderColor: SEV_COLORS.INFO, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 }
         ];
-      } else {
+      } else if (hasSevFallback) {
         ds2 = [
-          { label: 'SEVERE', data: rows.map(function (r) { return r.SEVERE || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2 }
+          { label: 'SEVERE', data: rows.map(function (r) { return r.SEVERE || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 }
         ];
       }
+      var bacOpts = {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: { legend: { display: hasLine, position: 'bottom', labels: { boxWidth: 10 } } },
+        scales: {
+          x: { ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 45, minRotation: 0 } },
+          y: { beginAtZero: true }
+        }
+      };
       if (!state.chartBacnet) {
         state.chartBacnet = new Chart($('chartBacnet'), {
           type: 'line',
-          data: { labels: labels, datasets: ds2 },
-          options: {
-            responsive: true,
-            maintainAspectRatio: false,
-            plugins: { legend: { position: 'bottom', labels: { boxWidth: 10 } } },
-            scales: { y: { beginAtZero: true } }
-          }
+          data: { labels: hasLine ? labels : [], datasets: ds2 },
+          options: bacOpts
         });
       } else {
-        state.chartBacnet.data.labels = labels;
+        state.chartBacnet.data.labels = hasLine ? labels : [];
         state.chartBacnet.data.datasets = ds2;
+        state.chartBacnet.options.plugins.legend.display = hasLine;
         state.chartBacnet.update('none');
       }
     }
@@ -390,6 +445,7 @@
     setBanner('bannerRotate', p.rotated ? 'Log rotated — counters reset' : '');
     setBanner('bannerError', p.lastError || '');
 
+    renderWindowSpan(p.window);
     renderFindings(p.findings);
     renderKpis(p.severityCounts);
     renderMgrStrip(p.topManagers);
@@ -410,14 +466,17 @@
   function renderPatternList(bySev) {
     var host = $('patternsBody');
     host.innerHTML = '';
+    var shown = 0;
     ['FATAL', 'SEVERE', 'ERROR', 'WARNING'].forEach(function (sev) {
+      if (!state.severities[sev]) return; // filtered out — omit pane (do not look like "no logs")
+      shown++;
       var block = document.createElement('div');
       block.className = 'pattern-block';
       var list = (bySev && bySev[sev]) || [];
       block.innerHTML = '<h3 style="color:' + SEV_COLORS[sev] + '">' + sev +
         '<span class="meta">(' + list.length + ')</span></h3>';
       if (!list.length) {
-        block.innerHTML += '<p class="meta">No patterns</p>';
+        block.innerHTML += '<p class="meta">No patterns in the current window</p>';
       } else {
         var table = document.createElement('table');
         table.className = 'data';
@@ -435,6 +494,9 @@
       }
       host.appendChild(block);
     });
+    if (!shown) {
+      host.innerHTML = '<p class="meta">No severity filters enabled — turn on FATAL / SEVERE / ERROR / WARNING above to see patterns.</p>';
+    }
   }
 
   function updateMgrListCollapseUi() {
@@ -502,7 +564,10 @@
 
   function renderPatternListInto(host, bySev) {
     var wrap = document.createElement('div');
+    var shown = 0;
     ['FATAL', 'SEVERE', 'ERROR', 'WARNING'].forEach(function (sev) {
+      if (!state.severities[sev]) return;
+      shown++;
       var list = (bySev && bySev[sev]) || [];
       if (!list.length) return;
       var h = document.createElement('h3');
@@ -522,6 +587,17 @@
       table.appendChild(tb);
       wrap.appendChild(table);
     });
+    if (!shown) {
+      var p = document.createElement('p');
+      p.className = 'meta';
+      p.textContent = 'No severity filters enabled — turn on FATAL / SEVERE / ERROR / WARNING above.';
+      wrap.appendChild(p);
+    } else if (!wrap.querySelector('table')) {
+      var p2 = document.createElement('p');
+      p2.className = 'meta';
+      p2.textContent = 'No patterns for the enabled severities in the current window.';
+      wrap.appendChild(p2);
+    }
     host.appendChild(wrap);
   }
 
@@ -651,10 +727,13 @@
     });
   }
 
-  function pollPulse() {
+  function pollPulse(opts) {
+    opts = opts || {};
+    var force = !!opts.force;
     var headersNote = '';
     var url = '/api/pulse?' + qsPulse();
-    if (state.generation != null && !state.useMock) {
+    // sinceGeneration must be skipped when filters change — generation is unchanged but series/sections must refresh.
+    if (!force && state.generation != null && !state.useMock) {
       url += '&sinceGeneration=' + encodeURIComponent(state.generation);
     }
     return apiGet(url).then(function (res) {
@@ -665,17 +744,22 @@
           setStatus('<span class="ok">tailing</span> · window ' + mode + ' · gen ' + state.generation +
             ' · updated ' + sec + 's ago' + headersNote);
         }
+        // Never leave a client-only loading banner stuck after a no-op 304.
+        if (!state.pulse || !state.pulse.loading) setBanner('bannerLoading', '');
         return;
       }
       var prev = state.generation;
       applyPulse(res.json);
-      if (state.activeView !== 'overview' && res.json.generation !== prev) {
-        loadSection(state.activeView);
-        if (state.activeView === 'managers' && state.selectedManager) {
-          loadManagerDetail(state.selectedManager);
+      if (force || (state.activeView !== 'overview' && res.json.generation !== prev)) {
+        if (state.activeView !== 'overview') {
+          loadSection(state.activeView);
+          if (state.activeView === 'managers' && state.selectedManager) {
+            loadManagerDetail(state.selectedManager);
+          }
         }
       }
     }).catch(function (e) {
+      setBanner('bannerLoading', '');
       setBanner('bannerError', String(e.message || e));
       setStatus('<span class="err">poll failed</span>');
     });
@@ -711,6 +795,7 @@
       var mins = parseInt(b.getAttribute('data-minutes') || '0', 10);
       var on = state.windowEntire ? entire : (!entire && mins === state.lastMinutes);
       b.classList.toggle('active', on);
+      b.setAttribute('aria-pressed', on ? 'true' : 'false');
     });
   }
 
@@ -756,11 +841,16 @@
         var s = b.getAttribute('data-sev');
         state.severities[s] = !state.severities[s];
         b.classList.toggle('active', state.severities[s]);
+        b.setAttribute('aria-pressed', state.severities[s] ? 'true' : 'false');
         if (state.running || state.useMock) {
-          showLoading('Updating filters…');
-          pollPulse().then(function () {
-            if (state.activeView !== 'overview') loadSection(state.activeView);
-          });
+          // Filters are query-side only (no catch-up). Force a full pulse so charts refresh;
+          // do not use the catch-up loading banner (it stuck on HTTP 304 before).
+          var sevLabel = selectedSeverities().join(',') || '(none)';
+          setStatus('<span class="warn">applying filters</span> · ' + escapeHtml(sevLabel));
+          if (!state.useMock) {
+            apiPost('/api/control', { action: 'note', message: 'Severity filter → ' + sevLabel }).catch(function () { });
+          }
+          pollPulse({ force: true });
         }
       });
     });
@@ -772,21 +862,57 @@
         } else {
           state.windowEntire = false;
           state.lastMinutes = parseInt(b.getAttribute('data-minutes'), 10);
-          $('customMinutes').value = '';
+          $('customWindowValue').value = '';
         }
         requestWindowChange();
       });
     });
 
-    $('btnApplyWindow').addEventListener('click', function () {
-      var n = parseInt($('customMinutes').value, 10);
+    function getCustomWindowUnit() {
+      var on = document.querySelector('#customWindowUnit .unit-chip.active');
+      return on ? on.getAttribute('data-unit') : 'minutes';
+    }
+
+    function syncCustomWindowLimits() {
+      var unit = getCustomWindowUnit();
+      var inp = $('customWindowValue');
+      if (unit === 'hours') {
+        inp.min = '1';
+        inp.max = '168'; // 7 days in hours (matches 10080 minutes)
+        inp.placeholder = '2';
+      } else {
+        inp.min = '1';
+        inp.max = '10080';
+        inp.placeholder = '60';
+      }
+    }
+
+    function applyCustomWindow() {
+      var n = parseInt($('customWindowValue').value, 10);
       if (!n || n < 1) return;
+      var unit = getCustomWindowUnit();
+      var minutes = unit === 'hours' ? n * 60 : n;
+      if (minutes < 1) return;
       state.windowEntire = false;
-      state.lastMinutes = Math.min(10080, n);
+      state.lastMinutes = Math.min(10080, minutes);
       requestWindowChange();
+    }
+
+    document.querySelectorAll('#customWindowUnit .unit-chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        document.querySelectorAll('#customWindowUnit .unit-chip').forEach(function (x) {
+          var on = x === b;
+          x.classList.toggle('active', on);
+          x.setAttribute('aria-pressed', on ? 'true' : 'false');
+        });
+        syncCustomWindowLimits();
+      });
     });
-    $('customMinutes').addEventListener('keydown', function (e) {
-      if (e.key === 'Enter') $('btnApplyWindow').click();
+    syncCustomWindowLimits();
+
+    $('btnApplyWindow').addEventListener('click', applyCustomWindow);
+    $('customWindowValue').addEventListener('keydown', function (e) {
+      if (e.key === 'Enter') applyCustomWindow();
     });
 
     $('btnStart').addEventListener('click', function () {

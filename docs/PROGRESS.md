@@ -39,6 +39,8 @@ Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.1.
 
 See [`PROGRESS-V2.md`](PROGRESS-V2.md) / [`PRD-V2.md`](PRD-V2.md) — live dashboard in progress.
 
+Notable V2 backlog (tracked there): cache Entire analysis across window switches so returning to Entire does not full re-parse.
+
 ---
 
 ## V1.1 package contents

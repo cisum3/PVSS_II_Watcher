@@ -129,7 +129,8 @@ try {
             }
             if ($pulse.loading) { Bad 'catch-up still loading after wait' }
             elseif ($null -ne $pulse.generation -and $pulse.severityCounts) {
-                Ok "pulse gen=$($pulse.generation) findings=$($pulse.findings.Count)$(if ($sawPct) { ' (saw %)' } else { '' })"
+                $spanOk = $pulse.window -and $pulse.window.first -and $pulse.window.last
+                Ok "pulse gen=$($pulse.generation) findings=$($pulse.findings.Count)$(if ($sawPct) { ' (saw %)' } else { '' })$(if ($spanOk) { ' span=yes' } else { '' })"
             }
             else { Bad 'pulse shape' }
 
@@ -220,7 +221,28 @@ try {
                 if (-not $pulse.loading) { break }
             }
             if ($pulse.loading) { Bad '2D catch-up still loading' }
-            elseif ($pulse.series.byMinute) { Ok "series buckets=$($pulse.series.byMinute.Count)" } else { Bad 'series' }
+            elseif ($pulse.series.byMinute) {
+                $g = $pulse.series.granularity
+                Ok "series buckets=$($pulse.series.byMinute.Count) gran=$g"
+            }
+            else { Bad 'series' }
+
+            # File-end anchor: short window on an old example log should still yield data.
+            $body120 = (@{ path = $LogPath; lastMinutes = 120 } | ConvertTo-Json -Compress)
+            [void](Invoke-Api "$base/api/logPath" -Method POST -Body $body120)
+            $p120 = $null
+            for ($w = 0; $w -lt 600; $w++) {
+                Start-Sleep -Milliseconds 100
+                $p120 = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
+                if (-not $p120.loading) { break }
+            }
+            if ($p120.loading) { Bad '120m catch-up still loading' }
+            elseif ($p120.window.first -and $p120.severityCounts -and (
+                    [int]$p120.severityCounts.FATAL + [int]$p120.severityCounts.SEVERE +
+                    [int]$p120.severityCounts.ERROR + [int]$p120.severityCounts.WARNING) -gt 0) {
+                Ok "file-end 120m window has data ($($p120.window.first) → $($p120.window.last))"
+            }
+            else { Bad 'file-end 120m window empty (anchor broken?)' }
 
             foreach ($sec in @('bacnet', 'cns', 'coho', 'apogee', 'managers', 'perf')) {
                 try {

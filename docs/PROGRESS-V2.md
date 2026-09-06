@@ -118,7 +118,7 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 |------|----------|-------|
 | Snapshot HTML/JSON from live payload | P1 | |
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
-| Catch-up / Entire **%** progress | P1 | Spinner is P0 |
+| Catch-up / Entire **%** progress | P1 | Built (async catch-up + pulse `loadProgressPct` / `loadMessage`); awaiting user confirm |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
 | Shared parser library batch+Watch | Deferred | Copy/adapt logic for MVP |

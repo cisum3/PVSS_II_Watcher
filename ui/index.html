@@ -99,12 +99,22 @@
 
       <section id="view-managers" class="view">
         <h1>Managers</h1>
-        <p class="meta">Any manager seen in the log (not a fixed allow-list). Select a row for top patterns.</p>
-        <table class="data" id="mgrTable">
-          <thead><tr><th>Count</th><th>Manager</th><th>FATAL</th><th>SEVERE</th><th>ERROR</th><th>WARNING</th></tr></thead>
-          <tbody></tbody>
-        </table>
-        <div id="mgrDetail" hidden>
+        <p class="meta">Managers discovered from the log. Select a row for top patterns.</p>
+        <div id="mgrListPanel" class="mgr-list-panel">
+          <div class="mgr-list-toolbar">
+            <button type="button" id="btnToggleMgrList" class="mgr-list-toggle" hidden aria-expanded="true">
+              Show manager list
+            </button>
+            <span id="mgrListSummary" class="mgr-list-summary meta" hidden></span>
+          </div>
+          <div id="mgrListBody">
+            <table class="data" id="mgrTable">
+              <thead><tr><th>Count</th><th>Manager</th><th>FATAL</th><th>SEVERE</th><th>ERROR</th><th>WARNING</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
+        </div>
+        <div id="mgrDetail" class="mgr-detail" hidden>
           <h2 id="mgrDetailTitle">Manager</h2>
           <div id="mgrDetailBody"></div>
         </div>

@@ -116,11 +116,21 @@ try {
         else {
             $body = (@{ path = $LogPath; lastMinutes = 10080 } | ConvertTo-Json -Compress)
             $start = Invoke-Api "$base/api/logPath" -Method POST -Body $body | ConvertFrom-Json
-            if ($start.ok) { Ok 'POST /api/logPath catch-up' } else { Bad 'logPath' }
+            if ($start.ok) { Ok 'POST /api/logPath catch-up started' } else { Bad 'logPath' }
 
-            # wait if still loading (should be done sync)
-            $pulse = Invoke-Api "$base/api/pulse?lastMinutes=10080&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
-            if ($null -ne $pulse.generation -and $pulse.severityCounts) { Ok "pulse gen=$($pulse.generation) findings=$($pulse.findings.Count)" }
+            # Catch-up is chunked async — poll until loading clears (progress % available while loading).
+            $pulse = $null
+            $sawPct = $false
+            for ($w = 0; $w -lt 600; $w++) {
+                Start-Sleep -Milliseconds 100
+                $pulse = Invoke-Api "$base/api/pulse?lastMinutes=10080&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
+                if ($pulse.loading -and $null -ne $pulse.loadProgressPct) { $sawPct = $true }
+                if (-not $pulse.loading) { break }
+            }
+            if ($pulse.loading) { Bad 'catch-up still loading after wait' }
+            elseif ($null -ne $pulse.generation -and $pulse.severityCounts) {
+                Ok "pulse gen=$($pulse.generation) findings=$($pulse.findings.Count)$(if ($sawPct) { ' (saw %)' } else { '' })"
+            }
             else { Bad 'pulse shape' }
 
             $sec = Invoke-Api "$base/api/section?name=patterns&lastMinutes=10080&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
@@ -150,7 +160,11 @@ try {
             [System.IO.File]::WriteAllBytes($tmp, $buf)
             $body = (@{ path = $tmp; lastMinutes = 10080 } | ConvertTo-Json -Compress)
             [void](Invoke-Api "$base/api/logPath" -Method POST -Body $body)
-            Start-Sleep -Milliseconds 200
+            for ($w = 0; $w -lt 600; $w++) {
+                Start-Sleep -Milliseconds 100
+                $pWait = Invoke-Api "$base/api/pulse?lastMinutes=10080&severities=FATAL,SEVERE,ERROR,WARNING,INFO" | ConvertFrom-Json
+                if (-not $pWait.loading) { break }
+            }
             $before = (Invoke-Api "$base/api/pulse?lastMinutes=10080&severities=FATAL,SEVERE,ERROR,WARNING,INFO" | ConvertFrom-Json).generation
             $line = "TailTestMgr, 2099.01.01 12:00:00.000, IMPL, SEVERE, 1, Self-test tail line unique-xyz-4242`r`n"
             [System.IO.File]::AppendAllText($tmp, $line, [System.Text.Encoding]::UTF8)
@@ -199,8 +213,14 @@ try {
                 $body = (@{ path = $LogPath; lastMinutes = 120 } | ConvertTo-Json -Compress)
             }
             [void](Invoke-Api "$base/api/logPath" -Method POST -Body $body)
-            $pulse = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
-            if ($pulse.series.byMinute) { Ok "series buckets=$($pulse.series.byMinute.Count)" } else { Bad 'series' }
+            $pulse = $null
+            for ($w = 0; $w -lt 600; $w++) {
+                Start-Sleep -Milliseconds 100
+                $pulse = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
+                if (-not $pulse.loading) { break }
+            }
+            if ($pulse.loading) { Bad '2D catch-up still loading' }
+            elseif ($pulse.series.byMinute) { Ok "series buckets=$($pulse.series.byMinute.Count)" } else { Bad 'series' }
 
             foreach ($sec in @('bacnet', 'cns', 'coho', 'apogee', 'managers', 'perf')) {
                 try {

@@ -27,6 +27,8 @@
     lastPulseAt: null,
     chartVolume: null,
     chartBacnet: null,
+    managersCache: null,
+    mgrListCollapsed: false,
     useMock: /[?&]mock=1(?:&|$)/.test(location.search) || location.protocol === 'file:'
   };
 
@@ -46,6 +48,8 @@
       generation: 1,
       window: { mode: 'minutes', lastMinutes: 60 },
       loading: false,
+      loadProgressPct: 0,
+      loadMessage: '',
       paused: false,
       tailRunning: true,
       rotated: false,
@@ -375,7 +379,14 @@
 
     $('idleHint').hidden = true;
     $('overviewBody').hidden = false;
-    setBanner('bannerLoading', p.loading ? 'Loading window…' : '');
+    var loadBanner = '';
+    if (p.loading) {
+      loadBanner = p.loadMessage || (
+        (state.windowEntire ? 'Loading entire file' : ('Loading last ' + state.lastMinutes + ' minutes')) +
+        '... ' + (p.loadProgressPct != null ? p.loadProgressPct : 0) + '%'
+      );
+    }
+    setBanner('bannerLoading', loadBanner);
     setBanner('bannerRotate', p.rotated ? 'Log rotated — counters reset' : '');
     setBanner('bannerError', p.lastError || '');
 
@@ -387,7 +398,9 @@
     var age = 'just now';
     state.lastPulseAt = Date.now();
     var mode = state.windowEntire ? 'Entire file' : (state.lastMinutes + 'm');
-    var run = p.loading ? '<span class="warn">loading</span>' : (p.paused ? '<span class="warn">paused</span>' : '<span class="ok">tailing</span>');
+    var run = p.loading
+      ? ('<span class="warn">loading ' + (p.loadProgressPct != null ? p.loadProgressPct : 0) + '%</span>')
+      : (p.paused ? '<span class="warn">paused</span>' : '<span class="ok">tailing</span>');
     if (p.lastError) run = '<span class="err">error</span>';
     setStatus(run + ' · window ' + mode + ' · gen ' + p.generation + ' · updated ' + age +
       (state.useMock ? ' · <span class="warn">mock</span>' : ''));
@@ -424,10 +437,40 @@
     });
   }
 
+  function updateMgrListCollapseUi() {
+    var panel = $('mgrListPanel');
+    var btn = $('btnToggleMgrList');
+    var summary = $('mgrListSummary');
+    var hasSelection = !!state.selectedManager;
+    if (!hasSelection) {
+      state.mgrListCollapsed = false;
+    }
+    panel.classList.toggle('is-collapsed', !!state.mgrListCollapsed);
+    btn.hidden = !hasSelection;
+    summary.hidden = !hasSelection;
+    if (hasSelection) {
+      summary.textContent = 'Selected: ' + state.selectedManager;
+      btn.textContent = state.mgrListCollapsed ? 'Show manager list' : 'Hide manager list';
+      btn.setAttribute('aria-expanded', state.mgrListCollapsed ? 'false' : 'true');
+    }
+  }
+
+  function setMgrListCollapsed(collapsed) {
+    state.mgrListCollapsed = !!collapsed && !!state.selectedManager;
+    updateMgrListCollapseUi();
+    if (state.mgrListCollapsed) {
+      var detail = $('mgrDetail');
+      if (detail && !detail.hidden) {
+        try { detail.scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { detail.scrollIntoView(true); }
+      }
+    }
+  }
+
   function renderManagersTable(managers) {
+    state.managersCache = managers || [];
     var tb = $('mgrTable').querySelector('tbody');
     tb.innerHTML = '';
-    (managers || []).forEach(function (m) {
+    state.managersCache.forEach(function (m) {
       var tr = document.createElement('tr');
       if (state.selectedManager === m.name) tr.className = 'selected';
       var s = m.severities || {};
@@ -436,11 +479,13 @@
         '</td><td>' + (s.ERROR || 0) + '</td><td>' + (s.WARNING || 0) + '</td>';
       tr.addEventListener('click', function () {
         state.selectedManager = m.name;
+        setMgrListCollapsed(true);
         loadManagerDetail(m.name);
-        renderManagersTable(managers);
+        renderManagersTable(state.managersCache);
       });
       tb.appendChild(tr);
     });
+    updateMgrListCollapseUi();
   }
 
   function renderManagerDetail(data) {
@@ -449,6 +494,10 @@
     var body = $('mgrDetailBody');
     body.innerHTML = '<p class="meta">Lines: ' + Number(data.count || 0).toLocaleString() + '</p>';
     renderPatternListInto(body, data.patternsBySeverity);
+    updateMgrListCollapseUi();
+    if (state.mgrListCollapsed) {
+      try { $('mgrDetail').scrollIntoView({ behavior: 'smooth', block: 'start' }); } catch (e) { $('mgrDetail').scrollIntoView(true); }
+    }
   }
 
   function renderPatternListInto(host, bySev) {
@@ -676,7 +725,7 @@
       return;
     }
     // Show loading immediately — do not wait for the host (catch-up can take many seconds).
-    showLoading(state.windowEntire ? 'Loading entire file…' : ('Loading last ' + state.lastMinutes + ' minutes…'));
+    showLoading(state.windowEntire ? 'Loading entire file… 0%' : ('Loading last ' + state.lastMinutes + ' minutes… 0%'));
     if (state.useMock) {
       pollPulse();
       return;
@@ -696,6 +745,10 @@
   function bindUi() {
     document.querySelectorAll('#nav button').forEach(function (b) {
       b.addEventListener('click', function () { showView(b.getAttribute('data-view')); });
+    });
+
+    $('btnToggleMgrList').addEventListener('click', function () {
+      setMgrListCollapsed(!state.mgrListCollapsed);
     });
 
     document.querySelectorAll('#sevChips .chip').forEach(function (b) {
@@ -751,7 +804,9 @@
       if (state.starting) return;
       state.starting = true;
       setBanner('bannerError', '');
-      showLoading('Starting — reading log…');
+      showLoading(state.windowEntire
+        ? 'Loading entire file… 0%'
+        : ('Loading last ' + state.lastMinutes + ' minutes… 0%'));
       $('btnStart').disabled = true;
       var body = {
         path: path,
@@ -787,6 +842,12 @@
         state.paused = false;
         state.pulse = null;
         state.generation = null;
+        state.selectedManager = null;
+        state.mgrListCollapsed = false;
+        state.managersCache = null;
+        $('mgrDetail').hidden = true;
+        $('mgrDetailBody').innerHTML = '';
+        updateMgrListCollapseUi();
         $('overviewBody').hidden = true;
         $('idleHint').hidden = false;
         setBanner('bannerLoading', '');

@@ -196,6 +196,17 @@ $script:BacFlapMin = 3
 $script:Sync = [hashtable]::Synchronized(@{
         Generation     = 0
         Loading        = $false
+        LoadProgressPct = 0
+        LoadMessage    = ''
+        LoadStartPos   = 0L
+        LoadSpanBytes  = 1L
+        LoadLines      = 0
+        LoadSkipped    = 0
+        LoadSw         = $null
+        LoadLastLogPct = -1
+        LoadEnforce    = $false
+        LoadCutoff     = [datetime]::MinValue
+        CatchUpActive  = $false
         Paused         = $false
         TailRunning    = $false
         Rotated        = $false
@@ -415,67 +426,252 @@ function script:Open-LogStream {
     $script:Sync['FileLength'] = $fs.Length
 }
 
+function script:Get-ProbeTimestamps {
+    param(
+        [string]$Path,
+        [long]$SeekPos,
+        [long]$MaxBytes = 1048576L
+    )
+    $fs = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    try {
+        $len = $fs.Length
+        if ($SeekPos -lt 0) { $SeekPos = 0 }
+        if ($SeekPos -ge $len) {
+            return @{ First = $null; Last = $null; SeekPos = $SeekPos }
+        }
+        $toRead = [int][math]::Min($MaxBytes, $len - $SeekPos)
+        $fs.Position = $SeekPos
+        $buf = New-Object byte[] $toRead
+        $n = $fs.Read($buf, 0, $toRead)
+        if ($n -le 0) {
+            return @{ First = $null; Last = $null; SeekPos = $SeekPos }
+        }
+        $text = [System.Text.Encoding]::UTF8.GetString($buf, 0, $n)
+        if ($SeekPos -gt 0) {
+            $cut = $text.IndexOfAny([char[]]@("`n", "`r"))
+            if ($cut -ge 0) {
+                if ($cut + 1 -lt $text.Length -and $text[$cut] -eq "`r" -and $text[$cut + 1] -eq "`n") {
+                    $text = $text.Substring($cut + 2)
+                }
+                else {
+                    $text = $text.Substring($cut + 1)
+                }
+            }
+            else {
+                return @{ First = $null; Last = $null; SeekPos = $SeekPos }
+            }
+        }
+        $first = $null
+        $last = $null
+        foreach ($line in ($text -split "`r?`n")) {
+            if ([string]::IsNullOrEmpty($line)) { continue }
+            $m = $script:LineRe.Match($line)
+            if (-not $m.Success) { continue }
+            $dt = ConvertFrom-LogTimestamp -Ts $m.Groups[2].Value.Trim()
+            if (-not $dt) { continue }
+            if (-not $first) { $first = $dt }
+            $last = $dt
+        }
+        return @{ First = $first; Last = $last; SeekPos = $SeekPos }
+    }
+    finally { $fs.Close() }
+}
+
+function script:Find-WindowStartPosition {
+    param(
+        [string]$Path,
+        [datetime]$Cutoff
+    )
+    $fi = Get-Item -LiteralPath $Path
+    $len = $fi.Length
+    if ($len -le 0) { return 0L }
+
+    # Expand backward from EOF until the earliest timestamp in the probe is at/before cutoff (or file start).
+    $chunk = [int64]262144  # 256 KB
+    $maxChunk = [math]::Min($len, [int64]32MB)
+    $startPos = [math]::Max([int64]0, $len - $chunk)
+    $guard = 0
+    while ($guard -lt 40) {
+        $guard++
+        $probe = Get-ProbeTimestamps -Path $Path -SeekPos $startPos -MaxBytes ([math]::Min($chunk, [int64]2MB))
+        if ($null -eq $probe.First) {
+            # No headers in this probe - jump further back
+            if ($startPos -eq 0) { return 0L }
+            $chunk = [math]::Min($maxChunk, [int64]($chunk * 2))
+            $startPos = [math]::Max([int64]0, $len - $chunk)
+            continue
+        }
+        if ($probe.First -le $Cutoff -or $startPos -eq 0) {
+            Write-WatchLog ("Window seek landed at byte {0:N0} / {1:N0} (first ts in probe {2})" -f `
+                $startPos, $len, $probe.First)
+            return $startPos
+        }
+        $chunk = [math]::Min($maxChunk, [int64]($chunk * 2))
+        $next = [math]::Max([int64]0, $len - $chunk)
+        if ($next -eq $startPos) {
+            return 0L
+        }
+        $startPos = $next
+    }
+    return $startPos
+}
+
 function script:Write-WatchLog {
     param([string]$Message, [ConsoleColor]$Color = [ConsoleColor]::DarkGray)
     $ts = (Get-Date).ToString('HH:mm:ss')
     Write-Host ("[{0}] {1}" -f $ts, $Message) -ForegroundColor $Color
 }
 
-function script:Invoke-CatchUp {
+function script:Update-LoadProgress {
+    param([switch]$ForceLog)
+    if (-not $script:Sync['Loading']) { return }
+    $startPos = [int64]$script:Sync['LoadStartPos']
+    $span = [math]::Max(1L, [int64]$script:Sync['LoadSpanBytes'])
+    $pos = 0L
+    if ($script:Sync['Stream']) { $pos = [int64]$script:Sync['Stream'].Position }
+    $pct = [int](100.0 * ($pos - $startPos) / $span)
+    if ($pct -lt 0) { $pct = 0 }
+    if ($pct -gt 99 -and $script:Sync['CatchUpActive']) { $pct = 99 }
+    if ($pct -gt 100) { $pct = 100 }
+    $script:Sync['LoadProgressPct'] = $pct
+    $mode = if ($script:Sync['WindowEntire']) { 'Loading entire file' } else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
+    $script:Sync['LoadMessage'] = ("{0}... {1}%" -f $mode, $pct)
+
+    $lastPct = [int]$script:Sync['LoadLastLogPct']
+    $sw = $script:Sync['LoadSw']
+    $dueConsole = $ForceLog -or ($pct -ge ($lastPct + 10))
+    if ($dueConsole) {
+        $script:Sync['LoadLastLogPct'] = $pct
+        $elapsed = if ($sw) { [math]::Round($sw.Elapsed.TotalSeconds, 1) } else { 0 }
+        Write-WatchLog ("Catch-up ... {0}%  scanned={1:N0}  parsed={2:N0}  {3}s" -f `
+            $pct, $script:Sync['LoadLines'], $script:Sync['Data'].ParsedLines, $elapsed)
+    }
+    # No generation bump on % ticks — pulse skips 304 while loading so the UI
+    # can refresh progress without refetching heavy sections every percent.
+}
+
+function script:Begin-CatchUp {
     param([string]$Path)
+    $script:Sync['CatchUpActive'] = $false
     $script:Sync['Loading'] = $true
+    $script:Sync['LoadProgressPct'] = 0
     $script:Sync['LastError'] = $null
+    $script:Sync['TailRunning'] = $false
     Bump-Generation
-    $sw = [System.Diagnostics.Stopwatch]::StartNew()
-    try {
-        $mode = if ($script:Sync['WindowEntire']) { 'Entire file' } else { ("last {0} minutes" -f $script:Sync['LastMinutes']) }
-        Write-WatchLog ("Catch-up START  mode={0}  path={1}" -f $mode, $Path) Cyan
-        Reset-Analysis
-        $cutoff = [datetime]::MinValue
-        $enforce = $false
-        if (-not $script:Sync['WindowEntire']) {
-            $cutoff = (Get-Date).AddMinutes(-[double]$script:Sync['LastMinutes'])
-            $enforce = $true
-        }
+
+    $entire = [bool]$script:Sync['WindowEntire']
+    $mode = if ($entire) { 'Entire file' } else { ("last {0} minutes" -f $script:Sync['LastMinutes']) }
+    Write-WatchLog ("Catch-up START  mode={0}  path={1}" -f $mode, $Path) Cyan
+    $script:Sync['LoadMessage'] = if ($entire) { 'Loading entire file... 0%' } else { ("Loading last {0} minutes... 0%" -f $script:Sync['LastMinutes']) }
+
+    Reset-Analysis
+    $cutoff = [datetime]::MinValue
+    $enforce = $false
+    $startPos = 0L
+    if (-not $entire) {
+        $cutoff = (Get-Date).AddMinutes(-[double]$script:Sync['LastMinutes'])
+        $enforce = $true
         $script:Sync['Cutoff'] = $cutoff
-        Open-LogStream -Path $Path -Position 0L
-        $reader = $script:Sync['Reader']
-        $totalBytes = [math]::Max(1L, $script:Sync['Stream'].Length)
-        Write-WatchLog ("Catch-up reading {0:N1} MB (UTF-8, read-only)…" -f ($totalBytes / 1MB))
-        $lines = 0
-        $lastPct = -1
-        $lastLogMs = 0L
-        while ($null -ne ($line = $reader.ReadLine())) {
-            Process-LogLine -Line $line -CutoffLocal $cutoff -EnforceCutoff:$enforce
-            $lines++
-            $pos = $script:Sync['Stream'].Position
-            $pct = [int](100.0 * $pos / $totalBytes)
-            if (($pct -ge ($lastPct + 10)) -or ($sw.ElapsedMilliseconds -ge ($lastLogMs + 3000))) {
-                $lastPct = $pct
-                $lastLogMs = $sw.ElapsedMilliseconds
-                Write-WatchLog ("Catch-up … {0}%  lines={1:N0}  parsed={2:N0}  {3:N1}s" -f `
-                    $pct, $lines, $script:Sync['Data'].ParsedLines, $sw.Elapsed.TotalSeconds)
-            }
-        }
-        $script:Sync['FilePos'] = $script:Sync['Stream'].Position
-        $script:Sync['FileLength'] = $script:Sync['Stream'].Length
+        Write-WatchLog ("Seeking from EOF for cutoff {0:yyyy.MM.dd HH:mm:ss} ..." -f $cutoff)
+        $startPos = Find-WindowStartPosition -Path $Path -Cutoff $cutoff
+    }
+    else {
+        $script:Sync['Cutoff'] = $null
+    }
+
+    Open-LogStream -Path $Path -Position $startPos
+    $reader = $script:Sync['Reader']
+    if ($startPos -gt 0) {
+        [void]$reader.ReadLine()
+    }
+
+    $totalBytes = [math]::Max(1L, $script:Sync['Stream'].Length)
+    $spanBytes = [math]::Max(1L, $totalBytes - $startPos)
+    $script:Sync['LoadStartPos'] = $startPos
+    $script:Sync['LoadSpanBytes'] = $spanBytes
+    $script:Sync['LoadLines'] = 0
+    $script:Sync['LoadSkipped'] = 0
+    $script:Sync['LoadEnforce'] = $enforce
+    $script:Sync['LoadCutoff'] = $cutoff
+    $script:Sync['LoadSw'] = [System.Diagnostics.Stopwatch]::StartNew()
+    $script:Sync['LoadLastLogPct'] = -1
+    $script:Sync['CatchUpActive'] = $true
+    $script:Sync['FileLength'] = $totalBytes
+
+    Write-WatchLog ("Catch-up reading from byte {0:N0} ({1:N1} MB of {2:N1} MB file)" -f `
+        $startPos, ($spanBytes / 1MB), ($totalBytes / 1MB))
+    Update-LoadProgress -ForceLog
+}
+
+function script:Finish-CatchUp {
+    param([string]$Outcome = 'DONE')
+    $script:Sync['CatchUpActive'] = $false
+    $script:Sync['FilePos'] = if ($script:Sync['Stream']) { $script:Sync['Stream'].Position } else { 0L }
+    $script:Sync['FileLength'] = if ($script:Sync['Stream']) { $script:Sync['Stream'].Length } else { 0L }
+    if ($Outcome -eq 'DONE') {
+        $script:Sync['LoadProgressPct'] = 100
+        $script:Sync['LoadMessage'] = ''
         $script:Sync['TailRunning'] = $true
         $script:Sync['Paused'] = $false
-        Bump-Generation
-        Write-WatchLog ("Catch-up DONE   lines={0:N0} parsed={1:N0} gen={2} in {3:N1}s" -f `
-            $lines, $script:Sync['Data'].ParsedLines, $script:Sync['Generation'], $sw.Elapsed.TotalSeconds) Green
+        $script:Sync['Loading'] = $false
+        $elapsed = 0
+        if ($script:Sync['LoadSw']) { $elapsed = $script:Sync['LoadSw'].Elapsed.TotalSeconds }
+        Write-WatchLog ("Catch-up DONE   scanned={0:N0} parsed={1:N0} skippedBeforeWindow={2:N0} in {3:N1}s" -f `
+            $script:Sync['LoadLines'], $script:Sync['Data'].ParsedLines, $script:Sync['LoadSkipped'], $elapsed) Green
+    }
+    else {
+        $script:Sync['Loading'] = $false
+        $script:Sync['TailRunning'] = $false
+        $script:Sync['LoadMessage'] = ''
+    }
+    Bump-Generation
+}
+
+function script:Step-CatchUp {
+    param([int]$MaxLines = 2500)
+    if (-not $script:Sync['CatchUpActive']) { return }
+    try {
+        $reader = $script:Sync['Reader']
+        if (-not $reader) {
+            Finish-CatchUp -Outcome 'FAIL'
+            return
+        }
+        $enforce = [bool]$script:Sync['LoadEnforce']
+        $cutoff = [datetime]$script:Sync['LoadCutoff']
+        $n = 0
+        while ($n -lt $MaxLines) {
+            $line = $reader.ReadLine()
+            if ($null -eq $line) {
+                Finish-CatchUp -Outcome 'DONE'
+                return
+            }
+            $before = $script:Sync['Data'].ParsedLines
+            Process-LogLine -Line $line -CutoffLocal $cutoff -EnforceCutoff:$enforce
+            $script:Sync['LoadLines'] = [int]$script:Sync['LoadLines'] + 1
+            $n++
+            if ($enforce -and $script:Sync['Data'].ParsedLines -eq $before) {
+                $m = $script:LineRe.Match($line)
+                if ($m.Success) {
+                    $dt = ConvertFrom-LogTimestamp -Ts $m.Groups[2].Value.Trim()
+                    if ($dt -and $dt -lt $cutoff) {
+                        $script:Sync['LoadSkipped'] = [int]$script:Sync['LoadSkipped'] + 1
+                    }
+                }
+            }
+        }
+        Update-LoadProgress
     }
     catch {
         $script:Sync['LastError'] = $_.Exception.Message
-        $script:Sync['TailRunning'] = $false
-        Close-LogStream
         Write-WatchLog ("Catch-up FAILED  {0}" -f $_.Exception.Message) Red
-        throw
+        Close-LogStream
+        Finish-CatchUp -Outcome 'FAIL'
     }
-    finally {
-        $script:Sync['Loading'] = $false
-        Bump-Generation
-    }
+}
+
+function script:Invoke-CatchUp {
+    param([string]$Path)
+    Begin-CatchUp -Path $Path
 }
 
 function script:Read-TailBytes {
@@ -649,6 +845,8 @@ function script:Build-PulseObject {
         generation      = [int]$script:Sync['Generation']
         window          = $win
         loading         = [bool]$script:Sync['Loading']
+        loadProgressPct = [int]$script:Sync['LoadProgressPct']
+        loadMessage     = [string]$script:Sync['LoadMessage']
         paused          = [bool]$script:Sync['Paused']
         tailRunning     = [bool]$script:Sync['TailRunning']
         rotated         = [bool]$script:Sync['Rotated']
@@ -937,9 +1135,12 @@ function script:Handle-Api {
                 'pause' { $script:Sync['Paused'] = $true; Bump-Generation }
                 'resume' { $script:Sync['Paused'] = $false; Bump-Generation }
                 'restart' {
+                    $script:Sync['CatchUpActive'] = $false
                     $script:Sync['TailRunning'] = $false
                     $script:Sync['Paused'] = $false
                     $script:Sync['Loading'] = $false
+                    $script:Sync['LoadMessage'] = ''
+                    $script:Sync['LoadProgressPct'] = 0
                     $script:Sync['LastError'] = $null
                     Close-LogStream
                     Reset-Analysis
@@ -1087,19 +1288,27 @@ if (-not $NoBrowser) {
     if (-not $opened) { Start-Process $url | Out-Null }
 }
 
-# Synchronous GetContext (reliable under STA). Tail after each request  -  UI pulse
-# every 3s keeps the file followed while the dashboard is open.
+# Interleave HTTP with catch-up chunks so /api/pulse can report load % during Entire reads.
+# WaitOne(50) keeps the loop responsive without a dedicated worker thread (STA-safe).
 try {
+    $iar = $listener.BeginGetContext($null, $null)
     while ($listener.IsListening) {
-        try {
-            $ctx = $listener.GetContext()
-            Handle-Request -Context $ctx
+        try { Step-CatchUp } catch { }
+        if ($iar.AsyncWaitHandle.WaitOne(50)) {
+            try {
+                $ctx = $listener.EndGetContext($iar)
+                Handle-Request -Context $ctx
+            }
+            catch [System.Net.HttpListenerException] { break }
+            catch {
+                Write-Host ("Request error: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+            }
+            if (-not $listener.IsListening) { break }
+            $iar = $listener.BeginGetContext($null, $null)
         }
-        catch [System.Net.HttpListenerException] { break }
-        catch {
-            Write-Host ("Request error: {0}" -f $_.Exception.Message) -ForegroundColor DarkYellow
+        if (-not $script:Sync['CatchUpActive']) {
+            try { Read-TailBytes } catch { }
         }
-        try { Read-TailBytes } catch { }
     }
 }
 finally {

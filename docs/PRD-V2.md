@@ -80,7 +80,7 @@ Ship `watch-log-path.example.txt`. Operator file `watch-log-path.txt` is local (
 The log is **append-only / sequential** (oldest near the top, newest at the bottom). Catch-up does **not** need random calendar indexing:
 
 1. Open read-only; note file length.
-2. For a rolling window (e.g. 60m): read **from the end backward** (or scan forward from a seek near EOF) until timestamps fall outside the window, then parse forward through in-window lines into live counters.
+2. For a rolling window (e.g. 60m): **seek backward from EOF** in expanding chunks until timestamps reach (or pass) the cutoff, then parse **forward** from that byte offset through EOF into live counters. Do **not** scan the whole file when a shorter window is selected.
 3. For **Entire**: parse from the start of the file once, then tail new bytes.
 4. Show a **loading / spinner** state while catch-up runs (byte **% progress** is nice-to-have later — not MVP).
 
@@ -314,7 +314,7 @@ Events / UpdatePoints / trace repetitions; unique PPCL count; top PPCL by Update
 
 #### Top managers + any manager (required)
 
-Managers are discovered from **log headers**, not from a fixed allow-list or from the example files. Unknown / site-specific managers must appear in the ranked list like any other.
+Managers are discovered from **log headers**. Unknown / site-specific managers appear in the ranked list like any other.
 
 - Overview: top managers by volume (name + count; severity mix when cheap).
 - **Managers** view: full ranked list (filterable); selecting a manager opens a **drill-down** (V1.1 Path D style):

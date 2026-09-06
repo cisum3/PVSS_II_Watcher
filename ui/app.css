@@ -224,13 +224,18 @@ nav#nav button.active {
 }
 
 main#view {
-  padding: 1rem 1.15rem 2rem;
+  /* Padding must live on .view, not here — padding on the overflow
+     scroller offsets position:sticky table headers downward. */
+  padding: 0;
   overflow: auto;
   min-width: 0;
 }
 
 .view { display: none; }
-.view.active { display: block; }
+.view.active {
+  display: block;
+  padding: 1rem 1.15rem 2rem;
+}
 
 h1, h2, h3 {
   font-weight: 600;
@@ -334,6 +339,11 @@ table.data th {
   background: var(--bg-elevated);
   position: sticky;
   top: 0;
+  z-index: 2;
+  vertical-align: middle;
+  padding: 0.28rem 0.45rem 0.38rem;
+  line-height: 1.2;
+  box-shadow: 0 1px 0 var(--border);
 }
 
 table.data tr:hover td { background: rgba(0, 153, 153, 0.08); }
@@ -360,6 +370,44 @@ table.data .mono { font-family: var(--mono); font-size: 0.8rem; word-break: brea
 
 .pattern-block { margin-bottom: 1.1rem; }
 .pattern-block h3 span { margin-left: 0.4rem; font-weight: 400; }
+
+.mgr-list-panel {
+  margin-bottom: 1rem;
+}
+
+.mgr-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+  min-height: 1.75rem;
+}
+
+.mgr-list-toggle {
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+  background: rgba(0, 153, 153, 0.18);
+}
+
+.mgr-list-summary {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.mgr-list-panel.is-collapsed #mgrListBody {
+  display: none;
+}
+
+.mgr-detail {
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.mgr-detail h2 {
+  margin-top: 0;
+}
 
 .idle-hint {
   max-width: 36rem;

@@ -18,10 +18,10 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Phase | Description | Built | Confirmed | Notes |
 |-------|-------------|:-----:|:---------:|-------|
-| **2A** | UI shell: sticky chrome, section nav, mock pulse/section/manager JSON | | | No live host yet |
-| **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | | | |
-| **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | | | Port try-next before browser open |
-| **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | | | |
+| **2A** | UI shell: sticky chrome, section nav, mock pulse/section/manager JSON | yes | | Self-test OK |
+| **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | yes | | Self-test OK |
+| **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | yes | | Self-test OK |
+| **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | yes | | Self-test OK |
 | **2E** | Docs, package polish, `VERSION.txt` → 2.0; Snapshot if time else leave P1 | | | `batch\` layout done early |
 
 ---
@@ -41,52 +41,52 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| `ui\index.html` / `app.css` / `app.js` skeleton | | |
-| Sticky chrome (path, Start/Pause/Resume/Restart, window, severity, status) | | |
-| Section nav: Overview, Patterns, Managers, BACnet, CNS, CoHo, Apogee, More | | |
-| Mock `/api/pulse` + `/api/section` + `/api/manager` JSON shapes | | |
-| Overview composition (findings, severity tiles, chart placeholders, manager strip) | | |
-| Vendored chart library placeholder under `ui\vendor\` | | |
-| Dark Siemens theme tokens in `app.css` (§7.0.1) | | |
+| `ui\index.html` / `app.css` / `app.js` skeleton | yes | |
+| Sticky chrome (path, Start/Pause/Resume/Restart, window, severity, status) | yes | |
+| Section nav: Overview, Patterns, Managers, BACnet, CNS, CoHo, Apogee, More | yes | |
+| Mock `/api/pulse` + `/api/section` + `/api/manager` JSON shapes | yes | |
+| Overview composition (findings, severity tiles, chart placeholders, manager strip) | yes | |
+| Vendored chart library placeholder under `ui\vendor\` | yes | |
+| Dark Siemens theme tokens in `app.css` (§7.0.1) | yes | |
 
 ### 2B — Host + pulse/section APIs
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| `Watch-PvssLog.ps1` HttpListener on `127.0.0.1`, port try-next | | |
-| Serve static `ui\` | | |
-| Read-only log open (`FileAccess.Read` + share) | | |
-| UTF-8 catch-up (rolling window from EOF; Entire from start) | | |
-| In-memory window state + `generation` | | |
-| `GET /api/pulse` (+ 304) | | |
-| `GET /api/section?name=` (+ 304) | | |
-| Host-side severity + manager filters | | |
-| Loading/spinner flags during catch-up | | |
+| `Watch-PvssLog.ps1` HttpListener on `127.0.0.1`, port try-next | yes | |
+| Serve static `ui\` | yes | |
+| Read-only log open (`FileAccess.Read` + share) | yes | |
+| UTF-8 catch-up (rolling window from EOF; Entire from start) | yes | |
+| In-memory window state + `generation` | yes | |
+| `GET /api/pulse` (+ 304) | yes | |
+| `GET /api/section?name=` (+ 304) | yes | |
+| Host-side severity + manager filters | yes | |
+| Loading/spinner flags during catch-up | yes | |
 
 ### 2C — Live control + resilience
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| Path text box + Start; prefill; placeholder; persist `watch-log-path.txt` | | |
-| Pause / Resume / Restart | | |
-| Tail new bytes; UI pulse every 3 s with refresh rules (§8.4) | | |
-| Rotate: auto-reopen, reset, banner | | |
-| Missing/locked file → clear on-page error | | |
-| `Run-Watch.cmd` opens browser to **bound** URL | | |
-| `POST /api/logPath`, `POST /api/control`, `GET /api/health` | | |
+| Path text box + Start; prefill; placeholder; persist `watch-log-path.txt` | yes | |
+| Pause / Resume / Restart | yes | |
+| Tail new bytes; UI pulse every 3 s with refresh rules (§8.4) | yes | |
+| Rotate: auto-reopen, reset, banner | yes | |
+| Missing/locked file → clear on-page error | yes | |
+| `Run-Watch.cmd` opens browser to **bound** URL | yes | |
+| `POST /api/logPath`, `POST /api/control`, `GET /api/health` | yes | |
 
 ### 2D — Full triage surface
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| Chart 1 + Chart 2 (vendored, offline) | | |
-| Desigo-aligned severity colors | | |
-| Findings + severity counts (window-scoped) | | |
-| Patterns by severity (Top N, first/last, samples) | | |
-| BACnet / CNS / CoHo / Apogee module views (V1.1 parity) | | |
-| Any manager listed + `/api/manager` Path D–style drill-down | | |
-| BACnet INFO still tracked when INFO chip off | | |
-| Perf + unparsed under More | | |
+| Chart 1 + Chart 2 (vendored, offline) | yes | |
+| Desigo-aligned severity colors | yes | |
+| Findings + severity counts (window-scoped) | yes | |
+| Patterns by severity (Top N, first/last, samples) | yes | |
+| BACnet / CNS / CoHo / Apogee module views (V1.1 parity) | yes | |
+| Any manager listed + `/api/manager` Path D–style drill-down | yes | |
+| BACnet INFO still tracked when INFO chip off | yes | |
+| Perf + unparsed under More | yes | |
 
 ### 2E — Package + docs
 
@@ -97,6 +97,18 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 | Root `VERSION.txt` → 2.0 | | | Currently `2.0-dev` |
 | Snapshot export (or explicitly deferred to P1) | | |
 | Field zip contents documented (exclude PRD/PROGRESS/examples/logs) | | |
+
+---
+
+## Self-test
+
+Run (no browser):
+
+```text
+powershell -NoProfile -ExecutionPolicy Bypass -File .\Test-WatchSelf.ps1 -Phase All
+```
+
+Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or live project log). Mock UI: open `ui\index.html?mock=1`.
 
 ---
 
@@ -125,3 +137,4 @@ V1.1 batch tool remains under `batch\` (see [`PROGRESS.md`](PROGRESS.md)).
 | 2026-09-05 | Repo layout: V1.1 → `batch\`; `ui\`, watch-log-path.example, root 2.0-dev stubs |
 | 2026-09-05 | Dev docs moved to `docs\` (PRD / PROGRESS) |
 | 2026-09-05 | Example/test logs under `docs\PVSS_II_Examples\` |
+| 2026-09-05 | **2A–2D built**; `Test-WatchSelf.ps1` All PASS (Confirmed pending your run) |

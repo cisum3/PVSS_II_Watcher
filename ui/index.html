@@ -1,0 +1,143 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>PVSS Log Watch</title>
+  <link rel="stylesheet" href="app.css" />
+</head>
+<body>
+  <header id="chrome">
+    <div class="chrome-row">
+      <span class="brand">PVSS Log Watch</span>
+      <div class="path-box">
+        <input id="logPath" type="text" spellcheck="false"
+          placeholder="C:\GMSprojects\Project_Name\log\PVSS_II.log"
+          aria-label="Live log path" />
+      </div>
+      <button type="button" id="btnStart" class="primary">Start</button>
+      <button type="button" id="btnPause" disabled>Pause</button>
+      <button type="button" id="btnResume" disabled>Resume</button>
+      <button type="button" id="btnRestart" class="danger" disabled>Restart</button>
+    </div>
+    <div class="chrome-row">
+      <span class="muted">Window</span>
+      <div class="seg" id="windowPresets" role="group" aria-label="Time window">
+        <button type="button" class="chip" data-minutes="15">15m</button>
+        <button type="button" class="chip" data-minutes="30">30m</button>
+        <button type="button" class="chip active" data-minutes="60">60m</button>
+        <button type="button" class="chip" data-minutes="120">120m</button>
+        <button type="button" class="chip" data-entire="1">Entire</button>
+      </div>
+      <label class="muted" for="customMinutes">Custom</label>
+      <input id="customMinutes" class="custom-mins" type="number" min="1" max="10080" placeholder="min" />
+      <button type="button" id="btnApplyWindow">Apply</button>
+      <span class="muted">Severity</span>
+      <div class="seg" id="sevChips" role="group" aria-label="Severity filters">
+        <button type="button" class="chip active" data-sev="FATAL">FATAL</button>
+        <button type="button" class="chip active" data-sev="SEVERE">SEVERE</button>
+        <button type="button" class="chip active" data-sev="ERROR">ERROR</button>
+        <button type="button" class="chip active" data-sev="WARNING">WARNING</button>
+        <button type="button" class="chip" data-sev="INFO">INFO</button>
+      </div>
+    </div>
+    <div class="chrome-row">
+      <span id="statusLine" class="status-line">Idle — enter path and Start</span>
+    </div>
+    <div id="bannerLoading" class="banner loading" hidden>Loading window…</div>
+    <div id="bannerRotate" class="banner rotate" hidden>Log rotated — counters reset</div>
+    <div id="bannerError" class="banner error" hidden></div>
+  </header>
+
+  <div class="layout">
+    <nav id="nav" aria-label="Sections">
+      <button type="button" data-view="overview" class="active">Overview</button>
+      <button type="button" data-view="patterns">Patterns</button>
+      <button type="button" data-view="managers">Managers</button>
+      <button type="button" data-view="bacnet">BACnet</button>
+      <button type="button" data-view="cns">CNS</button>
+      <button type="button" data-view="coho">CoHo</button>
+      <button type="button" data-view="apogee">Apogee</button>
+      <button type="button" data-view="more">More</button>
+    </nav>
+
+    <main id="view">
+      <section id="view-overview" class="view active">
+        <div id="idleHint" class="idle-hint">
+          Confirm the live <strong>PVSS_II.log</strong> path above, then press <strong>Start</strong>.
+          The host opens the log read-only and tails new lines.
+        </div>
+        <div id="overviewBody" hidden>
+          <h1>Overview</h1>
+          <ul id="findingsList" class="findings"></ul>
+          <div id="kpiRow" class="kpi-row"></div>
+          <div class="charts">
+            <div class="chart-panel">
+              <h3>Message volume by minute</h3>
+              <div class="chart-wrap">
+                <canvas id="chartVolume"></canvas>
+                <div id="chartVolumeEmpty" class="chart-empty" hidden>No data in window</div>
+              </div>
+            </div>
+            <div class="chart-panel">
+              <h3>BACnet Failed / OK</h3>
+              <div class="chart-wrap">
+                <canvas id="chartBacnet"></canvas>
+                <div id="chartBacnetEmpty" class="chart-empty" hidden>No data in window</div>
+              </div>
+            </div>
+          </div>
+          <h2>Top managers</h2>
+          <div id="mgrStrip" class="mgr-strip"></div>
+        </div>
+      </section>
+
+      <section id="view-patterns" class="view">
+        <h1>Patterns by severity</h1>
+        <div id="patternsBody"></div>
+      </section>
+
+      <section id="view-managers" class="view">
+        <h1>Managers</h1>
+        <p class="meta">Any manager seen in the log (not a fixed allow-list). Select a row for top patterns.</p>
+        <table class="data" id="mgrTable">
+          <thead><tr><th>Count</th><th>Manager</th><th>FATAL</th><th>SEVERE</th><th>ERROR</th><th>WARNING</th></tr></thead>
+          <tbody></tbody>
+        </table>
+        <div id="mgrDetail" hidden>
+          <h2 id="mgrDetailTitle">Manager</h2>
+          <div id="mgrDetailBody"></div>
+        </div>
+      </section>
+
+      <section id="view-bacnet" class="view">
+        <h1>BACnet module</h1>
+        <div id="bacnetBody"></div>
+      </section>
+
+      <section id="view-cns" class="view">
+        <h1>CNS module</h1>
+        <div id="cnsBody"></div>
+      </section>
+
+      <section id="view-coho" class="view">
+        <h1>CoHo module</h1>
+        <div id="cohoBody"></div>
+      </section>
+
+      <section id="view-apogee" class="view">
+        <h1>Apogee module</h1>
+        <div id="apogeeBody"></div>
+      </section>
+
+      <section id="view-more" class="view">
+        <h1>More</h1>
+        <div id="moreBody"></div>
+      </section>
+    </main>
+  </div>
+
+  <script src="vendor/chart.umd.min.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

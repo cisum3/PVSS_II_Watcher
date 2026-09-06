@@ -851,9 +851,20 @@ $bacObjectListByDevice = @{}
 $bacObjectListSample = $null
 $bacFailedSample = $null
 $bacOkSample = $null
+$bacCollectTrend = 0
+$bacTimeSync = 0
+$bacCollectTrendByCode = @{}
+$bacCollectTrendByProp = @{}
+$bacCollectTrendSample = $null
+$bacTimeSyncByCode = @{}
+$bacTimeSyncByProp = @{}
+$bacTimeSyncSample = $null
 $reBacFailed = [regex]'Device\s+(\d+)\s+Status is now Failed'
 $reBacOk = [regex]'Device\s+(\d+)\s+Status is now OK'
 $reBacObjList = [regex]'(?i)Could not get object list(?:\s+count)?(?:\s+for)?\s+device\s+(\d+)'
+$reBacCollectTrend = [regex]'Command\s+"BACnetCollectTrend"'
+$reBacTimeSyncCmd = [regex]'Command\s+"BACnetTimeSync"'
+$reBacCmdDetail = [regex]'Error Code (\d+) for Property "([^"]+)" and Command "(BACnetCollectTrend|BACnetTimeSync)"'
 $bacFlapMinFlips = 3       # count as flapper when Failed<->OK changes >= this
 
 # CNS thin module
@@ -1035,6 +1046,38 @@ try {
             }
         }
 
+        # BACnet orchestration commands often log under CoHo, not WCCOAGmsBACnet
+        $mBacCmd = $reBacCmdDetail.Match($line)
+        if ($mBacCmd.Success) {
+            $code = $mBacCmd.Groups[1].Value
+            $prop = $mBacCmd.Groups[2].Value
+            $cmd = $mBacCmd.Groups[3].Value
+            if ($cmd -eq 'BACnetCollectTrend') {
+                $bacCollectTrend++
+                if (-not $bacCollectTrendByCode.ContainsKey($code)) { $bacCollectTrendByCode[$code] = 0 }
+                $bacCollectTrendByCode[$code]++
+                if (-not $bacCollectTrendByProp.ContainsKey($prop)) { $bacCollectTrendByProp[$prop] = 0 }
+                $bacCollectTrendByProp[$prop]++
+                if (-not $bacCollectTrendSample) { $bacCollectTrendSample = $line }
+            }
+            elseif ($cmd -eq 'BACnetTimeSync') {
+                $bacTimeSync++
+                if (-not $bacTimeSyncByCode.ContainsKey($code)) { $bacTimeSyncByCode[$code] = 0 }
+                $bacTimeSyncByCode[$code]++
+                if (-not $bacTimeSyncByProp.ContainsKey($prop)) { $bacTimeSyncByProp[$prop] = 0 }
+                $bacTimeSyncByProp[$prop]++
+                if (-not $bacTimeSyncSample) { $bacTimeSyncSample = $line }
+            }
+        }
+        elseif ($reBacCollectTrend.IsMatch($line)) {
+            $bacCollectTrend++
+            if (-not $bacCollectTrendSample) { $bacCollectTrendSample = $line }
+        }
+        elseif ($reBacTimeSyncCmd.IsMatch($line)) {
+            $bacTimeSync++
+            if (-not $bacTimeSyncSample) { $bacTimeSyncSample = $line }
+        }
+
         # --- CNS ---
         $isCnsLine = $false
         if ($line -match 'ResolveNodes') { $cnsResolveNodes++; $isCnsLine = $true }
@@ -1129,8 +1172,9 @@ Write-Host ' Top managers:'
 foreach ($e in ($components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 5)) {
     Write-Host ('   {0,8:N0}  {1}' -f $e.Value, $e.Key)
 }
-Write-Host (" BACnet    : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:N0} flappers(>={4})={5:N0} objectList={6:N0}" -f `
-    $bacFailedEvents, $bacOkEvents, $bacEndedFailed, $bacEndedOk, $bacFlapMinFlips, $bacFlappers.Count, $bacObjectListEvents)
+Write-Host (" BACnet    : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:N0} flappers(>={4})={5:N0} objectList={6:N0} CollectTrend={7:N0} ({8:N0} props) TimeSync={9:N0} ({10:N0} props)" -f `
+    $bacFailedEvents, $bacOkEvents, $bacEndedFailed, $bacEndedOk, $bacFlapMinFlips, $bacFlappers.Count, $bacObjectListEvents, `
+    $bacCollectTrend, $bacCollectTrendByProp.Count, $bacTimeSync, $bacTimeSyncByProp.Count)
 Write-Host (" CNS       : ResolveNodes={0:N0} ReducedFunction={1:N0} TryRenewSession={2:N0}" -f `
     $cnsResolveNodes, $cnsReducedFunction, $cnsTryRenew)
 Write-Host (" CoHo      : stuck/drop={0:N0}" -f $cohoStuckEvents)
@@ -1276,9 +1320,10 @@ elseif ($organizeMode -eq 'Driver') {
     foreach ($d in $reportDrivers) {
         if ($d -match 'BACnet') { $includeBacnetModule = $true }
         if ($d -match 'ApplicationFramework|ICns') { $includeCnsModule = $true }
-        if ($d -match 'CoHo') { $includeCohoModule = $true; $includeApogeeModule = $true }
+        if ($d -match 'CoHo') { $includeCohoModule = $true; $includeApogeeModule = $true; $includeBacnetModule = $true }
         if ($d -match '(?i)Apogee') { $includeApogeeModule = $true }
     }
+    if ($bacCollectTrend -gt 0 -or $bacTimeSync -gt 0) { $includeBacnetModule = $true }
 }
 else {
     # All
@@ -1335,6 +1380,18 @@ if ($bacFlappers.Count -ge 5) {
 if ($bacObjectListEvents -ge 100) {
     $findings.Add(("BACnet object-list warnings: {0:N0} events across {1:N0} devices." -f `
         $bacObjectListEvents, $bacObjectListByDevice.Count))
+}
+if ($bacCollectTrend -ge 100) {
+    $topCode = ($bacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+    $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
+    $findings.Add(("BACnetCollectTrend failures: {0:N0} across {1:N0} properties{2}." -f `
+        $bacCollectTrend, $bacCollectTrendByProp.Count, $codeNote))
+}
+if ($bacTimeSync -ge 100) {
+    $topCode = ($bacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+    $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
+    $findings.Add(("BACnetTimeSync failures: {0:N0} across {1:N0} properties{2}." -f `
+        $bacTimeSync, $bacTimeSyncByProp.Count, $codeNote))
 }
 
 if ($cnsResolveNodes -ge 100 -or $cnsReducedFunction -ge 100) {
@@ -1437,8 +1494,9 @@ W ''
 # Short module headlines (Severity organize) - not full driver breakdowns
 if ($includeModuleHeadlines) {
     W '--- Module headlines ---'
-    W (' BACnet : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:N0} flappers={4:N0} objectList={5:N0}' -f `
-        $bacFailedEvents, $bacOkEvents, $bacEndedFailed, $bacEndedOk, $bacFlappers.Count, $bacObjectListEvents)
+    W (' BACnet : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:N0} flappers={4:N0} objectList={5:N0} CollectTrend={6:N0} ({7:N0} props) TimeSync={8:N0} ({9:N0} props)' -f `
+        $bacFailedEvents, $bacOkEvents, $bacEndedFailed, $bacEndedOk, $bacFlappers.Count, $bacObjectListEvents, `
+        $bacCollectTrend, $bacCollectTrendByProp.Count, $bacTimeSync, $bacTimeSyncByProp.Count)
     W (' CNS    : ResolveNodes={0:N0} ReducedFunction={1:N0} TryRenewSession={2:N0}' -f `
         $cnsResolveNodes, $cnsReducedFunction, $cnsTryRenew)
     W (' CoHo   : stuck/drop={0:N0}' -f $cohoStuckEvents)
@@ -1448,7 +1506,7 @@ if ($includeModuleHeadlines) {
 }
 
 # Module: BACnet
-if ($includeBacnetModule -and ($bacFailedEvents -gt 0 -or $bacOkEvents -gt 0 -or $bacObjectListEvents -gt 0)) {
+if ($includeBacnetModule -and ($bacFailedEvents -gt 0 -or $bacOkEvents -gt 0 -or $bacObjectListEvents -gt 0 -or $bacCollectTrend -gt 0 -or $bacTimeSync -gt 0)) {
     W '--- BACnet module ---'
     W ' Device status (INFO)'
     W ' Individual devices entering/leaving Failed.'
@@ -1508,6 +1566,42 @@ if ($includeBacnetModule -and ($bacFailedEvents -gt 0 -or $bacOkEvents -gt 0 -or
         W ('   {0,2}. {1,8:N0}  device {2}' -f $rank, $e.Value, $e.Key)
     }
     if ($rank -eq 0) { W '   (none)' }
+    W ''
+    W ' BACnetCollectTrend (driver trend-collection command failures; often CoHo / Log_Enable)'
+    W ('  Events             : {0:N0}  (unique properties: {1:N0})' -f $bacCollectTrend, $bacCollectTrendByProp.Count)
+    if ($bacCollectTrendSample) { W ("  Example            : {0}" -f $bacCollectTrendSample) }
+    if ($bacCollectTrendByCode.Count -gt 0) {
+        W '  Error codes:'
+        foreach ($e in ($bacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10)) {
+            W ('    {0,8}  {1:N0}' -f $e.Key, $e.Value)
+        }
+    }
+    if ($bacCollectTrendByProp.Count -gt 0) {
+        W '  Top properties:'
+        $rank = 0
+        foreach ($e in ($bacCollectTrendByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $rank++
+            W ('   {0,4}  {1,6:N0}  {2}' -f $rank, $e.Value, $e.Key)
+        }
+    }
+    W ''
+    W ' BACnetTimeSync (driver time-sync command failures; often CoHo / Local_Time)'
+    W ('  Events             : {0:N0}  (unique properties: {1:N0})' -f $bacTimeSync, $bacTimeSyncByProp.Count)
+    if ($bacTimeSyncSample) { W ("  Example            : {0}" -f $bacTimeSyncSample) }
+    if ($bacTimeSyncByCode.Count -gt 0) {
+        W '  Error codes:'
+        foreach ($e in ($bacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10)) {
+            W ('    {0,8}  {1:N0}' -f $e.Key, $e.Value)
+        }
+    }
+    if ($bacTimeSyncByProp.Count -gt 0) {
+        W '  Top properties:'
+        $rank = 0
+        foreach ($e in ($bacTimeSyncByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $rank++
+            W ('   {0,4}  {1,6:N0}  {2}' -f $rank, $e.Value, $e.Key)
+        }
+    }
     W ''
 }
 

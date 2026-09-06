@@ -184,6 +184,14 @@ function New-EmptyState {
         BacFailedSample   = $null
         BacOkSample       = $null
         BacObjectListSample = $null
+        BacCollectTrend   = 0
+        BacTimeSync       = 0
+        BacCollectTrendByCode = @{}
+        BacCollectTrendByProp = @{}
+        BacCollectTrendSample = $null
+        BacTimeSyncByCode = @{}
+        BacTimeSyncByProp = @{}
+        BacTimeSyncSample = $null
         CnsResolve        = 0
         CnsReduced        = 0
         CnsICns           = 0
@@ -207,6 +215,9 @@ $script:LineRe = [regex]'^([^,]+),\s*(\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\
 $script:ReBacFailed = [regex]'Device\s+(\d+)\s+Status is now Failed'
 $script:ReBacOk = [regex]'Device\s+(\d+)\s+Status is now OK'
 $script:ReBacObjList = [regex]'(?i)Could not get object list(?:\s+count)?(?:\s+for)?\s+device\s+(\d+)'
+$script:ReBacCollectTrend = [regex]'Command\s+"BACnetCollectTrend"'
+$script:ReBacTimeSyncCmd = [regex]'Command\s+"BACnetTimeSync"'
+$script:ReBacCmdDetail = [regex]'Error Code (\d+) for Property "([^"]+)" and Command "(BACnetCollectTrend|BACnetTimeSync)"'
 $script:ReCohoDiscoveryLoc = [regex]'(?i)DiscoveryLoc:([^\s]+)\s+got stuck\b'
 $script:ReCohoDiscoveryCycle = [regex]'(?i)((?:Global|Observer)\s+Discovery Cycle\s+\[[^\]]+\])\s+got stuck\b'
 $script:ReApogeePpcl = [regex]'(?i)PPCL Program Name:\s*(\S+?)(?:System\.|$)'
@@ -218,6 +229,7 @@ $script:Sync = [hashtable]::Synchronized(@{
         Loading        = $false
         LoadProgressPct = 0
         LoadMessage    = ''
+        LoadModeLabel  = ''
         LoadStartPos   = 0L
         LoadSpanBytes  = 1L
         LoadLines      = 0
@@ -243,6 +255,12 @@ $script:Sync = [hashtable]::Synchronized(@{
         ListeningUrl   = ''
         BoundPort      = 0
         Data           = (New-EmptyState)
+        EntireCache    = @{
+            Valid   = $false
+            LogPath = ''
+            FilePos = 0L
+            Data    = $null
+        }
         Stream         = $null
         Reader         = $null
         PartialLine    = ''
@@ -256,6 +274,71 @@ function script:Bump-Generation {
 function script:Reset-Analysis {
     $script:Sync['Data'] = New-EmptyState
     Bump-Generation
+}
+
+function script:Clone-ObjectGraph {
+    param($Value)
+    if ($null -eq $Value) { return $null }
+    if ($Value -is [hashtable]) {
+        $copy = @{}
+        foreach ($k in @($Value.Keys)) {
+            $copy[$k] = Clone-ObjectGraph $Value[$k]
+        }
+        return $copy
+    }
+    if ($Value -is [System.Collections.IDictionary]) {
+        $copy = @{}
+        foreach ($k in @($Value.Keys)) {
+            $copy[$k] = Clone-ObjectGraph $Value[$k]
+        }
+        return $copy
+    }
+    if ($Value -is [System.Array]) {
+        $n = $Value.Length
+        $arr = New-Object object[] $n
+        for ($i = 0; $i -lt $n; $i++) {
+            $arr[$i] = Clone-ObjectGraph $Value[$i]
+        }
+        return $arr
+    }
+    return $Value
+}
+
+function script:Clone-AnalysisState {
+    param([hashtable]$Data)
+    return [hashtable](Clone-ObjectGraph $Data)
+}
+
+function script:Clear-EntireCache {
+    param([string]$Reason = '')
+    $c = $script:Sync['EntireCache']
+    if ($c -and [bool]$c.Valid) {
+        Write-WatchLog ("Entire cache INVALIDATE reason={0}" -f $Reason) Yellow
+    }
+    $script:Sync['EntireCache'] = @{
+        Valid   = $false
+        LogPath = ''
+        FilePos = 0L
+        Data    = $null
+    }
+}
+
+function script:Save-EntireCache {
+    if (-not [bool]$script:Sync['WindowEntire']) { return }
+    if ([bool]$script:Sync['CatchUpActive'] -or [bool]$script:Sync['Loading']) { return }
+    if (-not [bool]$script:Sync['TailRunning']) { return }
+    $path = [string]$script:Sync['LogPath']
+    if ([string]::IsNullOrWhiteSpace($path)) { return }
+    if ($null -eq $script:Sync['Data']) { return }
+
+    $script:Sync['EntireCache'] = @{
+        Valid   = $true
+        LogPath = $path
+        FilePos = [int64]$script:Sync['FilePos']
+        Data    = (Clone-AnalysisState -Data $script:Sync['Data'])
+    }
+    Write-WatchLog ("Entire cache SAVE  pos={0:N0}  parsed={1:N0}" -f `
+        $script:Sync['FilePos'], $script:Sync['Data'].ParsedLines) DarkCyan
 }
 
 function script:Ensure-Minute {
@@ -390,6 +473,38 @@ function script:Process-LogLine {
             $Data.BacObjectListByDevice[$id]++
             if (-not $Data.BacObjectListSample) { $Data.BacObjectListSample = $Line }
         }
+    }
+
+    # BACnet orchestration commands often log under CoHo, not WCCOAGmsBACnet
+    $mBacCmd = $script:ReBacCmdDetail.Match($Line)
+    if ($mBacCmd.Success) {
+        $code = $mBacCmd.Groups[1].Value
+        $prop = $mBacCmd.Groups[2].Value
+        $cmd = $mBacCmd.Groups[3].Value
+        if ($cmd -eq 'BACnetCollectTrend') {
+            $Data.BacCollectTrend++
+            if (-not $Data.BacCollectTrendByCode.ContainsKey($code)) { $Data.BacCollectTrendByCode[$code] = 0 }
+            $Data.BacCollectTrendByCode[$code]++
+            if (-not $Data.BacCollectTrendByProp.ContainsKey($prop)) { $Data.BacCollectTrendByProp[$prop] = 0 }
+            $Data.BacCollectTrendByProp[$prop]++
+            if (-not $Data.BacCollectTrendSample) { $Data.BacCollectTrendSample = $Line }
+        }
+        elseif ($cmd -eq 'BACnetTimeSync') {
+            $Data.BacTimeSync++
+            if (-not $Data.BacTimeSyncByCode.ContainsKey($code)) { $Data.BacTimeSyncByCode[$code] = 0 }
+            $Data.BacTimeSyncByCode[$code]++
+            if (-not $Data.BacTimeSyncByProp.ContainsKey($prop)) { $Data.BacTimeSyncByProp[$prop] = 0 }
+            $Data.BacTimeSyncByProp[$prop]++
+            if (-not $Data.BacTimeSyncSample) { $Data.BacTimeSyncSample = $Line }
+        }
+    }
+    elseif ($script:ReBacCollectTrend.IsMatch($Line)) {
+        $Data.BacCollectTrend++
+        if (-not $Data.BacCollectTrendSample) { $Data.BacCollectTrendSample = $Line }
+    }
+    elseif ($script:ReBacTimeSyncCmd.IsMatch($Line)) {
+        $Data.BacTimeSync++
+        if (-not $Data.BacTimeSyncSample) { $Data.BacTimeSyncSample = $Line }
     }
 
     $isCnsLine = $false
@@ -579,7 +694,10 @@ function script:Update-LoadProgress {
     if ($pct -gt 99 -and $script:Sync['CatchUpActive']) { $pct = 99 }
     if ($pct -gt 100) { $pct = 100 }
     $script:Sync['LoadProgressPct'] = $pct
-    $mode = if ($script:Sync['WindowEntire']) { 'Loading entire file' } else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
+    $mode = [string]$script:Sync['LoadModeLabel']
+    if ([string]::IsNullOrWhiteSpace($mode)) {
+        $mode = if ($script:Sync['WindowEntire']) { 'Loading entire file' } else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
+    }
     $script:Sync['LoadMessage'] = ("{0}... {1}%" -f $mode, $pct)
 
     $lastPct = [int]$script:Sync['LoadLastLogPct']
@@ -608,7 +726,8 @@ function script:Begin-CatchUp {
     $entire = [bool]$script:Sync['WindowEntire']
     $mode = if ($entire) { 'Entire file' } else { ("last {0} minutes" -f $script:Sync['LastMinutes']) }
     Write-WatchLog ("Catch-up START  mode={0}  path={1}" -f $mode, $Path) Cyan
-    $script:Sync['LoadMessage'] = if ($entire) { 'Loading entire file... 0%' } else { ("Loading last {0} minutes... 0%" -f $script:Sync['LastMinutes']) }
+    $script:Sync['LoadModeLabel'] = if ($entire) { 'Loading entire file' } else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
+    $script:Sync['LoadMessage'] = ("{0}... 0%" -f $script:Sync['LoadModeLabel'])
 
     Reset-Analysis
     $cutoff = [datetime]::MinValue
@@ -677,11 +796,13 @@ function script:Finish-CatchUp {
         if ($script:Sync['LoadSw']) { $elapsed = $script:Sync['LoadSw'].Elapsed.TotalSeconds }
         Write-WatchLog ("Catch-up DONE   scanned={0:N0} parsed={1:N0} skippedBeforeWindow={2:N0} in {3:N1}s" -f `
             $script:Sync['LoadLines'], $script:Sync['Data'].ParsedLines, $script:Sync['LoadSkipped'], $elapsed) Green
+        if ([bool]$script:Sync['WindowEntire']) { Save-EntireCache }
     }
     else {
         $script:Sync['Loading'] = $false
         $script:Sync['TailRunning'] = $false
         $script:Sync['LoadMessage'] = ''
+        Clear-EntireCache -Reason 'catch-up fail'
     }
     Bump-Generation
 }
@@ -741,6 +862,82 @@ function script:Invoke-CatchUp {
     Begin-CatchUp -Path $Path
 }
 
+function script:Begin-IncrementalEntireCatchUp {
+    param(
+        [string]$Path,
+        [long]$StartPos,
+        [hashtable]$Data
+    )
+    $script:Sync['CatchUpActive'] = $false
+    $script:Sync['Loading'] = $true
+    $script:Sync['LoadProgressPct'] = 0
+    $script:Sync['LastError'] = $null
+    $script:Sync['TailRunning'] = $false
+    $script:Sync['WindowEntire'] = $true
+    $script:Sync['Cutoff'] = $null
+    Bump-Generation
+
+    Write-WatchLog ("Entire cache HIT  restore pos={0:N0}  then incremental" -f $StartPos) Cyan
+    $script:Sync['LoadModeLabel'] = 'Updating entire file'
+    $script:Sync['LoadMessage'] = 'Updating entire file... 0%'
+    $script:Sync['Data'] = $Data
+
+    Open-LogStream -Path $Path -Position $StartPos
+
+    $totalBytes = [math]::Max(1L, $script:Sync['Stream'].Length)
+    $spanBytes = [math]::Max(1L, $totalBytes - $StartPos)
+    $script:Sync['LoadStartPos'] = $StartPos
+    $script:Sync['LoadSpanBytes'] = $spanBytes
+    $script:Sync['LoadLines'] = 0
+    $script:Sync['LoadSkipped'] = 0
+    $script:Sync['LoadEnforce'] = $false
+    $script:Sync['LoadCutoff'] = [datetime]::MinValue
+    $script:Sync['LoadCutoffCompare'] = ''
+    $script:Sync['LoadSw'] = [System.Diagnostics.Stopwatch]::StartNew()
+    $script:Sync['LoadLastLogPct'] = -1
+    $script:Sync['LoadLastLogMs'] = 0L
+    $script:Sync['CatchUpActive'] = $true
+    $script:Sync['FileLength'] = $totalBytes
+
+    Write-WatchLog ("Incremental Entire from byte {0:N0} ({1:N1} MB remaining of {2:N1} MB)" -f `
+        $StartPos, ($spanBytes / 1MB), ($totalBytes / 1MB))
+    Update-LoadProgress -ForceLog
+}
+
+function script:Try-Begin-EntireFromCache {
+    param([string]$Path)
+    $c = $script:Sync['EntireCache']
+    if (-not $c -or -not [bool]$c.Valid) {
+        Write-WatchLog 'Entire cache MISS  (no snapshot)' DarkYellow
+        return $false
+    }
+    if ([string]$c.LogPath -ne $Path) {
+        Write-WatchLog 'Entire cache MISS  (path mismatch)' DarkYellow
+        return $false
+    }
+    if ($null -eq $c.Data) {
+        Clear-EntireCache -Reason 'empty snapshot'
+        Write-WatchLog 'Entire cache MISS  (empty snapshot)' DarkYellow
+        return $false
+    }
+    try {
+        $len = [int64](Get-Item -LiteralPath $Path).Length
+    }
+    catch {
+        Clear-EntireCache -Reason 'path missing'
+        return $false
+    }
+    $pos = [int64]$c.FilePos
+    if ($pos -gt $len) {
+        Clear-EntireCache -Reason 'file shrank'
+        Write-WatchLog 'Entire cache MISS  (file shrank below cached pos)' DarkYellow
+        return $false
+    }
+    $restored = Clone-AnalysisState -Data $c.Data
+    Begin-IncrementalEntireCatchUp -Path $Path -StartPos $pos -Data $restored
+    return $true
+}
+
 function script:Read-TailBytes {
     if (-not $script:Sync['TailRunning'] -or $script:Sync['Paused'] -or $script:Sync['Loading']) { return }
     if (-not $script:Sync['Stream'] -or -not $script:Sync['LogPath']) { return }
@@ -748,6 +945,7 @@ function script:Read-TailBytes {
         if (-not (Test-Path -LiteralPath $script:Sync['LogPath'])) {
             $script:Sync['LastError'] = 'Log file is missing.'
             $script:Sync['TailRunning'] = $false
+            Clear-EntireCache -Reason 'file missing'
             Close-LogStream
             Bump-Generation
             return
@@ -755,6 +953,7 @@ function script:Read-TailBytes {
         $len = (Get-Item -LiteralPath $script:Sync['LogPath']).Length
         if ($len -lt $script:Sync['FilePos']) {
             # rotated
+            Clear-EntireCache -Reason 'rotate'
             $script:Sync['Rotated'] = $true
             Invoke-CatchUp -Path $script:Sync['LogPath']
             $script:Sync['Rotated'] = $true
@@ -844,6 +1043,18 @@ function script:Build-Findings {
     }
     if ($d.BacObjectList -ge 100) {
         [void]$findings.Add(("BACnet object-list warnings: {0:N0} events across {1:N0} devices." -f $d.BacObjectList, $d.BacObjectListByDevice.Count))
+    }
+    if ($d.BacCollectTrend -ge 100) {
+        $topCode = ($d.BacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+        $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
+        [void]$findings.Add(("BACnetCollectTrend failures: {0:N0} across {1:N0} properties{2}." -f `
+            $d.BacCollectTrend, $d.BacCollectTrendByProp.Count, $codeNote))
+    }
+    if ($d.BacTimeSync -ge 100) {
+        $topCode = ($d.BacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+        $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
+        [void]$findings.Add(("BACnetTimeSync failures: {0:N0} across {1:N0} properties{2}." -f `
+            $d.BacTimeSync, $d.BacTimeSyncByProp.Count, $codeNote))
     }
     if ($d.CnsResolve -ge 100 -or $d.CnsReduced -ge 100) {
         [void]$findings.Add(("CNS volume: ResolveNodes={0:N0}, ReducedFunction={1:N0}, ICns={2:N0}." -f $d.CnsResolve, $d.CnsReduced, $d.CnsICns))
@@ -972,7 +1183,11 @@ function script:Build-PulseObject {
             findings        = @()
             severityCounts  = $sevCounts
             moduleHeadlines = [ordered]@{
-                bacnet = [ordered]@{ failed = $d.BacFailed; ok = $d.BacOk; endedFailed = 0; endedOk = 0; flappers = 0; objectList = $d.BacObjectList }
+                bacnet = [ordered]@{
+                    failed = $d.BacFailed; ok = $d.BacOk; endedFailed = 0; endedOk = 0; flappers = 0; objectList = $d.BacObjectList
+                    collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
+                    collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
+                }
                 cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
                 coho   = [ordered]@{ stuck = $d.CohoStuck }
                 apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
@@ -1010,7 +1225,11 @@ function script:Build-PulseObject {
         findings        = @(Build-Findings)
         severityCounts  = $sevCounts
         moduleHeadlines = [ordered]@{
-            bacnet = [ordered]@{ failed = $d.BacFailed; ok = $d.BacOk; endedFailed = $endedFailed; endedOk = $endedOk; flappers = $flappers; objectList = $d.BacObjectList }
+            bacnet = [ordered]@{
+                failed = $d.BacFailed; ok = $d.BacOk; endedFailed = $endedFailed; endedOk = $endedOk; flappers = $flappers; objectList = $d.BacObjectList
+                collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
+                collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
+            }
             cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
             coho   = [ordered]@{ stuck = $d.CohoStuck }
             apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
@@ -1076,11 +1295,36 @@ function script:Build-SectionObject {
                     [ordered]@{ device = $_.Key; count = [int]$_.Value }
                 }
             )
+            $ctCodes = @(
+                $d.BacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 | ForEach-Object {
+                    [ordered]@{ code = $_.Key; count = [int]$_.Value }
+                }
+            )
+            $ctProps = @(
+                $d.BacCollectTrendByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                    [ordered]@{ property = $_.Key; count = [int]$_.Value }
+                }
+            )
+            $tsCodes = @(
+                $d.BacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 | ForEach-Object {
+                    [ordered]@{ code = $_.Key; count = [int]$_.Value }
+                }
+            )
+            $tsProps = @(
+                $d.BacTimeSyncByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                    [ordered]@{ property = $_.Key; count = [int]$_.Value }
+                }
+            )
             return [ordered]@{
                 generation = $gen
                 bacnet     = [ordered]@{
                     failed = $d.BacFailed; ok = $d.BacOk; endedFailed = $endedFailed; endedOk = $endedOk
                     flappers = $flappers; objectList = $d.BacObjectList
+                    collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
+                    collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
+                    collectTrendSample = $d.BacCollectTrendSample; timeSyncSample = $d.BacTimeSyncSample
+                    collectTrendCodes = $ctCodes; collectTrendTop = $ctProps
+                    timeSyncCodes = $tsCodes; timeSyncTop = $tsProps
                     failedSample = $d.BacFailedSample; okSample = $d.BacOkSample; objectListSample = $d.BacObjectListSample
                     activity = $activity; endedFailedList = $endedList; objectListTop = $objTop
                 }
@@ -1678,6 +1922,14 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     if ($bac) {
         [void]$sb.AppendLine(('<p>Failed: <strong>{0:N0}</strong> &middot; OK: <strong>{1:N0}</strong> &middot; ended Failed: <strong>{2:N0}</strong> &middot; ended OK: <strong>{3:N0}</strong> &middot; flappers: <strong>{4:N0}</strong> &middot; object-list: <strong>{5:N0}</strong></p>' -f `
             [int]$bac.failed, [int]$bac.ok, [int]$bac.endedFailed, [int]$bac.endedOk, [int]$bac.flappers, [int]$bac.objectList))
+        [void]$sb.AppendLine(('<p>CollectTrend: <strong>{0:N0}</strong> ({1:N0} properties) &middot; TimeSync: <strong>{2:N0}</strong> ({3:N0} properties)</p>' -f `
+            [int]$bac.collectTrend, [int]$bac.collectTrendProps, [int]$bac.timeSync, [int]$bac.timeSyncProps))
+        if ($bac.collectTrendSample) {
+            [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.collectTrendSample))))
+        }
+        if ($bac.timeSyncSample) {
+            [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.timeSyncSample))))
+        }
         if ($bac.activity -and @($bac.activity).Count -gt 0) {
             [void]$sb.AppendLine('<h3>Device status activity</h3><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>')
             foreach ($row in @($bac.activity)) {
@@ -1848,6 +2100,7 @@ function script:Handle-Api {
             Write-WatchLog ("Start accepted  -  validating path: {0}" -f $p) Cyan
             $test = [System.IO.File]::Open($p, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
             $test.Close()
+            Clear-EntireCache -Reason 'path change'
             $script:Sync['LogPath'] = $p
             Save-WatchLogPath -Path $p
             $script:Sync['PrefillPath'] = $p
@@ -1887,19 +2140,35 @@ function script:Handle-Api {
                     $script:Sync['LoadProgressPct'] = 0
                     $script:Sync['LastError'] = $null
                     Close-LogStream
+                    Clear-EntireCache -Reason 'restart'
                     Reset-Analysis
                     $script:Sync['LogPath'] = ''
                     Write-WatchLog 'Session restarted (idle)' Yellow
                 }
                 'setWindow' {
-                    if ($body.window -eq 'entire') { $script:Sync['WindowEntire'] = $true }
+                    $wasEntire = [bool]$script:Sync['WindowEntire']
+                    $wantEntire = ($body.window -eq 'entire')
+                    if ($wasEntire -and -not $wantEntire) {
+                        Save-EntireCache
+                    }
+                    if ($wantEntire) { $script:Sync['WindowEntire'] = $true }
                     else {
                         $script:Sync['WindowEntire'] = $false
                         if ($body.lastMinutes) { $script:Sync['LastMinutes'] = [math]::Max(1, [int]$body.lastMinutes) }
                     }
                     $wlabel = if ($script:Sync['WindowEntire']) { 'entire' } else { ("{0}m" -f $script:Sync['LastMinutes']) }
                     Write-WatchLog ("Window change -> {0}" -f $wlabel) Cyan
-                    if ($script:Sync['LogPath']) { Invoke-CatchUp -Path $script:Sync['LogPath'] }
+                    if ($script:Sync['LogPath']) {
+                        if ($wantEntire -and $wasEntire) {
+                            Write-WatchLog 'Window unchanged (already Entire); keeping live analysis' DarkCyan
+                        }
+                        elseif ($wantEntire -and (Try-Begin-EntireFromCache -Path $script:Sync['LogPath'])) {
+                            # restored snapshot + incremental catch-up started
+                        }
+                        else {
+                            Invoke-CatchUp -Path $script:Sync['LogPath']
+                        }
+                    }
                 }
                 'note' {
                     $msg = [string]$body.message

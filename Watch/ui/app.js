@@ -62,7 +62,7 @@
       ],
       severityCounts: { FATAL: 2, SEVERE: 180, ERROR: 40, WARNING: 920, INFO: 12000 },
       moduleHeadlines: {
-        bacnet: { failed: 1200, ok: 980, endedFailed: 42, objectList: 15 },
+        bacnet: { failed: 1200, ok: 980, endedFailed: 42, objectList: 15, collectTrend: 450, timeSync: 80, collectTrendProps: 120, timeSyncProps: 40 },
         cns: { resolveNodes: 140, reducedFunction: 12, tryRenew: 3 },
         coho: { stuck: 8 },
         apogee: { events: 22, updatePoints: 11 }
@@ -112,6 +112,18 @@
         generation: 1,
         bacnet: {
           failed: 1200, ok: 980, endedFailed: 42, endedOk: 60, flappers: 7, objectList: 15,
+          collectTrend: 450, timeSync: 80, collectTrendProps: 120, timeSyncProps: 40,
+          collectTrendSample: 'Error Code 70442 for Property "System4:GmsDevice_1_512_86887595.Log_Enable" and Command "BACnetCollectTrend"',
+          timeSyncSample: 'Error Code 70443 for Property "System4:GmsDevice_1_7194_33561626.Local_Time" and Command "BACnetTimeSync"',
+          collectTrendCodes: [{ code: '70442', count: 450 }],
+          timeSyncCodes: [{ code: '70443', count: 70 }, { code: '70442', count: 10 }],
+          collectTrendTop: [
+            { property: 'System4:GmsDevice_1_512_86887595.Log_Enable', count: 12 },
+            { property: 'System4:GmsDevice_1_512_86887597.Log_Enable', count: 9 }
+          ],
+          timeSyncTop: [
+            { property: 'System4:GmsDevice_1_7194_33561626.Local_Time', count: 8 }
+          ],
           failedSample: 'Device 101 Status is now Failed',
           okSample: 'Device 101 Status is now OK',
           objectListSample: 'Could not get object list for device 55',
@@ -660,7 +672,7 @@
 
   function renderBacnet(b) {
     var el = $('bacnetBody');
-    if (!b || ((b.failed || 0) + (b.ok || 0) + (b.objectList || 0) === 0)) {
+    if (!b || ((b.failed || 0) + (b.ok || 0) + (b.objectList || 0) + (b.collectTrend || 0) + (b.timeSync || 0) === 0)) {
       el.innerHTML = '<p class="meta">No BACnet signals in the current window.</p>';
       return;
     }
@@ -668,6 +680,7 @@
       '</strong> · ended Failed: <strong>' + b.endedFailed + '</strong> · ended OK: <strong>' + b.endedOk +
       '</strong> · flappers: <strong>' + b.flappers + '</strong> · object-list: <strong>' + b.objectList + '</strong></p>';
     if (b.failedSample) html += '<p class="meta mono">' + escapeHtml(b.failedSample) + '</p>';
+
     html += '<h2>Device status activity</h2><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>';
     (b.activity || []).forEach(function (r) {
       html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.failed + '</td><td>' + r.ok +
@@ -687,6 +700,42 @@
       html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.count + '</td></tr>';
     });
     html += '</tbody></table>';
+
+    function cmdBlock(title, blurb, count, propCount, sample, codes, props) {
+      var h = '<h2>' + title + '</h2>';
+      h += '<p class="meta">' + blurb + '</p>';
+      h += '<p>Events: <strong>' + (count || 0) + '</strong> · unique properties: <strong>' + (propCount || 0) + '</strong></p>';
+      if (sample) h += '<p class="meta mono">' + escapeHtml(sample) + '</p>';
+      if (codes && codes.length) {
+        h += '<h3>Error codes</h3><table class="data"><thead><tr><th>Code</th><th>Count</th></tr></thead><tbody>';
+        codes.forEach(function (r) {
+          h += '<tr><td class="mono">' + escapeHtml(String(r.code)) + '</td><td>' + r.count + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      }
+      if (props && props.length) {
+        h += '<h3>Top properties</h3><table class="data"><thead><tr><th>Property</th><th>Count</th></tr></thead><tbody>';
+        props.forEach(function (r) {
+          h += '<tr><td class="mono">' + escapeHtml(r.property) + '</td><td>' + r.count + '</td></tr>';
+        });
+        h += '</tbody></table>';
+      }
+      return h;
+    }
+
+    if ((b.collectTrend || 0) > 0 || (b.timeSync || 0) > 0) {
+      html += cmdBlock(
+        'BACnetCollectTrend',
+        'Driver command failures when collecting trends (often Log_Enable). Usually logged under CoHo/GmsOrchBatchCmd, not WCCOAGmsBACnet.',
+        b.collectTrend, b.collectTrendProps, b.collectTrendSample, b.collectTrendCodes, b.collectTrendTop
+      );
+      html += cmdBlock(
+        'BACnetTimeSync',
+        'Driver command failures when pushing device time sync (often Local_Time). Same CoHo/orchestration path as CollectTrend.',
+        b.timeSync, b.timeSyncProps, b.timeSyncSample, b.timeSyncCodes, b.timeSyncTop
+      );
+    }
+
     el.innerHTML = html;
   }
 

@@ -118,7 +118,7 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 |------|----------|-------|
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
 | Catch-up / Entire **%** progress | P1 | **You confirmed OK** — pulse `loadProgressPct` / `loadMessage`; C2P Entire ~85s |
-| Cache **Entire** analysis when switching windows | P1 | **Next after 2E confirm** — restore Entire snapshot + incremental tail; invalidate on Restart / rotate / path change |
+| Cache **Entire** analysis when switching windows | P1 | **Built** — in-memory snapshot + incremental tail on return; invalidate on Restart / rotate / path change / fail. Confirmed pending your run |
 | File-end window anchor + chart rollup | P1 | **You confirmed OK** — rolling window vs log EOF; series minute/hour/day; empty overlay fix |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
@@ -144,3 +144,4 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-06 | Snapshot download (HTML/JSON) + **2E** polish (`VERSION` 2.0, readMe field-zip); % / file-end / chart rollup confirmed by you |
 | 2026-09-06 | Package layout: root = `Run-Watch.cmd` + `readMe.txt` + `Watch\` payload |
 | 2026-09-06 | Renamed `Watch\batch\` → `Watch\OfflineAnalyze\`; offline HTML report restyled to V2 Siemens dark |
+| 2026-09-06 | Cache Entire analysis across window switches (in-memory snapshot + incremental tail) |

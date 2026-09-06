@@ -1,54 +1,54 @@
-PVSS / WinCC OA Log Analyzer
-============================
+PVSS / WinCC OA Log Analyzer — OfflineAnalyze
+=============================================
 Version: 1.1
 
 What this is
 ------------
-A standalone PowerShell tool that scans a large PVSS_II.log (WinCC OA / GMS)
-and writes an analysis report. It streams the file (does not load the whole
-log into memory) and needs no Python or other installs.
+One-shot offline scanner for large PVSS_II.log files (WinCC OA / GMS).
+It streams the file (does not load the whole log into memory), needs no
+Python or other installs, and writes an HTML and/or text triage report.
 
-Reports can be shaped after the scan by severity or by driver/manager, with
+Reports can be shaped by severity or by driver/manager, and include
 BACnet, CNS, CoHo, and Apogee module statistics.
 
-
-Files (package for V1.1 — this `OfflineAnalyze\` folder)
-------------------------
-  Analyze-PvssLog.ps1            Main analyzer script
-  Run-Analyze.cmd                Non-interactive full report as HTML (keeps window open)
-  Run-Analyze-Interactive.cmd    Scan then prompt for Severity / Driver / All
-  readMe.txt                     This file
-  VERSION.txt                    Version number (1.1)
-
-The live Watch dashboard (V2) lives above this folder — see ..\..\readMe.txt
-(package root) or run ..\..\Run-Watch.cmd.
+For the live Watch dashboard, see ..\..\readMe.txt (package root) or
+double-click ..\..\Run-Watch.cmd.
 
 
 Requirements
 ------------
   - Windows
-  - PowerShell 5.1 or later (built into modern Windows)
+  - PowerShell 5.1 or later (included with modern Windows)
   - A PVSS_II.log (or PVSS_II*.log / PVSS_II*.log.bak) to analyze
 
 
-How to run (recommended on a server)
-------------------------------------
-Keep this toolset in its own folder (do NOT copy these files into the
-WinCC OA project log directory).
+Folder contents
+---------------
+Keep this toolset outside the WinCC OA project log directory.
 
-1. Copy PVSS_II.log (or PVSS_II.log.bak) from the project log folder into this
-   `OfflineAnalyze\` folder (or pass -LogPath to a copy elsewhere).
+  Analyze-PvssLog.ps1            Main analyzer
+  Run-Analyze.cmd                Full report as HTML (non-interactive)
+  Run-Analyze-Interactive.cmd    Scan, then prompt for Severity / Driver / All
+  readMe.txt                     This file
+  VERSION.txt                    1.1
+
+
+Quick start
+-----------
+1. Copy PVSS_II.log (or .log.bak) from the project log folder into this
+   OfflineAnalyze folder (or use -LogPath to a copy elsewhere).
+
    Typical project log path:
      E:\GMSprojects\Project_Name\log\PVSS_II.log
      E:\GMSprojects\Project_Name\log\PVSS_II.log.bak
-   Example destination: D:\Tools\PvssLogAnalyze\OfflineAnalyze\PVSS_II.log
 
-2. Double-click Run-Analyze.cmd for a full default report (HTML),
-   or Run-Analyze-Interactive.cmd to choose Severity / Driver / All after
-   the scan. Press Enter at prompts to accept defaults.
+2. Double-click Run-Analyze.cmd
+   → writes PVSS_II.log.analysis.html next to the log.
 
-3. Open the HTML report next to the log:
-     PVSS_II.log.analysis.html
+   Or Run-Analyze-Interactive.cmd to choose how the report is organized
+   after the scan. Press Enter at prompts to accept defaults.
+
+3. Open the .analysis.html file in a browser.
 
 Launchers use ExecutionPolicy Bypass so the script can run even when
 double-clicking .ps1 files is blocked.
@@ -56,34 +56,34 @@ double-clicking .ps1 files is blocked.
 
 How to run from PowerShell
 --------------------------
-  From the tools folder:
+From this Offline folder:
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -NonInteractive
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -NonInteractive
 
-  Interactive:
+Interactive:
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -Interactive
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -Interactive
 
-  Specific log path:
+Specific log path:
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -LogPath "E:\GMSprojects\Project_Name\log\PVSS_II.log" -NonInteractive
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -LogPath "E:\GMSprojects\Project_Name\log\PVSS_II.log" -NonInteractive
 
-  Time window (slow period):
+Time window (slow period):
 
-    powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -NonInteractive -From "2026.09.04 09:00" -To "2026.09.04 12:00"
+  powershell -NoProfile -ExecutionPolicy Bypass -File .\Analyze-PvssLog.ps1 -NonInteractive -From "2026.09.04 09:00" -To "2026.09.04 12:00"
 
 
 Defaults
 --------
   Log file:
-    Looks for PVSS_II.log in the same folder as Analyze-PvssLog.ps1,
-    then in the current working directory.
-    If missing: PVSS_II.log.bak, then newest PVSS_II*.log or
+    Looks for PVSS_II.log next to Analyze-PvssLog.ps1, then in the current
+    directory. If missing: PVSS_II.log.bak, then newest PVSS_II*.log or
     PVSS_II*.log.bak in those folders.
 
-  Report file:
-    <logname>.analysis.txt next to the log
-    Example: PVSS_II.log.analysis.txt
+  Report files (next to the log):
+    <logname>.analysis.html     when Format is Html or Both
+    <logname>.analysis.txt      when Format is Text or Both
+    Run-Analyze.cmd defaults to Html.
 
 
 Useful parameters
@@ -99,8 +99,8 @@ Useful parameters
                                      (overrides -From/-To)
   -NonInteractive                    No prompts (Run-Analyze.cmd)
   -Interactive                       Post-scan organize prompts
-  -Format Text|Html|Both          Report format (default Text; Run-Analyze.cmd
-                                     uses Html; Both also writes .analysis.txt)
+  -Format Text|Html|Both          Report format (default Text;
+                                     Run-Analyze.cmd uses Html)
   -Organize All|Severity|Driver      Report shape (with -NonInteractive)
   -Severities FATAL,SEVERE,ERROR     For Organize=Severity
   -Driver 1                          Manager index or name substring
@@ -112,7 +112,6 @@ Interactive defaults (empty Enter)
 ----------------------------------
   Time filter: Entire file
     Then choose [E] Entire  [H] Last N hours  [W] Absolute From/To
-    Bad date/time or hour values are rejected and re-prompted
   Organize mode: All
   Severity selection: critical pack (FATAL+SEVERE+ERROR)
   Top N: 10
@@ -122,24 +121,18 @@ Interactive defaults (empty Enter)
 
 What the report contains
 ------------------------
-  - Options used (organize mode, severities, drivers, time window, TopN, format)
-  - Findings (volume / chatter heuristics; no suggested next-steps list)
+  - Options used (organize mode, severities, drivers, time window, TopN)
+  - Findings (volume / chatter heuristics)
   - Severity counts
-  - BACnet module: device Failed/OK summary, status activity table (Failed/OK/flips/last),
-    devices that ended Failed, object-list warnings
-  - CNS module (thin): ResolveNodes / ReducedFunction / TryRenewSession
-  - CoHo module (thin): stuck/drop counts and names
-  - Apogee module (thin): CoHo.Apogee*/Orch.Apogee* events, UpdatePoints, top PPCL names
-  - Top managers, performance keyword categories, hourly volume (All mode;
-    if more than 25 hours in the window: most recent 24 + top 10 busiest)
-  - Top message patterns separated by severity (FATAL / SEVERE / ERROR /
-    WARNING), each with first/last timestamps, or a driver deep-dive when
-    Organize=Driver
-  - Severity mode: short module headlines + selected severity patterns only
+  - BACnet: Failed/OK summary, device activity, ended Failed, object-list
+  - CNS (thin): ResolveNodes / ReducedFunction / TryRenewSession
+  - CoHo (thin): stuck/drop counts and names
+  - Apogee (thin): events, UpdatePoints, top PPCL names
+  - Top managers, performance keyword categories, hourly volume (All mode)
+  - Top message patterns by severity (or a driver deep-dive)
 
 Console shows a short scan summary; full detail is in the report file(s).
-Text default: <logname>.analysis.txt
-HTML (Format Html/Both): <logname>.analysis.html (open in a browser)
+HTML uses the same Siemens dark theme as the live Watch dashboard.
 
 
 Typical runtime
@@ -148,35 +141,14 @@ Typical runtime
   (depends on disk and CPU; larger or denser logs take longer).
 
 
-Notes
------
+Important notes
+---------------
   - Do not install or leave these tools inside the WinCC OA project folder.
-    Copy the log into the tools folder instead.
-  - Prefer analyzing a log captured during a slow period; use -From/-To to
-    narrow to that window.
+    Copy the log into this folder (or point -LogPath at a copy elsewhere).
+  - Prefer a log from a slow period; use -From/-To or -LastHours to narrow.
   - Rotated logs may be *.log.bak; discovery finds those automatically.
-  - Only lines matching the standard WinCC OA single-line header are fully
-    parsed; multi-line .NET continuation text may not appear as separate events.
-  - Logs are read as UTF-8 so markers like «MacroManager» display correctly.
-  - BACnet device Failed/OK is INFO device status (entering/leaving Failed),
-    reported under the BACnet module.
+  - Only standard WinCC OA single-line headers are fully parsed; multi-line
+    .NET continuation text may not appear as separate events.
+  - Logs are read as UTF-8.
+  - BACnet device Failed/OK comes from INFO device-status lines.
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-
-
-Example layout on the server
-----------------------------
-  D:\Tools\PvssLogAnalyze\          <-- field package root (not under the project log dir)
-    Run-Watch.cmd
-    readMe.txt
-    Watch\                          <-- runtime payload
-      Watch-PvssLog.ps1
-      VERSION.txt
-      ui\                           <-- Watch dashboard (V2)
-      OfflineAnalyze\               <-- V1.1 offline analyzer
-        Analyze-PvssLog.ps1
-        Run-Analyze.cmd
-        Run-Analyze-Interactive.cmd
-        readMe.txt
-        VERSION.txt
-        PVSS_II.log                 <-- copy log here (or use -LogPath)
-        PVSS_II.log.analysis.html   <-- created after a successful run

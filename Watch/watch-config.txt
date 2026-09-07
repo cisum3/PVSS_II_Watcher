@@ -52,7 +52,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=
+LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C2P.log
 
 
 

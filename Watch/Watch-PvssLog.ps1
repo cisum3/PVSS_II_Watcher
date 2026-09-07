@@ -27,7 +27,7 @@ $script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:UiRoot = Join-Path $script:Root 'ui'
 $script:ConfigPath = Join-Path $script:Root 'watch-config.txt'
 $script:Version = (Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
-if (-not $script:Version) { $script:Version = '2.2' }
+if (-not $script:Version) { $script:Version = '2.3' }
 $script:Author = 'Cisum'
 foreach ($verLine in @(Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue)) {
     if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
@@ -1903,6 +1903,159 @@ function script:Build-ChartSeries {
     }
 }
 
+function script:Format-DurationLabel {
+    param($Seconds)
+    if ($null -eq $Seconds) { return '' }
+    try { $s = [int][math]::Round([double]$Seconds) } catch { return '' }
+    if ($s -lt 0) { return '' }
+    if ($s -lt 60) { return ('{0}s' -f $s) }
+    $m = [int][math]::Floor($s / 60)
+    $r = $s % 60
+    if ($m -lt 60) {
+        if ($r -eq 0) { return ('{0}m' -f $m) }
+        return ('{0}m {1}s' -f $m, $r)
+    }
+    $h = [int][math]::Floor($m / 60)
+    $m2 = $m % 60
+    if ($h -lt 48) {
+        if ($m2 -eq 0) { return ('{0}h' -f $h) }
+        return ('{0}h {1}m' -f $h, $m2)
+    }
+    $d = [int][math]::Floor($h / 24)
+    $h2 = $h % 24
+    if ($h2 -eq 0) { return ('{0}d' -f $d) }
+    return ('{0}d {1}h' -f $d, $h2)
+}
+
+function script:Get-LogTimestampDeltaSec {
+    param([string]$FromTs, [string]$ToTs)
+    $a = ConvertFrom-LogTimestamp -Ts $FromTs
+    $b = ConvertFrom-LogTimestamp -Ts $ToTs
+    if (-not $a -or -not $b) { return $null }
+    return ($b - $a).TotalSeconds
+}
+
+function script:Build-ProjectLifecycleCycles {
+    param(
+        [object[]]$Events,
+        [string]$WindowFirst,
+        [string]$WindowLast
+    )
+    $evs = @($Events | Sort-Object { [string]$_.t }, { [string]$_.kind })
+    if ($evs.Count -eq 0) { return @() }
+    $cycles = New-Object System.Collections.Generic.List[object]
+
+    $upIdx = New-Object System.Collections.Generic.List[int]
+    for ($i = 0; $i -lt $evs.Count; $i++) {
+        if ([string]$evs[$i].kind -eq 'up') { [void]$upIdx.Add($i) }
+    }
+
+    $firstUp = if ($upIdx.Count -gt 0) { [int]$upIdx[0] } else { $evs.Count }
+    $leadShutdown = $null
+    $leadStopped = $null
+    for ($i = 0; $i -lt $firstUp; $i++) {
+        $k = [string]$evs[$i].kind
+        if ($k -eq 'shutdown' -and -not $leadShutdown) { $leadShutdown = $evs[$i] }
+        elseif ($k -eq 'stopped' -and -not $leadStopped) { $leadStopped = $evs[$i] }
+    }
+    if ($leadShutdown -or $leadStopped) {
+        $upStart = $WindowFirst
+        $shutdownT = if ($leadShutdown) { [string]$leadShutdown.t } else { $null }
+        $stoppedT = if ($leadStopped) { [string]$leadStopped.t } else { $null }
+        $nextUpT = if ($upIdx.Count -gt 0) { [string]$evs[$upIdx[0]].t } else { $null }
+        $uptimeSec = if ($upStart -and $shutdownT) { Get-LogTimestampDeltaSec -FromTs $upStart -ToTs $shutdownT } else { $null }
+        $stopSec = if ($shutdownT -and $stoppedT) { Get-LogTimestampDeltaSec -FromTs $shutdownT -ToTs $stoppedT } else { $null }
+        # Downtime is only defined when the next up is known (stopped → next up).
+        $downSec = $null
+        if ($stoppedT -and $nextUpT) {
+            $downSec = Get-LogTimestampDeltaSec -FromTs $stoppedT -ToTs $nextUpT
+        }
+        $stillDown = [bool]($stoppedT -and -not $nextUpT)
+        [void]$cycles.Add([ordered]@{
+                up           = $upStart
+                upImplied    = $true
+                shutdown     = $shutdownT
+                stopped      = $stoppedT
+                nextUp       = $nextUpT
+                uptimeSec    = $uptimeSec
+                uptime       = (Format-DurationLabel -Seconds $uptimeSec)
+                stopSec      = $stopSec
+                stopDuration = (Format-DurationLabel -Seconds $stopSec)
+                downtimeSec  = $downSec
+                downtime     = (Format-DurationLabel -Seconds $downSec)
+                stillUp      = $false
+                stillDown    = $stillDown
+            })
+    }
+
+    for ($u = 0; $u -lt $upIdx.Count; $u++) {
+        $ui = [int]$upIdx[$u]
+        $upT = [string]$evs[$ui].t
+        $end = if (($u + 1) -lt $upIdx.Count) { [int]$upIdx[$u + 1] } else { $evs.Count }
+        $shutdownT = $null
+        $stoppedT = $null
+        for ($j = $ui + 1; $j -lt $end; $j++) {
+            $k = [string]$evs[$j].kind
+            if ($k -eq 'shutdown' -and -not $shutdownT) { $shutdownT = [string]$evs[$j].t }
+            elseif ($k -eq 'stopped' -and -not $stoppedT) { $stoppedT = [string]$evs[$j].t }
+        }
+        $nextUpT = if (($u + 1) -lt $upIdx.Count) { [string]$evs[$upIdx[$u + 1]].t } else { $null }
+        $stillUp = -not $shutdownT
+        $uptimeSec = $null
+        if ($shutdownT) { $uptimeSec = Get-LogTimestampDeltaSec -FromTs $upT -ToTs $shutdownT }
+        elseif ($stillUp -and -not $nextUpT -and $WindowLast) {
+            # Trailing still-up: show uptime through end of window (informative, not a closed cycle).
+            $uptimeSec = Get-LogTimestampDeltaSec -FromTs $upT -ToTs $WindowLast
+        }
+        $stopSec = if ($shutdownT -and $stoppedT) { Get-LogTimestampDeltaSec -FromTs $shutdownT -ToTs $stoppedT } else { $null }
+        # Downtime only when next up exists. Do not invent downtime to window end.
+        $downSec = $null
+        if ($stoppedT -and $nextUpT) {
+            $downSec = Get-LogTimestampDeltaSec -FromTs $stoppedT -ToTs $nextUpT
+        }
+        $stillDown = [bool]($stoppedT -and -not $nextUpT)
+        [void]$cycles.Add([ordered]@{
+                up           = $upT
+                upImplied    = $false
+                shutdown     = $shutdownT
+                stopped      = $stoppedT
+                nextUp       = $nextUpT
+                uptimeSec    = $uptimeSec
+                uptime       = (Format-DurationLabel -Seconds $uptimeSec)
+                stopSec      = $stopSec
+                stopDuration = (Format-DurationLabel -Seconds $stopSec)
+                downtimeSec  = $downSec
+                downtime     = (Format-DurationLabel -Seconds $downSec)
+                stillUp      = $stillUp
+                stillDown    = $stillDown
+            })
+    }
+
+    return @($cycles.ToArray())
+}
+
+function script:Build-ProjectLifecycleObject {
+    param(
+        $Data,
+        [object[]]$Events,
+        [string]$WindowFirst,
+        [string]$WindowLast
+    )
+    $evs = @($Events)
+    $cycles = @(Build-ProjectLifecycleCycles -Events $evs -WindowFirst $WindowFirst -WindowLast $WindowLast)
+    $retained = 0
+    if ($Data.ProjectRestartEvents) { $retained = @($Data.ProjectRestartEvents).Count }
+    elseif ($evs.Count -gt 0) { $retained = $evs.Count }
+    return [ordered]@{
+        up         = [int]$Data.ProjectUp
+        stopped    = [int]$Data.ProjectStopped
+        shutdown   = [int]$Data.ProjectShutdown
+        startMode  = [int]$Data.ProjectStartMode
+        cycles     = $cycles
+        capped     = (($Data.ProjectUp + $Data.ProjectStopped + $Data.ProjectShutdown) -gt $retained)
+    }
+}
+
 function script:Build-PulseObject {
     param($SevFilter, $AreaFilter = $null)
     if ($null -eq $AreaFilter) {
@@ -1955,7 +2108,7 @@ function script:Build-PulseObject {
             projectLifecycle = [ordered]@{
                 up = [int]$d.ProjectUp; stopped = [int]$d.ProjectStopped
                 shutdown = [int]$d.ProjectShutdown; startMode = [int]$d.ProjectStartMode
-                events = @(); capped = $false
+                cycles = @(); capped = $false
             }
         }
     }
@@ -1979,6 +2132,8 @@ function script:Build-PulseObject {
             }
         }
     }
+    $projLife = Build-ProjectLifecycleObject -Data $d -Events $projEvents `
+        -WindowFirst ([string]$d.FirstTs) -WindowLast ([string]$d.LastTs)
     return [ordered]@{
         generation      = [int]$script:Sync['Generation']
         window          = $win
@@ -2011,14 +2166,7 @@ function script:Build-PulseObject {
         }
         topManagers     = $topMgr
         series          = $series
-        projectLifecycle = [ordered]@{
-            up         = [int]$d.ProjectUp
-            stopped    = [int]$d.ProjectStopped
-            shutdown   = [int]$d.ProjectShutdown
-            startMode  = [int]$d.ProjectStartMode
-            events     = @($projEvents)
-            capped     = (($d.ProjectUp + $d.ProjectStopped + $d.ProjectShutdown) -gt $projEvents.Count)
-        }
+        projectLifecycle = $projLife
     }
 }
 
@@ -2843,32 +2991,38 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     [void]$sb.AppendLine('</section>')
 
-    # Project restart timeline
+    # Project restart cycles
     $pl = $Snap.projectLifecycle
     [void]$sb.AppendLine('<section id="project"><h2>Project restarts (pmon)</h2>')
-    [void]$sb.AppendLine('<p class="meta">Timeline of project up / shutdown / completely stopped (log timestamps). START_MODE counted only (too frequent to list).</p>')
+    [void]$sb.AppendLine('<p class="meta">Each row is one cycle: up &rarr; shutdown &rarr; stopped &rarr; next up. Uptime = up to shutdown; stop = shutdown to stopped; downtime = stopped to next up. START_MODE counted only (too frequent to list).</p>')
     if ($pl) {
-        $capNote = if ($pl.capped) { ' (event list capped at 200)' } else { '' }
-        [void]$sb.AppendLine(('<p class="meta">up={0:N0}  &middot;  stopped={1:N0}  &middot;  shutdown={2:N0}  &middot;  START_MODE={3:N0}  &middot;  listed={4:N0}{5}</p>' -f `
-            [int]$pl.up, [int]$pl.stopped, [int]$pl.shutdown, [int]$pl.startMode, @($pl.events).Count, $capNote))
-        $evs = @($pl.events)
-        if ($evs.Count -gt 0) {
-            [void]$sb.AppendLine('<table class="data"><thead><tr><th>Kind</th><th>Time</th></tr></thead><tbody>')
-            foreach ($ev in $evs) {
-                $kind = [string]$ev.kind
-                $cls = switch ($kind) {
-                    'up' { 'kind-up' }
-                    'shutdown' { 'kind-shutdown' }
-                    'stopped' { 'kind-stopped' }
-                    default { '' }
-                }
-                [void]$sb.AppendLine(('<tr><td class="{0}">{1}</td><td class="mono">{2}</td></tr>' -f `
-                    $cls, (& $e $kind), (& $e ([string]$ev.t))))
+        $cycles = @($pl.cycles)
+        $capNote = if ($pl.capped) { ' (events capped at 200)' } else { '' }
+        [void]$sb.AppendLine(('<p class="meta">up={0:N0}  &middot;  stopped={1:N0}  &middot;  shutdown={2:N0}  &middot;  START_MODE={3:N0}  &middot;  cycles={4:N0}{5}</p>' -f `
+            [int]$pl.up, [int]$pl.stopped, [int]$pl.shutdown, [int]$pl.startMode, $cycles.Count, $capNote))
+        if ($cycles.Count -gt 0) {
+            [void]$sb.AppendLine('<table class="data"><thead><tr><th>Up</th><th>Shutdown</th><th>Uptime</th><th>Stopped</th><th>Stop</th><th>Downtime</th><th>Note</th></tr></thead><tbody>')
+            foreach ($c in $cycles) {
+                $upLabel = [string]$c.up
+                if ($c.upImplied) { $upLabel = "$upLabel (window start)" }
+                $note = ''
+                if ($c.stillUp -and $c.nextUp) { $note = 'no shutdown before next up' }
+                elseif ($c.stillUp) { $note = 'still up' }
+                elseif ($c.stillDown) { $note = 'still down' }
+                elseif (-not $c.shutdown -and $c.stopped) { $note = 'no shutdown line' }
+                [void]$sb.AppendLine(('<tr><td class="mono kind-up">{0}</td><td class="mono kind-shutdown">{1}</td><td>{2}</td><td class="mono kind-stopped">{3}</td><td>{4}</td><td>{5}</td><td class="meta">{6}</td></tr>' -f `
+                    (& $e $upLabel),
+                    (& $e ([string]$c.shutdown)),
+                    (& $e ([string]$c.uptime)),
+                    (& $e ([string]$c.stopped)),
+                    (& $e ([string]$c.stopDuration)),
+                    (& $e ([string]$c.downtime)),
+                    (& $e $note)))
             }
             [void]$sb.AppendLine('</tbody></table>')
         }
         elseif (([int]$pl.up + [int]$pl.stopped + [int]$pl.shutdown) -gt 0) {
-            [void]$sb.AppendLine('<p class="muted">Counts present but no event timestamps were retained (re-run Start after updating Watch).</p>')
+            [void]$sb.AppendLine('<p class="muted">Counts present but no cycle timestamps were retained (re-run Start after updating Watch).</p>')
         }
         else {
             [void]$sb.AppendLine('<p class="muted">No project up / stop / shutdown events in this window.</p>')

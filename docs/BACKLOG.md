@@ -1,7 +1,8 @@
 # Future backlog — PVSS Log Analyzer
 
 **Shipped baseline:** Watch **2.2** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
-**Next field bump:** Watch **2.3** (do not edit 2.2 behavior without a version bump)
+**In progress:** Watch **2.3** (cycle/uptime view — not shipped yet)  
+**Next field bump after 2.3 ships:** Watch **2.4**
 
 **Rule:** Keep this file short. Add ideas as bullets. Do **not** grow archived PRDs/PROGRESS.
 Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + user-facing `readMe.txt` / `CHANGELOG.txt`).
@@ -13,8 +14,7 @@ User-facing history: root [`CHANGELOG.txt`](../CHANGELOG.txt) (keep operator-foc
 
 ## Ideas / improvements
 
-### Watch (→ 2.3+)
-- Project restart **cycle/uptime view** (replace flat up/shutdown/stopped list; uptime = up→shutdown, downtime = stopped→next up; Overview + snapshot)
+### Watch (→ 2.4+)
 - WebSocket / SSE vs poll (parked — adaptive poll covers most UX gain)
 - Manager instance rollup helpers
 - Remote bind / auth (explicitly out of current security model — localhost only)

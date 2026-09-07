@@ -5,6 +5,17 @@ Watch\OfflineAnalyze\VERSION.txt.
 
 
 ------------------------------------------------------------------------
+2.3 — 2026-09-06 (Watch)  ·  OfflineAnalyze unchanged at 1.2
+------------------------------------------------------------------------
+Author: Cisum
+
+- Project restarts (Overview + snapshot): cycle rows with uptime / stop /
+  downtime instead of a flat event list. Downtime is only stopped→next up
+  (blank + “still down” when the window ends mid-stop). Window-start may
+  show an implied up. START_MODE remains count-only.
+
+
+------------------------------------------------------------------------
 2.2 — 2026-09-06 (Watch)  ·  OfflineAnalyze unchanged at 1.2
 ------------------------------------------------------------------------
 Author: Cisum

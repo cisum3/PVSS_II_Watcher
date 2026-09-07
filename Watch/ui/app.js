@@ -94,11 +94,18 @@
       },
       projectLifecycle: {
         up: 2, stopped: 1, shutdown: 1, startMode: 2, capped: false,
-        events: [
-          { kind: 'shutdown', t: '2026.09.05 14:10:00.100' },
-          { kind: 'stopped', t: '2026.09.05 14:10:45.200' },
-          { kind: 'up', t: '2026.09.05 14:22:01.000' },
-          { kind: 'up', t: '2026.09.05 15:00:12.500' }
+        cycles: [
+          {
+            up: '2026.09.05 13:00:00.000', upImplied: true,
+            shutdown: '2026.09.05 14:10:00.100', stopped: '2026.09.05 14:10:45.200',
+            nextUp: '2026.09.05 14:22:01.000',
+            uptime: '1h 10m', stopDuration: '45s', downtime: '11m 16s', stillUp: false
+          },
+          {
+            up: '2026.09.05 14:22:01.000', upImplied: false,
+            shutdown: null, stopped: null, nextUp: null,
+            uptime: '38m', stopDuration: '', downtime: '', stillUp: true
+          }
         ]
       }
     };
@@ -383,12 +390,12 @@
     var meta = $('projectRestartsMeta');
     var tbody = $('projectRestartsTable') && $('projectRestartsTable').querySelector('tbody');
     if (!panel || !meta || !tbody) return;
-    var evs = (pl && pl.events) ? pl.events : [];
+    var cycles = (pl && pl.cycles) ? pl.cycles : [];
     var up = pl ? (pl.up || 0) : 0;
     var stopped = pl ? (pl.stopped || 0) : 0;
     var shutdown = pl ? (pl.shutdown || 0) : 0;
     var startMode = pl ? (pl.startMode || 0) : 0;
-    var hasSignal = evs.length > 0 || up > 0 || stopped > 0 || shutdown > 0;
+    var hasSignal = cycles.length > 0 || up > 0 || stopped > 0 || shutdown > 0;
     if (!hasSignal) {
       panel.hidden = true;
       tbody.innerHTML = '';
@@ -396,25 +403,37 @@
       return;
     }
     panel.hidden = false;
-    var cap = pl && pl.capped ? ' (list capped at 200)' : '';
+    var cap = pl && pl.capped ? ' (events capped at 200)' : '';
     meta.textContent = 'up=' + Number(up).toLocaleString() +
       '  ·  stopped=' + Number(stopped).toLocaleString() +
       '  ·  shutdown=' + Number(shutdown).toLocaleString() +
       '  ·  START_MODE=' + Number(startMode).toLocaleString() +
-      '  ·  listed=' + evs.length + cap +
-      '. START_MODE counted only (too frequent to list).';
+      '  ·  cycles=' + cycles.length + cap +
+      '. Uptime = up→shutdown; stop = shutdown→stopped; downtime = stopped→next up. START_MODE counted only.';
     tbody.innerHTML = '';
-    if (!evs.length) {
+    if (!cycles.length) {
       var empty = document.createElement('tr');
-      empty.innerHTML = '<td colspan="2" class="meta">Counts present but no event timestamps retained.</td>';
+      empty.innerHTML = '<td colspan="7" class="meta">Counts present but no cycle timestamps retained.</td>';
       tbody.appendChild(empty);
       return;
     }
-    evs.forEach(function (ev) {
+    cycles.forEach(function (c) {
       var tr = document.createElement('tr');
-      var kind = String(ev.kind || '');
-      var cls = kind === 'up' ? 'kind-up' : (kind === 'shutdown' ? 'kind-shutdown' : (kind === 'stopped' ? 'kind-stopped' : ''));
-      tr.innerHTML = '<td class="' + cls + '">' + escapeHtml(kind) + '</td><td class="mono">' + escapeHtml(String(ev.t || '')) + '</td>';
+      var upLabel = String(c.up || '');
+      if (c.upImplied) upLabel += ' (window start)';
+      var note = '';
+      if (c.stillUp && c.nextUp) note = 'no shutdown before next up';
+      else if (c.stillUp) note = 'still up';
+      else if (c.stillDown || (c.stopped && !c.nextUp)) note = 'still down';
+      else if (!c.shutdown && c.stopped) note = 'no shutdown line';
+      tr.innerHTML =
+        '<td class="mono kind-up">' + escapeHtml(upLabel) + '</td>' +
+        '<td class="mono kind-shutdown">' + escapeHtml(String(c.shutdown || '')) + '</td>' +
+        '<td>' + escapeHtml(String(c.uptime || '')) + '</td>' +
+        '<td class="mono kind-stopped">' + escapeHtml(String(c.stopped || '')) + '</td>' +
+        '<td>' + escapeHtml(String(c.stopDuration || '')) + '</td>' +
+        '<td>' + escapeHtml(String(c.downtime || '')) + '</td>' +
+        '<td class="meta">' + escapeHtml(note) + '</td>';
       tbody.appendChild(tr);
     });
   }

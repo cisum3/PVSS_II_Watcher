@@ -1,13 +1,13 @@
 PVSS / WinCC OA Log Analyzer
 ============================
-Version: 2.2 (live Watch)  |  OfflineAnalyze: 1.2
+Version: 2.3 (live Watch)  |  OfflineAnalyze: 1.2
 Author: Cisum
 
 What this is
 ------------
 A Windows-only triage toolkit for large PVSS_II.log files (WinCC OA / GMS).
 
-  Watch (2.2)            Live localhost dashboard: open a growing log read-only,
+  Watch (2.3)            Live localhost dashboard: open a growing log read-only,
                          catch up a time window, tail new lines, filter by
                          severity, browse modules/patterns, download a snapshot.
 
@@ -35,7 +35,7 @@ Keep this folder outside the WinCC OA project log directory.
   CHANGELOG.txt              What changed per version (newest first)
   Watch\                     Runtime payload
     Watch-PvssLog.ps1        Localhost host + APIs
-    VERSION.txt              Watch version (2.2)
+    VERSION.txt              Watch version (2.3)
     watch-config.txt         Defaults / preferences (edit this)
     ui\                      Dashboard (Siemens dark theme + Chart.js)
     OfflineAnalyze\          Offline report tool (1.2)
@@ -73,8 +73,9 @@ Quick start — live Watch
    it uses RefreshSeconds from watch-config.txt.
 
 6. Snapshot downloads an HTML report of the current in-memory analysis
-   (sticky section jumps, project restart times, manager health, charts).
-   (browser download only; same Siemens dark look as the dashboard).
+   (sticky section jumps, project restart cycles with uptime/downtime,
+   manager health, charts). Browser download only; same look as the
+   dashboard. Overview shows the same restart cycles.
 
 7. Ctrl+C in the host console stops the server.
 
@@ -122,5 +123,5 @@ Important notes
   - Do not install or run these scripts inside the project log folder.
   - Preferences live in Watch\watch-config.txt (LogPath updated on Start).
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-  - Field baseline: Watch 2.2 / OfflineAnalyze 1.2. See CHANGELOG.txt for
+  - Field baseline: Watch 2.3 / OfflineAnalyze 1.2. See CHANGELOG.txt for
     what changed in each release.

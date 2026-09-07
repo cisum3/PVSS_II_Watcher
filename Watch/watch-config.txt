@@ -2,6 +2,9 @@
 # Edit values below. Lines starting with # are ignored.
 # CLI flags override these when you launch with -Port / -LogPath / etc.
 # Invalid values are rejected, logged in the host console, and reset to defaults.
+# Edits are picked up by Restart in the dashboard, or the next host start.
+# PreferredPort / MaxPortTries / OpenBrowser / Browser are startup-only - those
+# need Run-Watch.cmd again, since the host is already listening.
 # See package root readMe.txt for a short overview.
 #
 # On Start, LogPath is updated automatically to the path you used.
@@ -55,7 +58,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C3P.log
+LogPath=
 
 
 

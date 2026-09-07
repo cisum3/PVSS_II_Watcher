@@ -310,41 +310,111 @@ function script:Set-WatchConfigLogPath {
 }
 
 # Load watch-config.txt then apply CLI overrides (bound params win).
-$script:ConfigLoad = Read-WatchConfig
-$script:Config = $script:ConfigLoad.Config
-if ($script:ConfigLoad.Corrections -and $script:ConfigLoad.Corrections.Count -gt 0) {
-    try { Set-WatchConfigKeys -Updates $script:ConfigLoad.Corrections } catch { }
-}
-if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = [int]$script:Config.PreferredPort }
-if (-not $PSBoundParameters.ContainsKey('LastMinutes')) { $LastMinutes = [int]$script:Config.DefaultWindowMinutes }
-if (-not $PSBoundParameters.ContainsKey('RefreshSeconds')) { $RefreshSeconds = [int]$script:Config.RefreshSeconds }
-if (-not $PSBoundParameters.ContainsKey('TopN')) { $TopN = [int]$script:Config.TopN }
-if (-not $PSBoundParameters.ContainsKey('SamplePerPattern')) { $SamplePerPattern = [int]$script:Config.SamplePerPattern }
-if (-not $PSBoundParameters.ContainsKey('SampleMaxChars')) { $SampleMaxChars = [int]$script:Config.SampleMaxChars }
-$script:OpenBrowser = [bool]$script:Config.OpenBrowser
-if ($PSBoundParameters.ContainsKey('NoBrowser')) { $script:OpenBrowser = -not [bool]$NoBrowser }
-$script:BrowserChoice = [string]$script:Config.Browser
-$script:MaxPortTries = [int]$script:Config.MaxPortTries
-$script:BacFlapMin = [int]$script:Config.BacFlapMin
-$script:SampleMaxChars = [int]$SampleMaxChars
-if ($script:SampleMaxChars -lt 100) { $script:SampleMaxChars = 100 }
-if ($script:SampleMaxChars -gt 2000) { $script:SampleMaxChars = 2000 }
-$script:DefaultSeverities = @($script:Config.DefaultSeverities)
-$script:DefaultAreas = @($script:Config.DefaultAreas)
-$script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
-$script:RefreshSeconds = [int]$RefreshSeconds
-if ($script:RefreshSeconds -lt 1) { $script:RefreshSeconds = 1 }
-if ($script:RefreshSeconds -gt 60) { $script:RefreshSeconds = 60 }
+# Snapshot which parameters came from the command line; $PSBoundParameters is
+# only visible here, and Apply-WatchConfig must keep honouring CLI precedence
+# when the dashboard Restart re-reads the file.
+$script:CliOverrides = @{}
+foreach ($cliKey in $PSBoundParameters.Keys) { $script:CliOverrides["$cliKey"] = $true }
 
-$script:PrefillPath = ''
-if ($PSBoundParameters.ContainsKey('LogPath') -and -not [string]::IsNullOrWhiteSpace($LogPath)) {
-    $script:PrefillPath = $LogPath.Trim()
-}
-elseif (-not [string]::IsNullOrWhiteSpace([string]$script:Config.LogPath)) {
-    $script:PrefillPath = ([string]$script:Config.LogPath).Trim()
+function script:Apply-WatchConfig {
+    # -Runtime re-reads watch-config.txt on a dashboard Restart. Port, MaxPortTries,
+    # OpenBrowser and Browser are startup-only (the listener is already bound), so
+    # they are skipped and reported instead of applied.
+    param([switch]$Runtime)
+
+    $before = $null
+    if ($Runtime) {
+        $before = [ordered]@{
+            RefreshSeconds       = "$($script:RefreshSeconds)"
+            TopN                 = "$($script:TopN)"
+            SamplePerPattern     = "$($script:SamplePerPattern)"
+            SampleMaxChars       = "$($script:SampleMaxChars)"
+            BacFlapMin           = "$($script:BacFlapMin)"
+            DefaultSeverities    = (@($script:DefaultSeverities) -join ',')
+            DefaultAreas         = (@($script:DefaultAreas) -join ',')
+            DefaultWindowMinutes = "$($script:LastMinutes)"
+            DefaultWindowEntire  = "$($script:DefaultWindowEntire)"
+            LogPath              = "$($script:PrefillPath)"
+        }
+    }
+
+    $load = Read-WatchConfig
+    $script:Config = $load.Config
+    if ($load.Corrections -and $load.Corrections.Count -gt 0) {
+        try { Set-WatchConfigKeys -Updates $load.Corrections } catch { }
+    }
+    $script:ConfigWarnings = @($load.Warnings)
+
+    $cli = $script:CliOverrides
+    if (-not $cli.ContainsKey('LastMinutes')) { $script:LastMinutes = [int]$script:Config.DefaultWindowMinutes }
+    if (-not $cli.ContainsKey('RefreshSeconds')) { $script:RefreshSeconds = [int]$script:Config.RefreshSeconds }
+    if (-not $cli.ContainsKey('TopN')) { $script:TopN = [int]$script:Config.TopN }
+    if (-not $cli.ContainsKey('SamplePerPattern')) { $script:SamplePerPattern = [int]$script:Config.SamplePerPattern }
+    if (-not $cli.ContainsKey('SampleMaxChars')) { $script:SampleMaxChars = [int]$script:Config.SampleMaxChars }
+    $script:BacFlapMin = [int]$script:Config.BacFlapMin
+    $script:DefaultSeverities = @($script:Config.DefaultSeverities)
+    $script:DefaultAreas = @($script:Config.DefaultAreas)
+    $script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
+    if ($script:SampleMaxChars -lt 100) { $script:SampleMaxChars = 100 }
+    if ($script:SampleMaxChars -gt 2000) { $script:SampleMaxChars = 2000 }
+    if ($script:RefreshSeconds -lt 1) { $script:RefreshSeconds = 1 }
+    if ($script:RefreshSeconds -gt 60) { $script:RefreshSeconds = 60 }
+
+    if (-not $Runtime) {
+        if (-not $cli.ContainsKey('Port')) { $script:Port = [int]$script:Config.PreferredPort }
+        $script:MaxPortTries = [int]$script:Config.MaxPortTries
+        $script:OpenBrowser = [bool]$script:Config.OpenBrowser
+        if ($cli.ContainsKey('NoBrowser')) { $script:OpenBrowser = -not [bool]$NoBrowser }
+        $script:BrowserChoice = [string]$script:Config.Browser
+    }
+
+    if ($cli.ContainsKey('LogPath') -and -not [string]::IsNullOrWhiteSpace([string]$script:LogPath)) {
+        $script:PrefillPath = ([string]$script:LogPath).Trim()
+    }
+    elseif (-not [string]::IsNullOrWhiteSpace([string]$script:Config.LogPath)) {
+        $script:PrefillPath = ([string]$script:Config.LogPath).Trim()
+    }
+    else { $script:PrefillPath = '' }
+
+    $changes = New-Object System.Collections.Generic.List[string]
+    $skipped = New-Object System.Collections.Generic.List[string]
+    if ($Runtime) {
+        $after = [ordered]@{
+            RefreshSeconds       = "$($script:RefreshSeconds)"
+            TopN                 = "$($script:TopN)"
+            SamplePerPattern     = "$($script:SamplePerPattern)"
+            SampleMaxChars       = "$($script:SampleMaxChars)"
+            BacFlapMin           = "$($script:BacFlapMin)"
+            DefaultSeverities    = (@($script:DefaultSeverities) -join ',')
+            DefaultAreas         = (@($script:DefaultAreas) -join ',')
+            DefaultWindowMinutes = "$($script:LastMinutes)"
+            DefaultWindowEntire  = "$($script:DefaultWindowEntire)"
+            LogPath              = "$($script:PrefillPath)"
+        }
+        foreach ($k in @($after.Keys)) {
+            $old = [string]$before[$k]
+            $new = [string]$after[$k]
+            if ($old -ne $new) {
+                $oldLabel = if ([string]::IsNullOrEmpty($old)) { '(empty)' } else { $old }
+                $newLabel = if ([string]::IsNullOrEmpty($new)) { '(empty)' } else { $new }
+                [void]$changes.Add(("{0}: {1} -> {2}" -f $k, $oldLabel, $newLabel))
+            }
+        }
+        if (-not $cli.ContainsKey('Port') -and [int]$script:Config.PreferredPort -ne [int]$script:Port) {
+            [void]$skipped.Add(("PreferredPort={0} needs a host restart (still on {1})" -f `
+                        [int]$script:Config.PreferredPort, [int]$script:Sync['BoundPort']))
+        }
+        $script:Sync['PrefillPath'] = "$($script:PrefillPath)"
+    }
+
+    return [ordered]@{
+        Changes  = @($changes)
+        Skipped  = @($skipped)
+        Warnings = @($script:ConfigWarnings)
+    }
 }
 
-$script:ConfigWarnings = @($script:ConfigLoad.Warnings)
+[void](Apply-WatchConfig)
 
 # --- helpers (V1.1-aligned) ---
 $script:ReNormTs = [regex]'\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+'
@@ -3478,6 +3548,18 @@ function script:Handle-Api {
                     Clear-EntireCache -Reason 'restart'
                     Reset-Analysis
                     $script:Sync['LogPath'] = ''
+                    try {
+                        $reload = Apply-WatchConfig -Runtime
+                        foreach ($w in $reload.Warnings) { Write-WatchLog ("Config: {0}" -f $w) Yellow }
+                        if ($reload.Changes.Count -gt 0) {
+                            foreach ($c in $reload.Changes) { Write-WatchLog ("Config reload  {0}" -f $c) Cyan }
+                        }
+                        else { Write-WatchLog 'Config reload: no changes' DarkCyan }
+                        foreach ($s in $reload.Skipped) { Write-WatchLog ("Config reload  {0}" -f $s) Yellow }
+                    }
+                    catch {
+                        Write-WatchLog ("Config reload failed, keeping current settings: {0}" -f $_.Exception.Message) Red
+                    }
                     Write-WatchLog 'Session restarted (idle)' Yellow
                 }
                 'setWindow' {

@@ -65,6 +65,11 @@ Quick start — live Watch
    - While loading, a progress % appears; then the host tails new lines.
 
 5. Use Pause / Resume / Restart as needed.
+   Restart also re-reads watch-config.txt, so pattern depth, sample length,
+   poll interval and the BACnet flap threshold apply without closing the host
+   console (it prints what changed). Port and browser keys still need a host
+   restart. Severity / area chips and the time window keep your current
+   selection; the file re-seeds them when you reload the page.
    Change severity chips and time window anytime (reloads the window).
    Area chips (SYS / IMPL / CTRL / PARAM / OTHER) filter charts, patterns,
    and managers the same way — ingest always keeps every area, including
@@ -84,7 +89,9 @@ Watch config (Watch\watch-config.txt)
 -------------------------------------
 Self-documented key=value file (ranges noted in comments). CLI flags override
 the file when used. Invalid values are rejected, printed in the host console,
-and rewritten back to the default (self-correcting). Host is always localhost
+and rewritten back to the default (self-correcting). Edits are picked up by
+Restart in the dashboard, except PreferredPort / MaxPortTries / OpenBrowser /
+Browser, which need Run-Watch.cmd again. Host is always localhost
 (127.0.0.1) only.
 
   PreferredPort / MaxPortTries   First port to try, then next N ports

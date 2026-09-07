@@ -100,7 +100,7 @@ Useful parameters
                                      (overrides -From/-To)
   -NonInteractive                    No prompts (Run-Analyze.cmd)
   -Interactive                       Post-scan organize prompts
-  -Format Text|Html|Both          Report format (default Text;
+  -Format Text|Html|Both             Report format (default Text;
                                      Run-Analyze.cmd uses Html)
   -Organize All|Severity|Driver      Report shape (with -NonInteractive)
   -Severities FATAL,SEVERE,ERROR     For Organize=Severity

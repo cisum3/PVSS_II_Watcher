@@ -16,6 +16,11 @@ Watch 2.3
   show an implied up. START_MODE remains count-only.
 - Longer pattern labels / example lines (default 500 chars, was 180/300),
   with SampleMaxChars in watch-config.txt (100–2000).
+- Restart in the dashboard now re-reads watch-config.txt, so TopN,
+  SamplePerPattern, SampleMaxChars, BacFlapMin, RefreshSeconds and the log
+  path prefill apply without closing the host console. Changes are listed in
+  that console. PreferredPort / MaxPortTries / OpenBrowser / Browser still
+  need a host restart. CLI flags keep overriding the file.
 
 OfflineAnalyze 1.3
 - Project restarts section in text/HTML reports uses the same cycle view

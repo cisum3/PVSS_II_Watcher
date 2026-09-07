@@ -1438,10 +1438,24 @@
         setStatus('Idle — enter path and Start');
         updateChromeButtons();
         $('logPath').readOnly = false;
+        refreshReloadedConfig();
       }).catch(function (e) {
         setBanner('bannerError', String(e.message || e));
       });
     });
+  }
+
+  // Restart makes the host re-read watch-config.txt. Pick up the values that are
+  // visible from here; severity/area chips and the window keep the current
+  // selection and only re-seed from the file on a page reload.
+  function refreshReloadedConfig() {
+    if (state.useMock) return;
+    apiGet('/api/health').then(function (res) {
+      var h = res.json || {};
+      var rs = parseInt(h.refreshSeconds, 10);
+      if (rs >= 1 && rs <= 60) state.refreshSeconds = rs;
+      $('logPath').value = h.prefillPath || '';
+    }).catch(function () { });
   }
 
   function applyHealthDefaults(h) {

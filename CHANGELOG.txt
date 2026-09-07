@@ -1,0 +1,38 @@
+PVSS Log Analyzer — changelog
+==============================
+Newest first. Current versions are also in Watch\VERSION.txt and
+Watch\OfflineAnalyze\VERSION.txt.
+
+
+------------------------------------------------------------------------
+2.2 — 2026-09-06 (Watch)  ·  OfflineAnalyze unchanged at 1.2
+------------------------------------------------------------------------
+Author: Cisum
+
+- Preferences file Watch\watch-config.txt (port, refresh, browser, default
+  time window, severity/area chips, TopN, LogPath prefill, and more).
+  Invalid values are rejected, shown in the host console, and reset to
+  defaults. Start updates LogPath automatically.
+- Faster progress updates while a window is loading (~0.5s); steady
+  polling uses RefreshSeconds from the config file after that.
+- Area filter chips: SYS / IMPL / CTRL / PARAM / OTHER. Filters change
+  what charts, patterns, and managers show; every area is still collected
+  (unknown areas appear under OTHER). Module pages still show all areas.
+- Overview lists project restart times (pmon up / shutdown / stopped).
+- Snapshot HTML report: jump links to each section, project restarts,
+  manager health, and more BACnet / CNS / CoHo / Apogee detail. Same
+  look as the dashboard.
+- Dashboard starts with defaults from watch-config.txt (window, severity
+  chips, area chips, refresh).
+
+
+------------------------------------------------------------------------
+2.1 — 2026-09-06 (Watch)  ·  OfflineAnalyze 1.2
+------------------------------------------------------------------------
+Author: Cisum
+
+- Live Watch dashboard with severity filters, time windows, module pages
+  (BACnet, CNS, CoHo, Apogee), patterns, managers, and charts (including
+  project-up markers).
+- OfflineAnalyze HTML/text reports with findings, severity patterns,
+  module sections, project restart timeline, and manager health.

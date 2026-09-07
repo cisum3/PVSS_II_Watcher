@@ -1,24 +1,21 @@
 # Future backlog — PVSS Log Analyzer
 
-**Shipped baseline:** Watch **2.1** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
-**Current:** Watch **2.2** — feature-complete; documentation review before ship confirm
+**Shipped baseline:** Watch **2.2** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
+**Next field bump:** Watch **2.3** (do not edit 2.2 behavior without a version bump)
 
 **Rule:** Keep this file short. Add ideas as bullets. Do **not** grow archived PRDs/PROGRESS.
-Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + readMes).
+Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + user-facing `readMe.txt` / `CHANGELOG.txt`).
 
 Historical requirements / build trackers: [`archive/`](archive/).
+User-facing history: root [`CHANGELOG.txt`](../CHANGELOG.txt) (keep operator-focused — no docs/backlog links).
 
 ---
 
 ## Ideas / improvements
 
-### Watch
-- ~~Adaptive poll (fast while loading, RefreshSeconds after)~~ done in 2.2
-- ~~Snapshot HTML: sticky section jumps + project restart timeline~~ done in 2.2
-- ~~Snapshot closer Offline parity (module tables/samples; no hourly/INFO/driver deep-dive)~~ done in 2.2
+### Watch (→ 2.3+)
+- Project restart **cycle/uptime view** (replace flat up/shutdown/stopped list; uptime = up→shutdown, downtime = stopped→next up; Overview + snapshot)
 - WebSocket / SSE vs poll (parked — adaptive poll covers most UX gain)
-- ~~Overview project restart timeline (live)~~ done in 2.2
-- ~~Area (SYS/IMPL/CTRL/PARAM/OTHER) filter chips~~ done in 2.2
 - Manager instance rollup helpers
 - Remote bind / auth (explicitly out of current security model — localhost only)
 

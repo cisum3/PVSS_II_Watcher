@@ -32,6 +32,7 @@ Keep this folder outside the WinCC OA project log directory.
 
   Run-Watch.cmd              Double-click to start the live dashboard
   readMe.txt                 This file
+  CHANGELOG.txt              What changed per version (newest first)
   Watch\                     Runtime payload
     Watch-PvssLog.ps1        Localhost host + APIs
     VERSION.txt              Watch version (2.2)
@@ -121,6 +122,5 @@ Important notes
   - Do not install or run these scripts inside the project log folder.
   - Preferences live in Watch\watch-config.txt (LogPath updated on Start).
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-  - Field baseline: Watch 2.2 / OfflineAnalyze 1.2. Bump VERSION.txt (and
-    readMes) before the next field package. Dev ideas: docs\BACKLOG.md
-    (PRD/PROGRESS history is under docs\archive\).
+  - Field baseline: Watch 2.2 / OfflineAnalyze 1.2. See CHANGELOG.txt for
+    what changed in each release.

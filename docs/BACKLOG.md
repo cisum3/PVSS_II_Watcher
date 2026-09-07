@@ -1,7 +1,7 @@
 # Future backlog — PVSS Log Analyzer
 
 **Shipped baseline:** Watch **2.1** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
-**Current (unshipped):** Watch **2.2** — `watch-config.txt` + adaptive poll; confirm before ship
+**Current (unshipped):** Watch **2.2** — config + adaptive poll + richer snapshot HTML; confirm before ship
 
 **Rule:** Keep this file short. Add ideas as bullets. Do **not** grow archived PRDs/PROGRESS.
 Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + readMes).
@@ -14,6 +14,8 @@ Historical requirements / build trackers: [`archive/`](archive/).
 
 ### Watch
 - ~~Adaptive poll (fast while loading, RefreshSeconds after)~~ done in 2.2
+- ~~Snapshot HTML: sticky section jumps + project restart timeline~~ done in 2.2
+- ~~Snapshot closer Offline parity (module tables/samples; no hourly/INFO/driver deep-dive)~~ done in 2.2
 - WebSocket / SSE vs poll (parked — adaptive poll covers most UX gain)
 - Area (SYS/IMPL) filter; manager instance rollup helpers
 - Remote bind / auth (explicitly out of current security model — localhost only)

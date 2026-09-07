@@ -16,7 +16,7 @@ MaxPortTries=40
 # How often the dashboard polls once loading is done (seconds).
 # While a window is loading, the UI polls about every 0.5s for progress %.
 # RefreshSeconds: integer 1-60 (default 3)
-RefreshSeconds=3
+RefreshSeconds=1
 
 # Open a browser when the host starts.
 # OpenBrowser: true|false (default true)

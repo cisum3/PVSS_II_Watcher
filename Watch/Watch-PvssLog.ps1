@@ -957,12 +957,22 @@ function script:Process-LogLine {
         $Data.ProjectUp++
         $bucket.projectRestart = 1
         if ($Data.ProjectRestartEvents.Count -lt 200) {
-            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $mk; kind = 'up'; sample = $Line })
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'up'; sample = $Line })
         }
     }
     if ($script:ReProjectStartMode.IsMatch($Line)) { $Data.ProjectStartMode++ }
-    if ($script:ReProjectShutdown.IsMatch($Line)) { $Data.ProjectShutdown++ }
-    if ($script:ReProjectStopped.IsMatch($Line)) { $Data.ProjectStopped++ }
+    if ($script:ReProjectShutdown.IsMatch($Line)) {
+        $Data.ProjectShutdown++
+        if ($Data.ProjectRestartEvents.Count -lt 200) {
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'shutdown'; sample = $Line })
+        }
+    }
+    if ($script:ReProjectStopped.IsMatch($Line)) {
+        $Data.ProjectStopped++
+        if ($Data.ProjectRestartEvents.Count -lt 200) {
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'stopped'; sample = $Line })
+        }
+    }
     $mPmonRr = $script:RePmonMgrRestart.Match($Line)
     if ($mPmonRr.Success) {
         $Data.PmonMgrRestart++
@@ -1518,8 +1528,11 @@ function script:Build-Findings {
         [void]$findings.Add(("ApogeeDrv query timeouts: {0:N0}." -f $d.ApogeeQueryTimeout))
     }
     if ($d.ProjectUp -ge 1 -or $d.ProjectStopped -ge 1) {
-        [void]$findings.Add(("Project lifecycle (pmon): up={0:N0}, stopped={1:N0}, shutdown cmds={2:N0}, START_MODE={3:N0}." -f `
-            $d.ProjectUp, $d.ProjectStopped, $d.ProjectShutdown, $d.ProjectStartMode))
+        $upPreview = @($d.ProjectRestartEvents | Where-Object { $_.kind -eq 'up' } | Select-Object -First 5 | ForEach-Object { $_.t }) -join ', '
+        $line = ("Project lifecycle (pmon): up={0:N0}, stopped={1:N0}, shutdown cmds={2:N0}, START_MODE={3:N0}." -f `
+            $d.ProjectUp, $d.ProjectStopped, $d.ProjectShutdown, $d.ProjectStartMode)
+        if ($upPreview) { $line += (" First ups: {0}." -f $upPreview) }
+        [void]$findings.Add($line)
     }
     if ($d.PmonMgrRestart -ge 1) {
         $topRr = ($d.PmonRestartByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
@@ -1808,6 +1821,8 @@ function script:Build-SectionObject {
                 bacnet     = [ordered]@{
                     failed = $d.BacFailed; ok = $d.BacOk; endedFailed = $endedFailed; endedOk = $endedOk
                     flappers = $flappers; objectList = $d.BacObjectList
+                    failedDevices = $d.BacFailedByDevice.Count; okDevices = $d.BacOkByDevice.Count
+                    objectListDevices = $d.BacObjectListByDevice.Count
                     collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
                     collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
                     collectTrendSample = $d.BacCollectTrendSample; timeSyncSample = $d.BacTimeSyncSample
@@ -1953,6 +1968,18 @@ function script:Build-SnapshotObject {
     $coho = Build-SectionObject -Name 'coho' -SevFilter $SevFilter
     $apogee = Build-SectionObject -Name 'apogee' -SevFilter $SevFilter
     $perf = Build-SectionObject -Name 'perf' -SevFilter $SevFilter
+    $d = $script:Sync['Data']
+    $life = Build-LifecycleRows -Data $d
+    $projEvents = @()
+    if ($d.ProjectRestartEvents) {
+        foreach ($ev in @($d.ProjectRestartEvents)) {
+            $projEvents += [ordered]@{
+                t      = [string]$ev.t
+                kind   = [string]$ev.kind
+                sample = [string]$ev.sample
+            }
+        }
+    }
     $sevList = @()
     foreach ($sk in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
         if ($SevFilter[$sk]) { $sevList += $sk }
@@ -1976,6 +2003,21 @@ function script:Build-SnapshotObject {
         topManagers     = @($pulse.topManagers)
         patternsBySeverity = $patterns.patternsBySeverity
         managers        = @($managers.managers)
+        projectLifecycle = [ordered]@{
+            up         = [int]$d.ProjectUp
+            stopped    = [int]$d.ProjectStopped
+            shutdown   = [int]$d.ProjectShutdown
+            startMode  = [int]$d.ProjectStartMode
+            events     = @($projEvents)
+            capped     = (($d.ProjectUp + $d.ProjectStopped + $d.ProjectShutdown) -gt $projEvents.Count)
+        }
+        managerHealth = [ordered]@{
+            totals           = $life.totals
+            driverReady      = [int]$d.DriverReady
+            blockingSample   = $d.BlockingSample
+            unblockingSample = $d.UnblockingSample
+            managers         = @(@($life.managers) | Select-Object -First 25)
+        }
         bacnet          = $bacnet.bacnet
         cns             = $cns.cns
         coho            = $coho.coho
@@ -2235,6 +2277,47 @@ function script:Build-BacnetSvg {
     return $sb.ToString()
 }
 
+function script:Add-SnapCountNameTable {
+    param(
+        [System.Text.StringBuilder]$Sb,
+        $Encode,
+        $Rows,
+        [string]$NameKey,
+        [string]$NameHeader,
+        [string]$CountKey = 'count'
+    )
+    $list = @($Rows)
+    if ($list.Count -eq 0) { return }
+    [void]$Sb.AppendLine(('<table class="data"><thead><tr><th>Count</th><th>{0}</th></tr></thead><tbody>' -f $NameHeader))
+    foreach ($row in $list) {
+        $name = [string]$row.$NameKey
+        $n = [int]$row.$CountKey
+        [void]$Sb.AppendLine(('<tr><td>{0:N0}</td><td class="mono">{1}</td></tr>' -f $n, (& $Encode $name)))
+    }
+    [void]$Sb.AppendLine('</tbody></table>')
+}
+
+function script:Add-SnapPatternTable {
+    param(
+        [System.Text.StringBuilder]$Sb,
+        $Encode,
+        $Rows
+    )
+    $list = @($Rows)
+    if ($list.Count -eq 0) { return }
+    [void]$Sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>First</th><th>Last</th><th>Pattern</th><th>Example</th></tr></thead><tbody>')
+    foreach ($row in $list) {
+        $ex = ''
+        if ($row.samples) {
+            $arr = @($row.samples)
+            if ($arr.Count -gt 0) { $ex = [string]$arr[0] }
+        }
+        [void]$Sb.AppendLine(('<tr><td>{0:N0}</td><td class="meta">{1}</td><td class="meta">{2}</td><td class="mono">{3}</td><td class="mono meta">{4}</td></tr>' -f `
+            [int]$row.count, (& $Encode ([string]$row.first)), (& $Encode ([string]$row.last)), (& $Encode ([string]$row.pattern)), (& $Encode $ex)))
+    }
+    [void]$Sb.AppendLine('</tbody></table>')
+}
+
 function script:Convert-SnapshotToHtml {
     param($Snap)
     $e = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
@@ -2277,8 +2360,10 @@ function script:Convert-SnapshotToHtml {
   --sev-info: #008000;
   --font: "Segoe UI", "Candara", "Calibri", sans-serif;
   --mono: "Cascadia Mono", "Consolas", monospace;
+  --chrome-h: 5.5rem;
 }
 * { box-sizing: border-box; }
+html { scroll-padding-top: calc(var(--chrome-h) + 0.5rem); }
 body {
   margin: 0;
   font-family: var(--font);
@@ -2286,20 +2371,49 @@ body {
   background: var(--bg-deep);
   line-height: 1.45;
 }
-header {
+header.chrome {
+  position: sticky;
+  top: 0;
+  z-index: 5;
   background: var(--bg-panel);
   border-bottom: 1px solid var(--border);
-  padding: 1rem 1.25rem 1.1rem;
+  padding: 0.65rem 1.25rem 0.55rem;
 }
-.brand { color: var(--siemens-petrol); font-weight: 700; font-size: 1.15rem; letter-spacing: 0.02em; }
+.brand { color: var(--siemens-petrol); font-weight: 700; font-size: 1.05rem; letter-spacing: 0.02em; }
 .meta { color: var(--text-meta); font-size: 0.88rem; }
 .muted { color: var(--text-muted); }
-main { padding: 1rem 1.25rem 2.5rem; max-width: 72rem; }
-h1 { font-size: 1.15rem; margin: 0 0 0.35rem; }
+nav.jump {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.2rem 0.15rem;
+  margin-top: 0.45rem;
+}
+nav.jump a {
+  color: var(--text);
+  text-decoration: none;
+  font-size: 0.8rem;
+  padding: 0.2rem 0.45rem;
+  border-radius: 2px;
+  border: 1px solid transparent;
+}
+nav.jump a:hover {
+  color: var(--siemens-petrol);
+  background: var(--bg-elevated);
+  border-color: var(--border);
+}
+.intro {
+  padding: 0.85rem 1.25rem 0;
+  max-width: 72rem;
+}
+main { padding: 0.5rem 1.25rem 2.5rem; max-width: 72rem; }
+section {
+  scroll-margin-top: 0.35rem;
+}
+h1 { font-size: 1.05rem; margin: 0.15rem 0 0.2rem; font-weight: 600; }
 h2 {
   font-size: 1rem;
   color: var(--siemens-petrol);
-  margin: 1.4rem 0 0.55rem;
+  margin: 1.35rem 0 0.55rem;
   padding-bottom: 0.25rem;
   border-bottom: 1px solid var(--border);
 }
@@ -2343,6 +2457,9 @@ table.data th {
   background: var(--bg-elevated);
   font-weight: 600;
 }
+.kind-up { color: #90d090; }
+.kind-shutdown { color: #ffd0a0; }
+.kind-stopped { color: #ffb0b0; }
 .mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-word; }
 .card {
   background: var(--bg-panel);
@@ -2356,19 +2473,42 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
 .legend { font-size: 0.8rem; color: var(--text-muted); margin: 0.2rem 0 0.85rem; }
 .legend span { margin-right: 0.9rem; white-space: nowrap; }
 .swatch { display: inline-block; width: 0.65rem; height: 0.65rem; margin-right: 0.28rem; vertical-align: middle; border-radius: 1px; }
+@media (max-width: 640px) {
+  nav.jump a { font-size: 0.75rem; padding: 0.18rem 0.35rem; }
+}
 '@)
     [void]$sb.AppendLine('</style></head><body>')
-    [void]$sb.AppendLine('<header>')
+    [void]$sb.AppendLine('<header class="chrome">')
     [void]$sb.AppendLine('<div class="brand">PVSS Log Watch</div>')
     [void]$sb.AppendLine(('<h1>Snapshot report <span class="meta">v{0}</span></h1>' -f (& $e $Snap.meta.version)))
-    [void]$sb.AppendLine(('<p class="meta">Generated {0}  &middot;  by {1}</p>' -f (& $e $Snap.meta.generated), (& $e $script:Author)))
+    [void]$sb.AppendLine('<nav class="jump" aria-label="Report sections">')
+    foreach ($link in @(
+            @{ H = '#findings'; L = 'Findings' },
+            @{ H = '#severity'; L = 'Severity' },
+            @{ H = '#charts'; L = 'Charts' },
+            @{ H = '#project'; L = 'Project restarts' },
+            @{ H = '#mgr-health'; L = 'Manager health' },
+            @{ H = '#managers'; L = 'Top managers' },
+            @{ H = '#patterns'; L = 'Patterns' },
+            @{ H = '#bacnet'; L = 'BACnet' },
+            @{ H = '#cns'; L = 'CNS' },
+            @{ H = '#coho'; L = 'CoHo' },
+            @{ H = '#apogee'; L = 'Apogee' },
+            @{ H = '#perf'; L = 'Perf' }
+        )) {
+        [void]$sb.AppendLine(('<a href="{0}">{1}</a>' -f $link.H, $link.L))
+    }
+    [void]$sb.AppendLine('</nav></header>')
+
+    [void]$sb.AppendLine('<div class="intro">')
+    [void]$sb.AppendLine(('<p class="meta">Generated {0}</p>' -f (& $e $Snap.meta.generated)))
     [void]$sb.AppendLine(('<p class="meta">Log: <span class="mono">{0}</span></p>' -f (& $e $Snap.meta.logPath)))
     [void]$sb.AppendLine(('<p class="meta">{0}  &middot;  {1}</p>' -f (& $e $winLabel), (& $e $span)))
     [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  parsed lines: {1:N0}  &middot;  gen {2}</p>' -f `
         (& $e $sevOn), [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
-    [void]$sb.AppendLine('</header><main>')
+    [void]$sb.AppendLine('</div><main>')
 
-    [void]$sb.AppendLine('<h2>Findings</h2><ul class="findings">')
+    [void]$sb.AppendLine('<section id="findings"><h2>Findings</h2><ul class="findings">')
     if (-not $Snap.findings -or @($Snap.findings).Count -eq 0) {
         [void]$sb.AppendLine('<li class="muted">No findings.</li>')
     }
@@ -2377,19 +2517,19 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
             [void]$sb.AppendLine(('<li>{0}</li>' -f (& $e ([string]$f))))
         }
     }
-    [void]$sb.AppendLine('</ul>')
+    [void]$sb.AppendLine('</ul></section>')
 
-    [void]$sb.AppendLine('<h2>Severity counts</h2><div class="kpi-row">')
+    [void]$sb.AppendLine('<section id="severity"><h2>Severity counts</h2><div class="kpi-row">')
     foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
         $n = 0
         if ($Snap.severityCounts -and $Snap.severityCounts.$s -ne $null) { $n = [int]$Snap.severityCounts.$s }
         [void]$sb.AppendLine(('<div class="kpi" data-sev="{0}"><div class="label">{0}</div><div class="value">{1:N0}</div></div>' -f $s, $n))
     }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
     $gran = 'minute'
     if ($Snap.series -and $Snap.series.granularity) { $gran = [string]$Snap.series.granularity }
-    [void]$sb.AppendLine(('<h2>Activity charts (by {0})</h2>' -f (& $e $gran)))
+    [void]$sb.AppendLine(('<section id="charts"><h2>Activity charts (by {0})</h2>' -f (& $e $gran)))
     $points = @()
     if ($Snap.series -and $Snap.series.byMinute) { $points = @($Snap.series.byMinute) }
     if ($points.Count -eq 0) {
@@ -2409,17 +2549,115 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         }
         [void]$sb.AppendLine('<div class="card">')
         [void]$sb.AppendLine('<h3>Message volume</h3>')
-        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#e00000"></span>FATAL</span><span><span class="swatch" style="background:#c000a0"></span>SEVERE</span><span><span class="swatch" style="background:#b00040"></span>ERROR</span><span><span class="swatch" style="background:#e07000"></span>WARNING</span><span><span class="swatch" style="background:#008000"></span>INFO</span></div>')
+        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#e00000"></span>FATAL</span><span><span class="swatch" style="background:#c000a0"></span>SEVERE</span><span><span class="swatch" style="background:#b00040"></span>ERROR</span><span><span class="swatch" style="background:#e07000"></span>WARNING</span><span><span class="swatch" style="background:#008000"></span>INFO</span><span><span class="swatch" style="background:#e0a000"></span>project up</span></div>')
         [void]$sb.AppendLine((Build-VolumeSvg -Points $points -Gran $gran))
+        [void]$sb.AppendLine('<p class="meta">Dashed amber line = project up / restart (pmon).</p>')
         [void]$sb.AppendLine('</div>')
         [void]$sb.AppendLine('<div class="card">')
         [void]$sb.AppendLine('<h3>BACnet Failed / OK</h3>')
-        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#c000a0"></span>Failed</span><span><span class="swatch" style="background:#008000"></span>OK</span></div>')
+        [void]$sb.AppendLine('<div class="legend"><span><span class="swatch" style="background:#c000a0"></span>Failed</span><span><span class="swatch" style="background:#008000"></span>OK</span><span><span class="swatch" style="background:#e0a000"></span>project up</span></div>')
         [void]$sb.AppendLine((Build-BacnetSvg -Points $points -Gran $gran))
         [void]$sb.AppendLine('</div>')
     }
+    [void]$sb.AppendLine('</section>')
 
-    [void]$sb.AppendLine('<h2>Patterns by severity</h2>')
+    # Project restart timeline
+    $pl = $Snap.projectLifecycle
+    [void]$sb.AppendLine('<section id="project"><h2>Project restarts (pmon)</h2>')
+    [void]$sb.AppendLine('<p class="meta">Timeline of project up / shutdown / completely stopped (log timestamps). START_MODE counted only (too frequent to list).</p>')
+    if ($pl) {
+        $capNote = if ($pl.capped) { ' (event list capped at 200)' } else { '' }
+        [void]$sb.AppendLine(('<p class="meta">up={0:N0}  &middot;  stopped={1:N0}  &middot;  shutdown={2:N0}  &middot;  START_MODE={3:N0}  &middot;  listed={4:N0}{5}</p>' -f `
+            [int]$pl.up, [int]$pl.stopped, [int]$pl.shutdown, [int]$pl.startMode, @($pl.events).Count, $capNote))
+        $evs = @($pl.events)
+        if ($evs.Count -gt 0) {
+            [void]$sb.AppendLine('<table class="data"><thead><tr><th>Kind</th><th>Time</th></tr></thead><tbody>')
+            foreach ($ev in $evs) {
+                $kind = [string]$ev.kind
+                $cls = switch ($kind) {
+                    'up' { 'kind-up' }
+                    'shutdown' { 'kind-shutdown' }
+                    'stopped' { 'kind-stopped' }
+                    default { '' }
+                }
+                [void]$sb.AppendLine(('<tr><td class="{0}">{1}</td><td class="mono">{2}</td></tr>' -f `
+                    $cls, (& $e $kind), (& $e ([string]$ev.t))))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
+        elseif (([int]$pl.up + [int]$pl.stopped + [int]$pl.shutdown) -gt 0) {
+            [void]$sb.AppendLine('<p class="muted">Counts present but no event timestamps were retained (re-run Start after updating Watch).</p>')
+        }
+        else {
+            [void]$sb.AppendLine('<p class="muted">No project up / stop / shutdown events in this window.</p>')
+        }
+    }
+    else {
+        [void]$sb.AppendLine('<p class="muted">No project lifecycle data.</p>')
+    }
+    [void]$sb.AppendLine('</section>')
+
+    # Manager health
+    $mh = $Snap.managerHealth
+    [void]$sb.AppendLine('<section id="mgr-health"><h2>Manager health (pmon)</h2>')
+    [void]$sb.AppendLine('<p class="meta">Start/stop = Manager Start PROJ / Manager Stop. Restarts = Detected stopped manager. Blocking = no heartbeat.</p>')
+    if ($mh -and $mh.totals) {
+        $t = $mh.totals
+        [void]$sb.AppendLine(('<p>Starts: <strong>{0:N0}</strong>  &middot;  Stops: <strong>{1:N0}</strong>  &middot;  Auto-restarts: <strong>{2:N0}</strong>  &middot;  Blocking: <strong>{3:N0}</strong>  &middot;  Unblocked: <strong>{4:N0}</strong>  &middot;  Driver-ready: <strong>{5:N0}</strong></p>' -f `
+            [int]$t.starts, [int]$t.stops, [int]$t.restarts, [int]$t.blocking, [int]$t.unblocked, [int]$mh.driverReady))
+        if ($mh.blockingSample) {
+            [void]$sb.AppendLine(('<p class="meta mono">{0}</p>' -f (& $e ([string]$mh.blockingSample))))
+        }
+        if ($mh.unblockingSample) {
+            [void]$sb.AppendLine(('<p class="meta mono">{0}</p>' -f (& $e ([string]$mh.unblockingSample))))
+        }
+        $mrows = @($mh.managers)
+        if ($mrows.Count -gt 0) {
+            [void]$sb.AppendLine('<table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>')
+            foreach ($r in $mrows) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1:N0}</td><td>{2:N0}</td><td>{3:N0}</td><td>{4:N0}</td><td>{5:N0}</td></tr>' -f `
+                    (& $e ([string]$r.name)), [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
+        else {
+            [void]$sb.AppendLine('<p class="muted">No per-manager start/stop/blocking activity.</p>')
+        }
+    }
+    else {
+        [void]$sb.AppendLine('<p class="muted">No manager health data.</p>')
+    }
+    [void]$sb.AppendLine('</section>')
+
+    [void]$sb.AppendLine('<section id="managers"><h2>Top managers</h2>')
+    $mgrs = @($Snap.topManagers)
+    if ($mgrs.Count -eq 0) {
+        [void]$sb.AppendLine('<p class="muted">No managers.</p>')
+    }
+    else {
+        # Prefer severity breakdown from full managers list when available
+        $byName = @{}
+        foreach ($m in @($Snap.managers)) {
+            if ($m.name) { $byName[[string]$m.name] = $m }
+        }
+        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>FATAL</th><th>SEVERE</th><th>ERROR</th><th>WARNING</th><th>INFO</th><th>Manager</th></tr></thead><tbody>')
+        foreach ($m in $mgrs) {
+            $name = [string]$m.name
+            $sev = $null
+            if ($byName.ContainsKey($name) -and $byName[$name].severities) { $sev = $byName[$name].severities }
+            $f = if ($sev) { [int]$sev.FATAL } else { 0 }
+            $sv = if ($sev) { [int]$sev.SEVERE } else { 0 }
+            $er = if ($sev) { [int]$sev.ERROR } else { 0 }
+            $w = if ($sev) { [int]$sev.WARNING } else { 0 }
+            $inf = if ($sev) { [int]$sev.INFO } else { 0 }
+            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td>{1:N0}</td><td>{2:N0}</td><td>{3:N0}</td><td>{4:N0}</td><td>{5:N0}</td><td class="mono">{6}</td></tr>' -f `
+                [int]$m.count, $f, $sv, $er, $w, $inf, (& $e $name)))
+        }
+        [void]$sb.AppendLine('</tbody></table>')
+    }
+    [void]$sb.AppendLine('</section>')
+
+    [void]$sb.AppendLine('<section id="patterns"><h2>Patterns by severity</h2>')
     foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
         $color = switch ($s) {
             'FATAL' { 'var(--sev-fatal)' }
@@ -2434,39 +2672,22 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
             [void]$sb.AppendLine('<p class="muted">No patterns (filtered out or none in window).</p>')
             continue
         }
-        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>First</th><th>Last</th><th>Pattern</th></tr></thead><tbody>')
-        foreach ($row in $list) {
-            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td class="meta">{1}</td><td class="meta">{2}</td><td class="mono">{3}</td></tr>' -f `
-                [int]$row.count, (& $e ([string]$row.first)), (& $e ([string]$row.last)), (& $e ([string]$row.pattern))))
-        }
-        [void]$sb.AppendLine('</tbody></table>')
+        Add-SnapPatternTable -Sb $sb -Encode $e -Rows $list
     }
-
-    [void]$sb.AppendLine('<h2>Top managers</h2>')
-    $mgrs = @($Snap.topManagers)
-    if ($mgrs.Count -eq 0) {
-        [void]$sb.AppendLine('<p class="muted">No managers.</p>')
-    }
-    else {
-        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>Manager</th></tr></thead><tbody>')
-        foreach ($m in $mgrs) {
-            [void]$sb.AppendLine(('<tr><td>{0:N0}</td><td class="mono">{1}</td></tr>' -f [int]$m.count, (& $e ([string]$m.name))))
-        }
-        [void]$sb.AppendLine('</tbody></table>')
-    }
+    [void]$sb.AppendLine('</section>')
 
     $bac = $Snap.bacnet
-    [void]$sb.AppendLine('<h2>BACnet</h2><div class="card">')
+    [void]$sb.AppendLine('<section id="bacnet"><h2>BACnet</h2><div class="card">')
     if ($bac) {
-        [void]$sb.AppendLine(('<p>Failed: <strong>{0:N0}</strong> &middot; OK: <strong>{1:N0}</strong> &middot; ended Failed: <strong>{2:N0}</strong> &middot; ended OK: <strong>{3:N0}</strong> &middot; flappers: <strong>{4:N0}</strong> &middot; object-list: <strong>{5:N0}</strong></p>' -f `
-            [int]$bac.failed, [int]$bac.ok, [int]$bac.endedFailed, [int]$bac.endedOk, [int]$bac.flappers, [int]$bac.objectList))
-        [void]$sb.AppendLine(('<p>CollectTrend: <strong>{0:N0}</strong> ({1:N0} properties) &middot; TimeSync: <strong>{2:N0}</strong> ({3:N0} properties)</p>' -f `
-            [int]$bac.collectTrend, [int]$bac.collectTrendProps, [int]$bac.timeSync, [int]$bac.timeSyncProps))
-        if ($bac.collectTrendSample) {
-            [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.collectTrendSample))))
+        [void]$sb.AppendLine(('<p>Failed: <strong>{0:N0}</strong> ({1:N0} devices) &middot; OK: <strong>{2:N0}</strong> ({3:N0} devices) &middot; ended Failed: <strong>{4:N0}</strong> &middot; ended OK: <strong>{5:N0}</strong> &middot; flappers: <strong>{6:N0}</strong></p>' -f `
+            [int]$bac.failed, [int]$bac.failedDevices, [int]$bac.ok, [int]$bac.okDevices, [int]$bac.endedFailed, [int]$bac.endedOk, [int]$bac.flappers))
+        [void]$sb.AppendLine(('<p>Object-list: <strong>{0:N0}</strong> ({1:N0} devices) &middot; CollectTrend: <strong>{2:N0}</strong> ({3:N0} properties) &middot; TimeSync: <strong>{4:N0}</strong> ({5:N0} properties)</p>' -f `
+            [int]$bac.objectList, [int]$bac.objectListDevices, [int]$bac.collectTrend, [int]$bac.collectTrendProps, [int]$bac.timeSync, [int]$bac.timeSyncProps))
+        if ($bac.failedSample) {
+            [void]$sb.AppendLine(('<p class="muted mono">Failed example: {0}</p>' -f (& $e ([string]$bac.failedSample))))
         }
-        if ($bac.timeSyncSample) {
-            [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.timeSyncSample))))
+        if ($bac.okSample) {
+            [void]$sb.AppendLine(('<p class="muted mono">OK example: {0}</p>' -f (& $e ([string]$bac.okSample))))
         }
         if ($bac.activity -and @($bac.activity).Count -gt 0) {
             [void]$sb.AppendLine('<h3>Device status activity</h3><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>')
@@ -2476,44 +2697,152 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
             }
             [void]$sb.AppendLine('</tbody></table>')
         }
+        if ($bac.endedFailedList -and @($bac.endedFailedList).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>Devices that ended Failed</h3><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th></tr></thead><tbody>')
+            foreach ($row in @($bac.endedFailedList)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td></tr>' -f `
+                    (& $e ([string]$row.device)), [int]$row.failed, [int]$row.ok, [int]$row.flips))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
+        if ($bac.objectListSample) {
+            [void]$sb.AppendLine(('<p class="muted mono">Object-list example: {0}</p>' -f (& $e ([string]$bac.objectListSample))))
+        }
+        if ($bac.objectListTop -and @($bac.objectListTop).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>Top object-list devices</h3>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $bac.objectListTop -NameKey 'device' -NameHeader 'Device'
+        }
+        if ([int]$bac.collectTrend -gt 0 -or ($bac.collectTrendCodes -and @($bac.collectTrendCodes).Count -gt 0)) {
+            [void]$sb.AppendLine('<h3>BACnetCollectTrend</h3>')
+            if ($bac.collectTrendSample) {
+                [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.collectTrendSample))))
+            }
+            if ($bac.collectTrendCodes -and @($bac.collectTrendCodes).Count -gt 0) {
+                [void]$sb.AppendLine('<p class="meta">Error codes</p>')
+                Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $bac.collectTrendCodes -NameKey 'code' -NameHeader 'Code'
+            }
+            if ($bac.collectTrendTop -and @($bac.collectTrendTop).Count -gt 0) {
+                [void]$sb.AppendLine('<p class="meta">Top properties</p>')
+                Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $bac.collectTrendTop -NameKey 'property' -NameHeader 'Property'
+            }
+        }
+        if ([int]$bac.timeSync -gt 0 -or ($bac.timeSyncCodes -and @($bac.timeSyncCodes).Count -gt 0)) {
+            [void]$sb.AppendLine('<h3>BACnetTimeSync</h3>')
+            if ($bac.timeSyncSample) {
+                [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$bac.timeSyncSample))))
+            }
+            if ($bac.timeSyncCodes -and @($bac.timeSyncCodes).Count -gt 0) {
+                [void]$sb.AppendLine('<p class="meta">Error codes</p>')
+                Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $bac.timeSyncCodes -NameKey 'code' -NameHeader 'Code'
+            }
+            if ($bac.timeSyncTop -and @($bac.timeSyncTop).Count -gt 0) {
+                [void]$sb.AppendLine('<p class="meta">Top properties</p>')
+                Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $bac.timeSyncTop -NameKey 'property' -NameHeader 'Property'
+            }
+        }
+        if ($bac.lifecycle -and $bac.lifecycle.managers -and @($bac.lifecycle.managers).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>BACnet manager health</h3><table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>')
+            foreach ($r in @($bac.lifecycle.managers)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td></tr>' -f `
+                    (& $e ([string]$r.name)), [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
     }
     else {
         [void]$sb.AppendLine('<p class="muted">No BACnet data.</p>')
     }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
     $cns = $Snap.cns
-    [void]$sb.AppendLine('<h2>CNS</h2><div class="card">')
+    [void]$sb.AppendLine('<section id="cns"><h2>CNS</h2><div class="card">')
     if ($cns) {
         [void]$sb.AppendLine(('<p>ResolveNodes: <strong>{0:N0}</strong> &middot; ReducedFunction: <strong>{1:N0}</strong> &middot; ICns: <strong>{2:N0}</strong> &middot; TryRenewSession: <strong>{3:N0}</strong></p>' -f `
             [int]$cns.resolveNodes, [int]$cns.reducedFunction, [int]$cns.icns, [int]$cns.tryRenew))
+        if ($cns.patterns -and @($cns.patterns).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>CNS patterns</h3>')
+            Add-SnapPatternTable -Sb $sb -Encode $e -Rows $cns.patterns
+        }
+        if ($cns.lifecycle -and $cns.lifecycle.managers -and @($cns.lifecycle.managers).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>CNS-related manager health</h3><table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>')
+            foreach ($r in @($cns.lifecycle.managers)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td></tr>' -f `
+                    (& $e ([string]$r.name)), [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
     }
     else { [void]$sb.AppendLine('<p class="muted">No CNS data.</p>') }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
     $coho = $Snap.coho
-    [void]$sb.AppendLine('<h2>CoHo</h2><div class="card">')
+    [void]$sb.AppendLine('<section id="coho"><h2>CoHo</h2><div class="card">')
     if ($coho) {
         [void]$sb.AppendLine(('<p>Stuck/drop: <strong>{0:N0}</strong></p>' -f [int]$coho.stuck))
         if ($coho.sample) { [void]$sb.AppendLine(('<p class="mono meta">{0}</p>' -f (& $e ([string]$coho.sample)))) }
+        if ($coho.topNames -and @($coho.topNames).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>Top stuck names</h3>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $coho.topNames -NameKey 'name' -NameHeader 'Name'
+        }
+        if ($coho.lifecycle -and $coho.lifecycle.managers -and @($coho.lifecycle.managers).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>CoHo manager health</h3><table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>')
+            foreach ($r in @($coho.lifecycle.managers)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td></tr>' -f `
+                    (& $e ([string]$r.name)), [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
     }
     else { [void]$sb.AppendLine('<p class="muted">No CoHo data.</p>') }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
     $apo = $Snap.apogee
-    [void]$sb.AppendLine('<h2>Apogee</h2><div class="card">')
+    [void]$sb.AppendLine('<section id="apogee"><h2>Apogee</h2><div class="card">')
     if ($apo -and (([int]$apo.events + [int]$apo.drvLines + [int]$apo.trendOverflow + [int]$apo.alertId + [int]$apo.getDataFail) -gt 0)) {
-        [void]$sb.AppendLine(('<p>CoHo/Orch events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; unique PPCL: <strong>{2:N0}</strong></p>' -f `
-            [int]$apo.events, [int]$apo.updatePoints, [int]$apo.uniquePpcl))
-        [void]$sb.AppendLine(('<p>ApogeeDrv: lines <strong>{0:N0}</strong> &middot; trend overflow <strong>{1:N0}</strong> &middot; sequence gaps <strong>{2:N0}</strong> &middot; AlertID <strong>{3:N0}</strong> &middot; query timeout <strong>{4:N0}</strong> &middot; get-data fail <strong>{5:N0}</strong></p>' -f `
-            [int]$apo.drvLines, [int]$apo.trendOverflow, [int]$apo.trendSeq, [int]$apo.alertId, [int]$apo.queryTimeout, [int]$apo.getDataFail))
-        if ($apo.trendSample) { [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$apo.trendSample)))) }
-        if ($apo.alertSample) { [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$apo.alertSample)))) }
+        [void]$sb.AppendLine('<h3>CoHo / Orch Apogee</h3>')
+        [void]$sb.AppendLine(('<p>Events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; Trace repetitions: <strong>{2:N0}</strong>{3} &middot; unique PPCL: <strong>{4:N0}</strong></p>' -f `
+            [int]$apo.events, [int]$apo.updatePoints, [int]$apo.repetition,
+            $(if ([int]$apo.other -gt 0) { (' &middot; Other: <strong>{0:N0}</strong>' -f [int]$apo.other) } else { '' }),
+            [int]$apo.uniquePpcl))
+        if ($apo.sample) { [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$apo.sample)))) }
+        if ($apo.topPpcl -and @($apo.topPpcl).Count -gt 0) {
+            [void]$sb.AppendLine('<p class="meta">Top PPCL programs by UpdatePoints</p>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $apo.topPpcl -NameKey 'name' -NameHeader 'PPCL'
+        }
+        [void]$sb.AppendLine('<h3>WCCOAApogeeDrv</h3>')
+        [void]$sb.AppendLine(('<p>Driver lines: <strong>{0:N0}</strong> &middot; trend overflow: <strong>{1:N0}</strong> ({2:N0} devices, {3:N0} trends) &middot; sequence gaps: <strong>{4:N0}</strong></p>' -f `
+            [int]$apo.drvLines, [int]$apo.trendOverflow, [int]$apo.trendDevices, [int]$apo.trendNames, [int]$apo.trendSeq))
+        [void]$sb.AppendLine(('<p>AlertID: <strong>{0:N0}</strong> &middot; query timeout: <strong>{1:N0}</strong> &middot; get-data fail: <strong>{2:N0}</strong> ({3:N0} devices)</p>' -f `
+            [int]$apo.alertId, [int]$apo.queryTimeout, [int]$apo.getDataFail, [int]$apo.getDataDevices))
+        if ($apo.trendSample) { [void]$sb.AppendLine(('<p class="muted mono">Trend example: {0}</p>' -f (& $e ([string]$apo.trendSample)))) }
+        if ($apo.alertSample) { [void]$sb.AppendLine(('<p class="muted mono">AlertID example: {0}</p>' -f (& $e ([string]$apo.alertSample)))) }
+        if ($apo.timeoutSample) { [void]$sb.AppendLine(('<p class="muted mono">Timeout example: {0}</p>' -f (& $e ([string]$apo.timeoutSample)))) }
+        if ($apo.getDataSample) { [void]$sb.AppendLine(('<p class="muted mono">Get-data example: {0}</p>' -f (& $e ([string]$apo.getDataSample)))) }
+        if ($apo.topTrendDevices -and @($apo.topTrendDevices).Count -gt 0) {
+            [void]$sb.AppendLine('<p class="meta">Top devices by trend overflow</p>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $apo.topTrendDevices -NameKey 'device' -NameHeader 'Device'
+        }
+        if ($apo.topTrends -and @($apo.topTrends).Count -gt 0) {
+            [void]$sb.AppendLine('<p class="meta">Top trends by overflow</p>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $apo.topTrends -NameKey 'trend' -NameHeader 'Trend'
+        }
+        if ($apo.topGetDataDevices -and @($apo.topGetDataDevices).Count -gt 0) {
+            [void]$sb.AppendLine('<p class="meta">Top devices by get-data failure</p>')
+            Add-SnapCountNameTable -Sb $sb -Encode $e -Rows $apo.topGetDataDevices -NameKey 'device' -NameHeader 'Device'
+        }
+        if ($apo.lifecycle -and $apo.lifecycle.managers -and @($apo.lifecycle.managers).Count -gt 0) {
+            [void]$sb.AppendLine('<h3>ApogeeDrv manager health</h3><table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>')
+            foreach ($r in @($apo.lifecycle.managers)) {
+                [void]$sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1}</td><td>{2}</td><td>{3}</td><td>{4}</td><td>{5}</td></tr>' -f `
+                    (& $e ([string]$r.name)), [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked))
+            }
+            [void]$sb.AppendLine('</tbody></table>')
+        }
     }
     else { [void]$sb.AppendLine('<p class="muted">No Apogee data.</p>') }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
-    [void]$sb.AppendLine('<h2>Perf / parse notes</h2><div class="card">')
+    [void]$sb.AppendLine('<section id="perf"><h2>Perf / parse notes</h2><div class="card">')
     if ($Snap.perf -and $Snap.perf.perfCategories) {
         [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>Category</th></tr></thead><tbody>')
         foreach ($row in @($Snap.perf.perfCategories)) {
@@ -2524,9 +2853,9 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     if ($Snap.perf -and $null -ne $Snap.perf.unparsedLines) {
         [void]$sb.AppendLine(('<p class="meta">Unparsed / skipped lines: {0:N0}</p>' -f [int]$Snap.perf.unparsedLines))
     }
-    [void]$sb.AppendLine('</div>')
+    [void]$sb.AppendLine('</div></section>')
 
-    [void]$sb.AppendLine(('<footer>Snapshot from live Watch state (no re-scan). Watch v{0} by {1}.</footer>' -f `
+    [void]$sb.AppendLine(('<footer>Snapshot from live Watch state (no re-scan). Watch v{0} &middot; tool by {1}.</footer>' -f `
         (& $e $Snap.meta.version), (& $e $script:Author)))
     [void]$sb.AppendLine('</main></body></html>')
     return $sb.ToString()

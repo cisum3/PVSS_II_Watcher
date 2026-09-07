@@ -69,6 +69,7 @@ Quick start — live Watch
    it uses RefreshSeconds from watch-config.txt.
 
 6. Snapshot downloads an HTML report of the current in-memory analysis
+   (sticky section jumps, project restart times, manager health, charts).
    (browser download only; same Siemens dark look as the dashboard).
 
 7. Ctrl+C in the host console stops the server.

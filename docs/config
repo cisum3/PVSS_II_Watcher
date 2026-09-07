@@ -1,0 +1,285 @@
+[general]
+proj_version = "3.20"
+SecurityPlugin = "SecurityPlugin"
+independentAlertAck = 1
+allowPeriphOnDpId = "Yes"
+langs = "en_US.utf8"
+langs = "fr_CA.utf8"
+connectDelay = 60
+maxDpNamesCount = 0
+maxLogFileSize = 100
+maxLogFileSize = 50
+maxConnectMessageSize = 0
+cnsUseDoubleAsterisk = 0
+pvss_path = "C:/Siemens/WinCC_OA/3.19/"
+proj_path = "E:/GMSProjects/GMSMainProject"
+proj_path = "E:/GMSProjects/Campus_2_9-1-26"
+pmonPort = 4999
+dataPort = 4898
+eventPort = 5000
+dataHost = "localhost"
+eventHost = "localhost"
+distributed = 1
+mxProxy = "none"
+
+[driver]
+driverAckClassPrefix = "GMSField_"
+
+[data]
+repair = "on"
+useLocalIdentification = 1
+checkMemory = 0
+dataBgName = ""
+waitTimeForBGStart = 1
+
+[event]
+maxInputMsgCount = 2000000
+maxBcmBufferSize = 2000000
+negativeSourceTimeDiff = 300
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+attributesFromAddValues = 0
+maxAlertConnectCount = 2000000
+maxValueConnectCount = 2000000
+maxValueRequestCount = 2000000
+
+[Journaling]
+EventBufferSize = 1000
+BufferOverrunLogInterval = 5
+
+[GMSBACnet]
+waitSecondsForIdps = 240
+maxBcmBufferSize = 100000
+OOS_SUPPRESS = 4
+OOS_SUPPRESS = 13
+
+[opc_22]
+server = "" ""
+
+[ctrl_253]
+ctrlMaxPendings = 20000
+
+[ctrl_254]
+ctrlMaxPendings = 10000
+_dpConnectWildCards = 1
+
+[GmsCoHoMngr_Gms]
+short = CoHoMm,CoHoCns,CoHoSessionModule,CoHoReaction,CoHoTrigger,CoHoOpc,CoHoFolderSupervisor,CoHoMacro,CoHoBACnet,CoHoShortList,CoHoEqs,CoHoTecApp,CoHoDirectoryServiceIntegration,CoHoCommandPropagation,CoHoDocumentPrinter,CoHoCryptography,CoHoUserRoleChange,CoHoHdbManagement,CoHoApgDisc,CoHoApgTrend
+reflectOrchestratorDependencies = true
+
+[GmsCoHoMngr_Gms2]
+short = CoHoOperatorTasks,CoHoApgTrend,CoHoWorkstationScene,CoHoWorkstationScheduler,CoHoBacDisc,CoHoDistribution,OwnershipCoHostManager,CoHoSecurity,CoHoFileTransfer,CoHoApogeeBACnet,CoHoApgEping,CoHoScripting,CoHoApgDisc,CoHoUserImport,CoHoPasswordPolicy
+reflectOrchestratorDependencies = true
+
+[GmsCoHoMngr_Gms3]
+short = CohoSchedulerSynchronization,CoHoCryptography,CoHoUserRoleChange,CoHoHdbManagement,CoHoPPCL
+reflectOrchestratorDependencies = true
+
+[GmsCoHoMngr_Gms4]
+short = CoHoAlarm
+reflectOrchestratorDependencies = true
+
+[GmsCoHoMngr_Gms_CrossTrunk]
+short = CoHoCrossTrunk
+reflectOrchestratorDependencies = true
+
+[GMS]
+waitTimeForProjectStartup = 1200000
+disableCacheByName = "WCCOAHDBWriter,WCCOAHDBReader,WCCOAStatPropMgr,WCCOAEvPrint"
+disableCacheByID = "CTRL_1, CTRL_253"
+SystemName = "System5"
+SystemId = "5"
+ProjectType = Server
+Version = "9.0.44.0"
+ReleaseDate = "LOGsSubT84eImNZ3JjbsBS37CoDC/cHwsOcc+4EQqwSTNwqrDAIq4iKB7EzxCTd8tctlUPru9PPJpvtHSfEnQ2ac24TfxJd8TnJXjvVPxzlJx7bWu5i6W3jCeToKsMDX6WYtaCXJdk6SUctW/LMXeirDejQ0wAsCiHkaZYSFWw2NxC4xZyXxipnqH5kclNiGTIey684npB/seynhC6R8bkd0iI5WYgfZ6zzsfY6JDFC9PUcfWNS9I7qGUXsHGQlgZ1tHSoJCeuCRcqk2gBEMGw/hFxpY2asjXUJXL7DvZiLY/H5XJ+bdVJo7PajqGFFdjkPNIeF3IRuWAWYPH23uNu+7vzxyPjxlPkdNUzwvZT48Zz45LjAuMDExNS4wPC9nPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+ccomHTTPS = 0
+ccomCert = ""
+ccomCertThumbPrint = ""
+ccomCertIssuedFor = ""
+ccomClientEncoding = 0
+hdbReaderPort = 7775
+ccomPort = 8000
+SharedPath = \\FMSC2ADESIGO.fab.uab.edu\Campus_2_9-1-26
+HDB = "SERVER=fmsql2025\\;DATABASE=FMSC2ADESIGO_CAMPUS_2_HDB_Secondary_2026_A;Trusted_Connection=yes;Encrypt=False;Trust Server Certificate=False;"
+hdbEncryption = "No"
+IsDataMaster = "0"
+
+[BAS_Common]
+isExtension = 1
+Version = "9.0.0010.0"
+ReleaseDate = "Livl0p7f6P/Z0emxqiNDMGjVLOu4VCqrUr2tEKK/SUuWqenmB5M5d0HXv2p2eyR5vaq+uykVUPVkfGmJSIyWzCZpjs1cqDIHvM2R7QcMWwr4phUIjdAslusR9UA8KFpCj/HYCuNuYi+XzlZLCJQG1odF6gvONlO43X9Wwh4j+GnqQyh5QTY3NVxk3GOlMhw5oCbjkM3Cvkfgr7Oy4joflD+K2+Hr/1fuk2K34cMrO5rww02v++J7eHJppXxcEpgVJgVLuwXkxQrwCXYRMKkBcz2DPIYGjCqs+C0GdgagqXoIX9UWloo9gq9XN8btNqh/JPuU4pg7uglsIEGiyZ+Zg++7vzxyPjxlPkJBU19Db21tb248L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA5OC4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[BAS_NA]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "ogvRtaMSXsNkH86UwmJnvVazNwIysvCNKrIvlTw28v/zlertb35KO3kpuMsiyuiJ+m0NuBxkZ8ZAOS9yQQynASYCeXKZkX76qEePnHGLp7C92fdKv7w7c3KE4OEND8l6S5w6aCO4qXa2pb/U0Vh0jOVpaivriNseYQ3ejx/qw8kA8vuwriv8XZDPRaU3O0YAjEEnqXfMUKoY6DB9mqOzXWk0Hr3OtTFCV2KFhZfvux1HzWE0elf2arH87WAhMbzQhoJ0zqeAzWMkWe31/Xybv2q1rtVaz/VURugyQn/Z5pfpL5K5QFMM99G5Lb7U1nht9uPf5Chd7CnlVUVjbcNdOe+7vzxyPjxlPkJBU19OQTwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMDk4LjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[APOGEE_System]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "u15XeqZl+MffTQXDjuw64C8a++QcTAOiEHMJOlGph65/pyz2eZ7jL5sNoVQnSgcZNF3YNGwpcgiLSwxZQqi3D1OHebzemGi1wlVhN+KJLYq9JxNKsKeQHCJAXcrhEvmFi3QkgXqjI/pfcClBK8wBx7KGKNl9G3L1qQ+9IS03HUhQ2RdysoLnkLD7OxEn4b8oZbQGW9Qx/BtzW62gtJh/4xsm22XgSi7uKLqYEDWpBQ5Bg8+MJHRUsEr7khwwqTLnMX0I0LmZTNsUMgYw8b06bl/vkURy+Slw3lCb+8Au1TSDg45BReV8QyPPPXGh23/mgj4LhEUNk09oX7Cygvm2ae+7vzxyPjxlPkFQT0dFRV9TeXN0ZW08L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA3Mi4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[APOGEE_BACnet]
+isExtension = 1
+Version = "9.0.0004.0"
+ReleaseDate = "wtqTpC+TwDLGKKcvp5hRYrRFkdvj0PLZ2TInstl4Kwj7DzgpoorIiPh+vAfE9f9Fr/j9ay8n9WXemuEJbTLkJ8l7J/L4oVIu3b6uSk/AjwiyyaLH40e/ltQ7RdWGOO+NJJ5tcylYepIhWg0MMxhbJX85OyAoKMfWwe35Iurhb3v+jmU4qpcFQySk4Ncuch5A63kRGET6zc+YoSmmxrIKuDWKK3XDrMKqWOdDsYcxZD+rLa3GVPZW2PK00J0jJJ+QKSEolOqYSdAUFF1TUk4B1h9Sk2eSMXY/Ihz4lLmTGDpGIRmHPVLjWz/NQHFFMRdLR1JsvuVJsAKOILmKH67Hz++7vzxyPjxlPkFQT0dFRV9CQUNuZXQ8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA2OS4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[APOGEE_BACnet_TEC]
+isExtension = 1
+Version = "9.0.0002.0"
+ReleaseDate = "n8Re2D6RFcowLlKjYp+e8YDo2nL++q62Eq+IMzfijuUTC7755y03GYLWAqhuKPv+y4kmhsOtfGXLmlccLnmjde62GEi9fZ1RZUAYcFF80VWVNld2gbo0fHnIFoYSLOgB1FoL/qLLtdPvqqiRwqUZD7hfftEbC8HnzPkqCjP9aLRfGKhhPq62/WtHzaVlq9jqJwrIwPQCZ7q6gukyi+AEBtm3HcZG8rHb6ohgGH8kF+ijOvfZ7iOdHXidWPh68JuBqk8sHmJ4IAFNSrkjVqKtchVFAKvJPCPamqLw8PTh1M+f2VmEVllP3tNEz0RaV1BihfvO5dSpyavE0/GVG3qlJ++7vzxyPjxlPkFQT0dFRV9CQUNuZXRfVEVDPC9lPjxnPjkuMC4wMTE1LjA8L2c+PHA+OS4wLjAwNjcuMDwvcD48ZD4xMC8zMS8yMDI1PC9kPjwvcj4="
+
+[BACNet_Standard]
+isExtension = 1
+Version = "9.0.0006.0"
+ReleaseDate = "EvVw+nue5NcgHomBihFMg0/WbSRxQK/1WUbBoINNp5FYNUJtFPalNpqignwmNI+1GqSetx5WX2zUC/uDFTovYUKaab+3Ja79B8l0L47XHZdcvTimSRRUf1HD/UZAWBCE/P0WZ0hHSN2xVZ7WTZt5JC6FUN54DPlxeeUA6KWTNt8cP3BLQAMHpMnIac0M+K4ZQ9QInc9uEAYTznrLwsQJdx0M2sSlQL8BGO1ZbUOGyjq8y7xAXtH/EbUhIy/Sym74h9hWwjjsAbvUicmX+s6AqcmlvjOQa4YAuchGkQSPaUN3Zvb/gUBeG1Nos+HfMHXNDYy5Ru31URdis66GfF9Rku+7vzxyPjxlPkJBQ05ldF9TdGFuZGFyZDwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMDk4LjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[Web_Service_Interface]
+isExtension = 1
+MaxSnapshotsForSingleSession = 5
+MaxSnapshotInactiveTime = 10
+MaxVirtualMemorySizeForProcess = 4294967296
+maxBcmBufferSize = 100000
+DirectoriesAccess = libraries, flexreports
+SignalrKeepAlive = 10
+ExpiresUtcTicketForCodeGrant = 5
+EventNotificationPacketSize = 100
+SignalrDisconnectTimeout = 30
+EncryptionKeyExpiryDuration = 4
+LicensedClient = 40
+SignalrMessageBuffer = 3000
+StatisticalDataBlockSizeInMinutes = 1
+EnableStatistics = false
+WebApiThrottlingConfiguration1 = "[{"ApiRoute":"/api/token","MaxRequestLimitPerSecond":25},{"ApiRoute":"/api/diagnostics","MaxRequestLimitPerSecond":25},{"ApiRoute":"/api/Products","MaxRequestLimitPerSecond":25},{"ApiRoute":"/api/systems","MaxRequestLimitPerSecond":25},{"ApiRoute":"/api/users","MaxRequestLimitPerSecond":25},{"ApiRoute":"/api/licenses","MaxRequestLimitPerSecond":25},{"ApiRoute":"/Notification/UpdateRecipientUsers","MaxRequestLimitPerSecond":4}]"
+WebApiThrottlingConfiguration2 = "[{"ApiRoute":"/Notification/AddRecipientsToRecipientGroup","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/UpdateRecipientGroup","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/RemoveRecipientsFromGroup","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/CreateRecipientUsers","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/DeleteRecipientUsers","MaxRequestLimitPerSecond":4}]"
+WebApiThrottlingConfiguration3 = "[{"ApiRoute":"/Notification/DeleteRecipientGroups","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/CreateRecipientGroup","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/SuspendRecipientInRecipientGroups","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/ActivateRecipientInRecipientGroups","MaxRequestLimitPerSecond":4},{"ApiRoute":"/Notification/RemoveRecipientFromRecipientGroups","MaxRequestLimitPerSecond":4}]"
+WebApiThrottlingConfiguration4 = "[{"ApiRoute":"/Notification/UpdateMessageTemplateState","MaxRequestLimitPerSecond":4},{"ApiRoute":"/api/advancedReporting/ExecuteFlexAdvanceReport","MaxRequestLimitPerSecond":2},{"ApiRoute":"/reports/start","MaxRequestLimitPerSecond":2},{"ApiRoute":"/api/events/eventnotes","MaxRequestLimitPerSecond":10}]"
+Version = "9.0.0007.0"
+ReleaseDate = "YXSLEGBOEdNXo6JriNvGSSEj5wXoBKexkKCPhEqZBEXWEsXCU4ZjFoY0IISXmBfxmo/KAI3BC9looT0br9f41SE+JwqyiHlzVss4atqoxjow/GLQCErvupRbDgD8W1Q34dngBCXOJQa4s2CHCEI6T1dUL5ylTbZOzgXnljsEACf4Jj44NcnGcGFmtPwtFDO60t/Fv/oZln4kG8lOH7YdRFjBL72Cml3xj7wS0u4TTzpUDNbQJEKmm82qj1Kh2BmPJec87XGojeLt6++3HOkQ4oudJgpWbW7N8ZdISgWSEO08dG1KDi4HZy8h9hb+slw4GX8asx4X6rxB3dqBD5WW+++7vzxyPjxlPldlYl9TZXJ2aWNlX0ludGVyZmFjZTwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMTA0LjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+InstancesCount = 1
+
+[Scripting]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "evqg/h0tIOHvJ7MzZcA/UwUztQPZM4rnB7KoJ70v8tok/HZlYQJmm7dSlR7ReuR4uSAe25fcfv59jNR9mQo4YmhqbZOAa6itzKRKwxp7m4/gX/SdpuB1fM/8GQIa2gXmcGHjZRff6c8xbBGAL+Xz0OSAv8XGI5fTGFaSdull3QLqnVb1vvpqm5jeemNQGzjrIFy+a2tmE5+iKvEaIwumRiyeiVJLojcm0SoaGUM4jm9q3mlK0XmtX5mufzHRKWlWWB5xHJ5aLO4YKK5GoPrUSZ0zqEn8suOxnQvLnia6BOMw3YPy+WhLVKDsdQBbajUCjRz+vACk0D6NZyaBQllsRO+7vzxyPjxlPlNjcmlwdGluZzwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMTA0LjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[APOGEE_Graphics]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "fecjY26g82mYVvij+1rgkhzzDdKGpv1TWnJMEnrsOIQqebG55wMJ91GgyoNxLZTNxASt5D76c1IPAAFDPs0ipkyUorLTlG2bTXXfvuVva1XCErPs/tnC00EJiLPP7qCW2jtv/EQaJdyObY5LPPLDDlV9Lu+oBi0BMqgMcRn2cmormcPwEmoklq8QrfxokEjwz0ZfFmoyeZkJLpua6nX/wOg2bib5q0xS0jyzK562uj0geb2fbZUNT163DfcMMa3IdzwCfrJHSv2kPpHpLTaijSC+sIKBrwstHCwMgHTNN6CZ8rU/fTOFWXBmkVTJCjUwg6HX7klPYGD1oLU6TCIZhu+7vzxyPjxlPkFQT0dFRV9HcmFwaGljczwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMDY3LjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[APOGEE_P2]
+isExtension = 1
+maxFiniteScheduleDurationInDays = 365
+Version = "9.0.0003.0"
+ReleaseDate = "FSuqxtcDS4089m8RHD1xJhZWXT0Ob9ToxJeISuYTLtbypKBdNmUc5KmUmBv2P6PKn3ddmcZdGxJr0bfOYsf8wycx3295vOlhn6CZxB4sbPeLy4xOKVIt7cVY7upykH/y2qsDTZcxFWTr/NYaXYntwvQeFCYcWPvauMiBdQBiiqpTZCN7iCMNsfFezXNbhKwOmpCx3nV8L7xesE7nwvlw4Kn3o0BDImEwUc94njz1ov0Tgpo/DyFtaGBLMswwueR5O7yDsGx6engBbPTSLvr4+Vc5OylqrIeNyGam3EakhwifPVtFYerBhm6kCPXLas4clnf4uTlRWU7DxXbkkwr1QO+7vzxyPjxlPkFQT0dFRV9QMjwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMDcwLjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[APOGEE_P2_TEC]
+isExtension = 1
+Version = "9.0.0002.0"
+ReleaseDate = "uRD3jcs8NfJmbFJ4Am3Z+VzyrvEkAYLh6tz8MZZ3phIKugVtHirVnxG+L+mZkV4X17BqMkxP3YPo21zm6dCoy/RqUSBw+bkzGOC84XZ37VsUH422ytxEk5On1zCgk8qCwox3vycuwQPyqtgMe3bd7uTJOJpQ3MU0mnZ2IfBhpL9uCyYlWFpHEAxg+E6xw7dPaNp2RWbEFY9Bgmmbu0emq4Y5OKVl6M6IvA0UzllohDPRodlYwFImUD05qdAeX6oqI3lZoseXapXt158t1jnRR+xxZ4HpeaMlgJJ2CJA9j5wn6O0UthnnFlLTWwN8X1vazWGPxCoUcIza1WbrcknES++7vzxyPjxlPkFQT0dFRV9QMl9URUM8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA2Ny4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[NodeMap]
+isExtension = 1
+Version = "9.0.0003.0"
+ReleaseDate = "kxmumF/RnQCyaXg8Sr92kyjD2BbUa7atDGa6+gPMqk4Bza8o2GB8KgcQsGOgKG1WXrLiDl3UmrPVYJriR3phIHDfTFUH5jqa46E7kU5YvJ73QJmhVmxpnwURB1EYhjA/0aS1i9VNIkpdmtVZFBJRNP8bHzHyULydSfwcUP9A39kZxvxtcAf0kl3uCKHBeMtUXYkXP5+gBTQB6zqi/uyCCxDZdRm0eMxpczWgSHOSDC2CHFfN5mu2HyHWAV63B8OLGxcviDW0YlTZVMeyTm8L4qdVTW1mPWmg6f4axUIxiP6tjhQf9I8icdVD02efhXhOgTbTsKgdZ8KYMsB1nO6+kO+7vzxyPjxlPk5vZGVNYXA8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA5OS4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[HDBWriter]
+maxBcmBufferSize = 200000
+
+[NetworkWizard]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "WGd2hQSG4fdrc3WF+ccWWKhKawH7yokPhJaxTMIA6LaxiPFNjJO93AbyahI8TsqYCv05t6b8Sg/2RFNGJn137alZeaiM/9lmjZvfvt8feyZSgXilYFvSr4xJUTC1ONW/irLJeP0gNfPh4WyFwWs3Q1yxgbcR3pQH9vogD9CzRo1d+/c8osqhgQs4TSyWg6Uzh8Nht3TRpl1w1UyM2SU7Imku1gSeZVMeEe+xhDACkMF1BzV4xRr4t9fu57U7fa8DhRxrccqc5ycglxxG3Ud5k0nOM9Y/s7jctIniXMCcFBJ01togKiur303TyjCvREaXgOM68pkVIw1+qEYj/3cdP++7vzxyPjxlPk5ldHdvcmtXaXphcmQ8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDEwMi4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[onlineBackup]
+autoOnlineBackup = 0
+
+[MNS]
+isExtension = 1
+Version = "9.0.0005.0"
+ReleaseDate = "IbEpetFfmhlHyU7pqBc1B8TbSstiQB8WWFhbl5ewq2gekBrOuewJambSBX01pEngDk5GUzbeB44rWV0LQvOS0GBBjheOU+ou/UMD+znzeIzMjc8REWqEneMBoKkhf8+N1k0XzV8nPUKRW7vLy6AL0DVA98arULQ9QqB2HBWZMDNjn3UPT83Wdj7+VFTlk4x6nDliPnj8LhzjwR8v2YGjRTZqYmad127SszR5S4swAIV56vI/7DmhD9Pz4J2NPfHT1OqAb6z88IJdMrEjnieLTRHKEY6Ppg6n/IU5XcVcQyMwa+ePYaNodemPXSlPAjIVOML/2o4OhttcO5mOWS1IG++7vzxyPjxlPk1OUzwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMDkxLjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[Engineering_Console]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "B4DtgPgoqC2QPdO0spKRGHk8A3OLwfrKT9JGMVvo1hxL1B0hgsr/w+E2VXs9asZRDi/Q5QAqFWMlfYMb0Hgc18vJeevlbirhIvQG41aoq/WHi3qkMOlUA9sBzpraOOhTtizHSW8INhJHswjjqJEBAPFo7qnZGVILtYwrfUmgcRtqIlPVDNxJ9Dct1szc5fVoFaQhWMN1tYL91eCr2Dm0z4+nS0xe79PEztp2VJxj/9Vl3d3CkNKdLPD6Jy82usTsPdbH4lctw/yhictVqObtc2Q80qqkjBFT4XQnZuaRxxODQHuH8mm/nbMnZqYlJUIWc0z+o8eHD1Wdvw7oLRB0Ne+7vzxyPjxlPkVuZ2luZWVyaW5nX0NvbnNvbGU8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA5NS4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[Flex_Client]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "EWRC6Ix46CVvCkNv5GK07urj2uGEkkWcazozHUk0naogVDZf9PZRAqZXecZ9lYoa+p/edK268xoJzwuhU7qh1uOF6qUb5KFwUcDfnxjUrh7OPVZSC2/XM7L8Sikv7/mCsGu0N4yAiOLxgOjpBObbMBYX/XJIg/VrVX8LmTa+NsTsvpq4tcxVX+hIBjLDY9ibSec3xXUrfuUo/Ypji7QYKBQv5+ogqXQ1l/Em9s7sEiwH2EpmjwS8XTn953vM2XgQCsLFingkLdmugTaJO7gLwAbyeZFIZRWhRroVZjwZqU7kcXyF8jgJmyv7kgW1kOP1ZLLjZwlK1UsfUaRJLolf9++7vzxyPjxlPkZsZXhfQ2xpZW50PC9lPjxnPjkuMC4wMTE1LjA8L2c+PHA+OS4wLjAxMDEuMDwvcD48ZD4xMC8zMS8yMDI1PC9kPjwvcj4="
+
+[Operator_Tasks]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "Fey5MrGa3C++ADViYvWsYAhi2kUfPzUBl7pYPwz4mvQp7APxCA6PL1Y9V9vJjxpcN5mZZmoCz3mgS5bcFwKs3SJux+uo/2a4Ts3P4Perx8wIVMAtiwOYk/tsxAHs0cy2E5t3AQQ3Qlp7x1obk4RQsa8aK2NIApnPfACkxz6bAOegrKE5L3TNDaI8+J/fNpkU+Je1kSvpX3idR7Z7gYJq+xZuLbQp7Slr028flDF0o4n2hb1JnrHOKCfANrVCC949YlRkpxO+FC42Emd0k7DUQsLHacE0/Y6ZtOzv01qE0fGarniclphZ0RxAcDjA0VdkCx0MWTGqrOs523cQa6DBFO+7vzxyPjxlPk9wZXJhdG9yX1Rhc2tzPC9lPjxnPjkuMC4wMTE1LjA8L2c+PHA+OS4wLjAwOTcuMDwvcD48ZD4xMC8zMS8yMDI1PC9kPjwvcj4="
+
+[BACnet_EDE]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "h4WkIv010dCpre+LX8yiffu3z7f9ONYrnJp9exBqM04sALhiyX4yI52pKMigVmU3kpO9l+qSm7fr91WStdcSOhwUF0V+4Frjn6Dd7OL9HN0pn/2/z0IhXfa6xoViIkbC6Xp+mN/7PvA4md7gZ7b3D+x0jMOhh/pfrgQa4HwU8tb8Y2CAZ9X/wSSQlmpUhZq7F4dMWkDpiaK7jnlNMKSa13SjyIEBVLf0/cj4P01pyhpWEmNmBznnExctQbfxLoNiVZD9vsdE4I8LZJfz5E3LAJvtdtP6NJJvJSqhHiJz/woMIQ9xC/gKduVi6dQ1seBE8WgNbDZpA84JuHpw7Bpeoe+7vzxyPjxlPkJBQ25ldF9FREU8L2U+PGc+OS4wLjAxMTUuMDwvZz48cD45LjAuMDA5OC4wPC9wPjxkPjEwLzMxLzIwMjU8L2Q+PC9yPg=="
+
+[Scheduler]
+isExtension = 1
+Version = "9.0.0001.0"
+ReleaseDate = "KgRXKlk0mYnopyRdFQr/EDDqNiN7SdsfgkAwqbAkUwBfopawwvva8BAHxq9iu4UPVpLbzRt873lh9t2mp97mpg8UEPo01YNe0vg8JgKoD5NlCv+pNI0o17RxZPbsUajFZmQLI0BJ5HfJ4mDUhDSo6xq/qnP3C1OBzqSRpGiei68iz/yhL9o3jMGXJ40TjDUXg8OQE1kW79Rtookx8sKdJ3nis89rpFJaEyWuyyU2aWXOdOb5U4P/gvk6Gexeeb2BYiR79rLku7EwJT4sfEZShZAmYw2/1EYbRnc3K6q+DHTdJxo4QHvvSTFWmRMHlRv6F8QcKvQXT+y0c0fk0VZAT++7vzxyPjxlPlNjaGVkdWxlcjwvZT48Zz45LjAuMDExNS4wPC9nPjxwPjkuMC4wMTAwLjA8L3A+PGQ+MTAvMzEvMjAyNTwvZD48L3I+"
+
+[IoT_Cloud_Connector]
+isExtension = 1
+ReleaseDate = "Rt4puQmErrfY0JC/dFbU7GlV7fZCPWCGThadZwMTCi/1OBThqKSdz44gbwBOTydVB+zde0wm3l72UYOswOt0rBhdNbTqj8cmVKa8cdCuSxD/J29v8rAE7rFVrNaIeoeW01PqDZMY1kJNak27z9VlgYTNveRF915p6Rt1bx64ifE0WEwbbu/z1aN2gDf29wYzYPo9prElN2C/kt8CHrfE7fuLjtvaXgSM6WsWYaiUEriuz7fSkaUC6t+VU3BIFy2NcvA2PpEX4yH9ldgaH0/8m13o+EnO0xoKfO1RuYWMq0Ea/UMIz+8ZBCacSZI/g1jZXn3nF6PFpBzQO++fvyWUyu+7vzxyPjxlPklvVF9DbG91ZF9Db25uZWN0b3I8L2U+PGc+Ny4wLjAxMDQuMDwvZz48cD43LjAuMDA5Mi4wPC9wPjxkPjA5LzMwLzIwMjM8L2Q+PC9yPg=="
+applicationPort = 43124
+controlPort = 43123
+agentLocation = C:\ProgramData\Siemens\BldgXAgent\Campus_2_9-1-26
+applicationVersionId = 3467bfd2-a78e-4f90-b854-4e3ee00b6266
+IotSoftwareVersion = "109.9.0041.0"
+IotDataVersion = "Not accessible"
+IotReleaseVersion = "IoT9"
+IotBuildVersion = "41"
+IotPlatformVersion = "9"
+IotAgentVersion = "3.10.1"
+deviceSerialNo = 9cf262df-6056-4985-9e12-6e22d3cd6977
+Version = "109.0.0001.0"
+
+[GMSCoHoMngr_IoT]
+short = CohoCfgDisc,CoHoIoT
+
+[auth]
+passwordPolicy = 0
+
+[QueryCache]
+queryCachePort = 4780
+queryCacheManager = "API_98"
+maxBcmBufferSize = 2000000
+
+[ctrl]
+CtrlDLL = "WCCOAHDBCtrlExt"
+customServerHost = "4780"
+customServer = "API_98"
+
+[dist]
+distPort = 4778
+maxBcmBufferSize = 2000000
+useLocalIdentification = 1
+distPeer = "FMSC2BDESIGO.fab.uab.edu:4777" 6
+distPeer = "FMSC2DESIGO.fab.uab.edu:4777" 4
+
+[Web_Service_Interface_77]
+Identifier = c515acac-1027-4a03-8499-75933cb24b86
+NORISInstanceId = 77
+InstanceName = Default Instance
+Port = 8080
+CertThumbprint = ""
+CertIssuedTo = ""
+RegisterManagerURL = http://127.0.0.1:8080/
+IsCommunicationSecured = False
+MaxSnapshotsForSingleSession = 5
+MaxSnapshotInactiveTime = 10
+MaxVirtualMemorySizeForProcess = 4294967296
+maxBcmBufferSize = 100000
+EnableStatistics = False
+

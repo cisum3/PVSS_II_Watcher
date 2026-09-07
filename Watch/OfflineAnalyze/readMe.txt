@@ -1,6 +1,7 @@
-PVSS / WinCC OA Log Analyzer — OfflineAnalyze
+PVSS / WinCC OA Log Analyzer - OfflineAnalyze
 =============================================
-Version: 1.1
+Version: 1.2
+Author: Cisum
 
 What this is
 ------------
@@ -30,7 +31,7 @@ Keep this toolset outside the WinCC OA project log directory.
   Run-Analyze.cmd                Full report as HTML (non-interactive)
   Run-Analyze-Interactive.cmd    Scan, then prompt for Severity / Driver / All
   readMe.txt                     This file
-  VERSION.txt                    1.1
+  VERSION.txt                    1.2
 
 
 Quick start

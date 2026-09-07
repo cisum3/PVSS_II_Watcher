@@ -1,16 +1,17 @@
 PVSS / WinCC OA Log Analyzer
 ============================
-Version: 2.0 (live Watch)  |  OfflineAnalyze: 1.1
+Version: 2.1 (live Watch)  |  OfflineAnalyze: 1.2
+Author: Cisum
 
 What this is
 ------------
 A Windows-only triage toolkit for large PVSS_II.log files (WinCC OA / GMS).
 
-  Watch (2.0)            Live localhost dashboard: open a growing log read-only,
+  Watch (2.1)            Live localhost dashboard: open a growing log read-only,
                          catch up a time window, tail new lines, filter by
                          severity, browse modules/patterns, download a snapshot.
 
-  OfflineAnalyze (1.1)   One-shot offline scan of a log copy; writes an HTML
+  OfflineAnalyze (1.2)   One-shot offline scan of a log copy; writes an HTML
                          (and/or text) report with findings, patterns, and
                          BACnet / CNS / CoHo / Apogee modules.
 
@@ -33,11 +34,11 @@ Keep this folder outside the WinCC OA project log directory.
   readMe.txt                 This file
   Watch\                     Runtime payload
     Watch-PvssLog.ps1        Localhost host + APIs
-    VERSION.txt              Watch version (2.0)
+    VERSION.txt              Watch version (2.1)
     watch-log-path.example.txt
                              Copy to watch-log-path.txt to prefill the log path
     ui\                      Dashboard (Siemens dark theme + Chart.js)
-    OfflineAnalyze\          Offline report tool (1.1)
+    OfflineAnalyze\          Offline report tool (1.2)
       Run-Analyze.cmd
       Run-Analyze-Interactive.cmd
       Analyze-PvssLog.ps1

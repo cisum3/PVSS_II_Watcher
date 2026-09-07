@@ -10,6 +10,7 @@
   <header id="chrome">
     <div class="chrome-row">
       <span class="brand">PVSS Log Watch</span>
+      <span id="appVersion" class="meta app-version" hidden></span>
       <div class="path-box">
         <input id="logPath" type="text" spellcheck="false"
           placeholder="C:\GMSprojects\Project_Name\log\PVSS_II.log"
@@ -80,7 +81,6 @@
         <div id="overviewBody" hidden>
           <h1>Overview</h1>
           <p id="overviewWindow" class="meta window-span" hidden></p>
-          <ul id="findingsList" class="findings"></ul>
           <div id="kpiRow" class="kpi-row"></div>
           <div class="charts">
             <div class="chart-panel">
@@ -98,8 +98,11 @@
               </div>
             </div>
           </div>
+          <p id="chartRestartHint" class="meta" hidden>Dashed amber line = project up / restart (pmon).</p>
           <h2>Top managers</h2>
           <div id="mgrStrip" class="mgr-strip"></div>
+          <h2>Key findings</h2>
+          <ul id="findingsList" class="findings"></ul>
         </div>
       </section>
 

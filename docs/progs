@@ -1,0 +1,32 @@
+version 1
+
+auth "" ""
+#Manager         | Start  | SecKill | Restart# | ResetMin | Options
+WCCILpmon        | manual |      30 |        3 |        1 |
+WCCILdata        | always |      30 |        3 |        1 |
+WCCILevent       | always |      30 |        3 |        1 |
+WCCILdist        | always |      30 |        2 |        2 |
+WCCOAqueryCache  | always |      30 |        2 |        2 |
+WCCOActrl        | always |      30 |        3 |        1 |-num 1                               -f pvss_scripts.lst
+WCCOAHDBWriter   | always |      30 |        2 |        2 |
+WCCOAHDBReader   | always |      30 |        2 |        2 |
+WCCOAGmsCoHoMngr | always |      30 |        2 |        2 |-num 7 -configSection=GmsCoHoMngr_Gms
+WCCOAGmsCoHoMngr | always |      30 |        2 |        2 |-num 8 -configSection=GmsCoHoMngr_Gms2
+WCCOAGmsCoHoMngr | always |      30 |        2 |        2 |-num 9 -configSection=GmsCoHoMngr_Gms3
+WCCOAGmsCoHoMngr | always |      30 |        2 |        2 |-num 11 -configSection=GmsCoHoMngr_Gms4
+WCCOAGmsCoHoMngr | manual |      30 |        2 |        2 |-num 10 -configSection=GmsCoHoMngr_Gms_CrossTrunk
+WCCOAStatPropMgr | always |      30 |        2 |        2 |-num 54
+WCCOAui          | manual |      30 |        3 |        1 |-m para
+WCCOActrl        | always |      30 |        2 |        2 |-num 254 -f GMS_Scripts.lst
+WCCOActrl        | always |      30 |        2 |        2 |-num 253 GMS_Licensing.ctc
+WCCOAMns         | always |       2 |       30 |        2 |-num 19
+WCCOAReportMan   | always |      30 |        2 |        2 |-num 58
+WCCOAEvPrint     | always |      30 |        2 |        1 |-num 60
+WCCOASMTPDrv     | always |       1 |        1 |        1 |-num 2
+WCCOAApogeeDrv   | always |      30 |        2 |        3 |-num 2
+WCCOActrl        | manual |      30 |        2 |        2 |DeleteDatapointsMissingFromManagementView.CTL
+WCCOActrl        | manual |      30 |        2 |        2 |DeleteDanglingCnsNodes.ctl
+WCCOAGmsCoHoMngr | manual |      30 |        2 |        2 |-num 149 -configSection=GMSCoHoMngr_IoT
+WCCOACComMgr     | always |      30 |        2 |        1 |-num 99 -useSrvBinTypClntBin
+WCCOAWsi         | always |      30 |        2 |        1 |-num 77 -configSection=Web_Service_Interface_77
+WCCOAGmsBACnet   | always |      30 |        3 |        1 |-num 1

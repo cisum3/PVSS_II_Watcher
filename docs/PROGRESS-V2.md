@@ -145,3 +145,5 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-06 | Package layout: root = `Run-Watch.cmd` + `readMe.txt` + `Watch\` payload |
 | 2026-09-06 | Renamed `Watch\batch\` → `Watch\OfflineAnalyze\`; offline HTML report restyled to V2 Siemens dark |
 | 2026-09-06 | Cache Entire analysis across window switches (in-memory snapshot + incremental tail) |
+| 2026-09-06 | Manager health in sections: starts/stops/pmon restarts + blocking/unblocked (per manager, e.g. CoHo) |
+| 2026-09-06 | Versions: Watch **2.1**, OfflineAnalyze **1.2**; authored by **Cisum** |

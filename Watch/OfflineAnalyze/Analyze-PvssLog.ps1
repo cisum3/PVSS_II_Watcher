@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Standalone WinCC OA / GMS (PVSS_II) log analyzer for performance triage. (v1.1)
+  Standalone WinCC OA / GMS (PVSS_II) log analyzer for performance triage. (v1.2)
 
 .DESCRIPTION
   Streams a large PVSS_II.log without loading it into memory.
@@ -9,6 +9,9 @@
   Optional HTML report via -Format Html|Both (Run-Analyze.cmd defaults to Html).
 
   Requires only Windows PowerShell 5.1+ or PowerShell 7+.
+
+.NOTES
+  Author: Cisum
 
 .PARAMETER LogPath
   Path to the log file. Defaults to PVSS_II.log next to this script, then cwd.
@@ -117,6 +120,14 @@ if ($NonInteractive) {
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
+
+$script:ToolRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$script:Version = (Get-Content (Join-Path $script:ToolRoot 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
+if (-not $script:Version) { $script:Version = '1.2' }
+$script:Author = 'Cisum'
+foreach ($verLine in @(Get-Content (Join-Path $script:ToolRoot 'VERSION.txt') -ErrorAction SilentlyContinue)) {
+    if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
+}
 
 function Wait-IfInteractive {
     if ($NoPause) { return }
@@ -374,7 +385,9 @@ function Convert-AnalysisReportToHtml {
     param(
         [string]$TextReport,
         [string]$LogFile,
-        [string]$Generated
+        [string]$Generated,
+        [string]$Version = '1.2',
+        [string]$Author = 'Cisum'
     )
 
     $enc = {
@@ -552,6 +565,71 @@ pre.block {
   border-radius: 2px;
   padding: 0.65rem 0.75rem;
 }
+pre.block.preamble { margin-bottom: 0.65rem; }
+.pattern-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+.pattern-card {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--siemens-petrol);
+  border-radius: 2px;
+  padding: 0.65rem 0.8rem 0.7rem;
+}
+main section.sev-FATAL .pattern-card { border-left-color: var(--sev-fatal); }
+main section.sev-SEVERE .pattern-card { border-left-color: var(--sev-severe); }
+main section.sev-ERROR .pattern-card { border-left-color: var(--sev-error); }
+main section.sev-WARNING .pattern-card { border-left-color: var(--sev-warning); }
+main section.sev-INFO .pattern-card { border-left-color: var(--sev-info); }
+.pattern-card .head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.55rem 0.85rem;
+  margin: 0 0 0.5rem;
+  padding-bottom: 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.pattern-card .rank {
+  font-weight: 700;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+}
+.pattern-card .count {
+  color: var(--text-muted);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+.pattern-card .row {
+  display: grid;
+  grid-template-columns: 4.75rem 1fr;
+  gap: 0.2rem 0.65rem;
+  margin: 0.28rem 0;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+.pattern-card .lbl {
+  color: var(--text-muted);
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  padding-top: 0.12rem;
+}
+.pattern-card .val {
+  font-family: var(--mono);
+  word-break: break-word;
+  white-space: pre-wrap;
+  color: var(--text);
+}
+.pattern-card .row.example {
+  margin-top: 0.45rem;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--border);
+}
+.pattern-card .row.example .val { color: var(--text-meta); }
 footer {
   max-width: 1200px;
   margin: 0 auto 2rem;
@@ -562,6 +640,8 @@ footer {
 @media (max-width: 860px) {
   .layout { grid-template-columns: 1fr; }
   nav.toc { position: static; max-height: none; }
+  .pattern-card .row { grid-template-columns: 1fr; gap: 0.1rem; }
+  .pattern-card .lbl { padding-top: 0; }
 }
 '@)
     [void]$sb.AppendLine('</style>')
@@ -569,7 +649,7 @@ footer {
     [void]$sb.AppendLine('<body>')
     [void]$sb.AppendLine('<header class="app">')
     [void]$sb.AppendLine('<h1>PVSS_II Offline analysis report</h1>')
-    [void]$sb.AppendLine(('<div class="meta">Log: <span class="mono">{0}</span> &middot; Generated: {1}</div>' -f (& $enc $LogFile), (& $enc $Generated)))
+    [void]$sb.AppendLine(('<div class="meta">Log: <span class="mono">{0}</span> &middot; Generated: {1} &middot; OfflineAnalyze v{2} by {3}</div>' -f (& $enc $LogFile), (& $enc $Generated), (& $enc $Version), (& $enc $Author)))
     [void]$sb.AppendLine('</header>')
     [void]$sb.AppendLine('<div class="layout">')
     [void]$sb.AppendLine('<nav class="toc">')
@@ -607,16 +687,88 @@ footer {
         else {
             [void]$sb.AppendLine(('<h2>{0}</h2>' -f (& $enc $sec.Title)))
         }
-        [void]$sb.AppendLine(('<pre class="block">{0}</pre>' -f (& $enc $body)))
+        [void]$sb.AppendLine((Format-ReportSectionBodyHtml -Body $body -Encode $enc))
         [void]$sb.AppendLine('</section>')
     }
 
     [void]$sb.AppendLine('</main>')
     [void]$sb.AppendLine('</div>')
-    [void]$sb.AppendLine('<footer>Standalone triage aid - not a substitute for Siemens GMS / WinCC OA support.</footer>')
+    [void]$sb.AppendLine(('<footer>Standalone triage aid by {0} - not a substitute for Siemens GMS / WinCC OA support.</footer>' -f (& $enc $Author)))
     [void]$sb.AppendLine('</body>')
     [void]$sb.AppendLine('</html>')
     return $sb.ToString()
+}
+
+function Format-ReportSectionBodyHtml {
+    param(
+        [string]$Body,
+        [scriptblock]$Encode
+    )
+    if ([string]::IsNullOrWhiteSpace($Body)) {
+        return '<p class="meta">(empty)</p>'
+    }
+
+    $lines = $Body -split "`r?`n"
+    $hasPatterns = $false
+    foreach ($ln in $lines) {
+        if ($ln -match '^\s*#\d+\s+count=') { $hasPatterns = $true; break }
+    }
+    if (-not $hasPatterns) {
+        return ('<pre class="block">{0}</pre>' -f (& $Encode $Body))
+    }
+
+    $preamble = New-Object System.Collections.Generic.List[string]
+    $cards = New-Object System.Collections.Generic.List[hashtable]
+    $cur = $null
+    foreach ($ln in $lines) {
+        if ($ln -match '^\s*#(\d+)\s+count=(.+)\s*$') {
+            if ($null -ne $cur) { [void]$cards.Add($cur) }
+            $cur = @{
+                Rank     = $Matches[1]
+                Count    = $Matches[2].Trim()
+                Pattern  = ''
+                First    = ''
+                Last     = ''
+                Examples = New-Object System.Collections.Generic.List[string]
+            }
+            continue
+        }
+        if ($null -eq $cur) {
+            if (-not [string]::IsNullOrWhiteSpace($ln)) { [void]$preamble.Add($ln) }
+            continue
+        }
+        if ($ln -match '^\s*pattern:\s*(.*)$') { $cur.Pattern = $Matches[1]; continue }
+        if ($ln -match '^\s*first\s*:\s*(.*)$') { $cur.First = $Matches[1]; continue }
+        if ($ln -match '^\s*last\s*:\s*(.*)$') { $cur.Last = $Matches[1]; continue }
+        if ($ln -match '^\s*example:\s*(.*)$') { [void]$cur.Examples.Add($Matches[1]); continue }
+    }
+    if ($null -ne $cur) { [void]$cards.Add($cur) }
+
+    $out = New-Object System.Text.StringBuilder
+    if ($preamble.Count -gt 0) {
+        [void]$out.AppendLine(('<pre class="block preamble">{0}</pre>' -f (& $Encode ($preamble -join "`n"))))
+    }
+    [void]$out.AppendLine('<div class="pattern-list">')
+    foreach ($c in $cards) {
+        [void]$out.AppendLine('<article class="pattern-card">')
+        [void]$out.AppendLine(('<div class="head"><span class="rank">#{0}</span><span class="count">count={1}</span></div>' -f `
+            (& $Encode $c.Rank), (& $Encode $c.Count)))
+        if (-not [string]::IsNullOrWhiteSpace($c.Pattern)) {
+            [void]$out.AppendLine(('<div class="row"><span class="lbl">pattern</span><span class="val">{0}</span></div>' -f (& $Encode $c.Pattern)))
+        }
+        if (-not [string]::IsNullOrWhiteSpace($c.First)) {
+            [void]$out.AppendLine(('<div class="row"><span class="lbl">first</span><span class="val">{0}</span></div>' -f (& $Encode $c.First)))
+        }
+        if (-not [string]::IsNullOrWhiteSpace($c.Last)) {
+            [void]$out.AppendLine(('<div class="row"><span class="lbl">last</span><span class="val">{0}</span></div>' -f (& $Encode $c.Last)))
+        }
+        foreach ($ex in $c.Examples) {
+            [void]$out.AppendLine(('<div class="row example"><span class="lbl">example</span><span class="val">{0}</span></div>' -f (& $Encode $ex)))
+        }
+        [void]$out.AppendLine('</article>')
+    }
+    [void]$out.AppendLine('</div>')
+    return $out.ToString()
 }
 
 function Get-LogTimeSpanPeek {
@@ -883,15 +1035,63 @@ $cohoStuckSample = $null
 $reCohoDiscoveryLoc = [regex]'(?i)DiscoveryLoc:([^\s]+)\s+got stuck\b'
 $reCohoDiscoveryCycle = [regex]'(?i)((?:Global|Observer)\s+Discovery Cycle\s+\[[^\]]+\])\s+got stuck\b'
 
-# Apogee thin module (CoHo.Apogee* / Orch.Apogee* header lines)
+# Apogee thin module (CoHo.Apogee* / Orch.Apogee* header lines) + WCCOAApogeeDrv
 $apogeeEvents = 0
 $apogeeUpdatePoints = 0
 $apogeeRepetition = 0
 $apogeeOther = 0
 $apogeePpclNames = @{}
 $apogeeSample = $null
+$apogeeDrvLines = 0
+$apogeeTrendOverflow = 0
+$apogeeTrendSeq = 0
+$apogeeAlertId = 0
+$apogeeQueryTimeout = 0
+$apogeeGetDataFail = 0
+$apogeeTrendByDevice = @{}
+$apogeeTrendByName = @{}
+$apogeeGetDataByDevice = @{}
+$apogeeAlertSample = $null
+$apogeeTrendSample = $null
+$apogeeTimeoutSample = $null
+$apogeeGetDataSample = $null
 $reApogeePpcl = [regex]'(?i)PPCL Program Name:\s*(\S+?)(?:System\.|$)'
 $reApogeeComp = [regex]'(?i)(?:CoHo|Orch)\.Apogee'
+$reApogeeTrendOverflow = [regex]'(?i)Trend buffer overflow for trend\s+(.+?)\s+in device\s+(.+?)\.?\s*$'
+$reApogeeTrendSeq = [regex]'(?i)Last sequence number\s+\d+\s+is greater than saved'
+$reApogeeAlertId = [regex]'AlertID\s+\S+'
+$reApogeeQueryTimeout = [regex]'(?i)pending answer run into timeout'
+$reApogeeGetData = [regex]'(?i)Failed to get data for object\s+(.+?)\s+on device\s+([^,]+)'
+
+# Project / manager lifecycle
+$projectStartMode = 0
+$projectUp = 0
+$projectShutdown = 0
+$projectStopped = 0
+$pmonMgrRestart = 0
+$mgrStartProj = 0
+$mgrStop = 0
+$driverReady = 0
+$pmonRestartByComp = @{}
+$mgrStartByComp = @{}
+$mgrStopByComp = @{}
+$blockingByComp = @{}
+$unblockingByComp = @{}
+$blockingDetected = 0
+$blockingCleared = 0
+$blockingSample = $null
+$unblockingSample = $null
+$projectLifecycleEvents = New-Object System.Collections.ArrayList
+$reProjectUp = [regex]'The project is up and running'
+$reProjectStopped = [regex]'Completely stopped the project'
+$reProjectShutdown = [regex]'Got shutdown command'
+$reProjectStartMode = [regex]'Manager Start,\s*START_MODE'
+$rePmonMgrRestart = [regex]'Detected stopped manager\s+(\S+)\s+-\s+restarting'
+$reMgrStartProj = [regex]'Manager Start,\s*PROJ,'
+$reMgrStopMsg = [regex]'Manager Stop\s*$'
+$reDriverReady = [regex]'(?i)Driver is configured with .+\s+and is now running'
+$reBlockingStart = [regex]'Blocking Manager\s+(\S+)\s+detected(?:\.\s*No heartbeat since\s+(\d+)\s+seconds?)?'
+$reBlockingEnd = [regex]'Manager\s+(\S+)\s+is no longer blocking'
 
 $lineRe = [regex]'^([^,]+),\s*(\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+),\s*([^,]+),\s*([^,\s]+)'
 
@@ -1113,7 +1313,7 @@ try {
             }
         }
 
-        # --- Apogee (thin; header lines with CoHo.Apogee* / Orch.Apogee*) ---
+        # --- Apogee (CoHo.Apogee* / Orch.Apogee*) ---
         if ($reApogeeComp.IsMatch($line)) {
             $apogeeEvents++
             if (-not $apogeeSample) { $apogeeSample = $line }
@@ -1134,6 +1334,114 @@ try {
             else {
                 $apogeeOther++
             }
+        }
+
+        # --- WCCOAApogeeDrv (not ApogeeBACnet) ---
+        if ($comp -match 'ApogeeDrv') {
+            $apogeeDrvLines++
+            $mOv = $reApogeeTrendOverflow.Match($line)
+            if ($mOv.Success) {
+                $apogeeTrendOverflow++
+                $tName = $mOv.Groups[1].Value.Trim()
+                $tDev = $mOv.Groups[2].Value.Trim().TrimEnd('.')
+                if ($tName) {
+                    if (-not $apogeeTrendByName.ContainsKey($tName)) { $apogeeTrendByName[$tName] = 0 }
+                    $apogeeTrendByName[$tName]++
+                }
+                if ($tDev) {
+                    if (-not $apogeeTrendByDevice.ContainsKey($tDev)) { $apogeeTrendByDevice[$tDev] = 0 }
+                    $apogeeTrendByDevice[$tDev]++
+                }
+                if (-not $apogeeTrendSample) { $apogeeTrendSample = $line }
+            }
+            elseif ($reApogeeTrendSeq.IsMatch($line)) {
+                $apogeeTrendSeq++
+                if (-not $apogeeTrendSample) { $apogeeTrendSample = $line }
+            }
+            if ($reApogeeAlertId.IsMatch($line)) {
+                $apogeeAlertId++
+                if (-not $apogeeAlertSample) { $apogeeAlertSample = $line }
+            }
+            if ($reApogeeQueryTimeout.IsMatch($line)) {
+                $apogeeQueryTimeout++
+                if (-not $apogeeTimeoutSample) { $apogeeTimeoutSample = $line }
+            }
+            $mGd = $reApogeeGetData.Match($line)
+            if ($mGd.Success) {
+                $apogeeGetDataFail++
+                $gdDev = $mGd.Groups[2].Value.Trim()
+                if ($gdDev) {
+                    if (-not $apogeeGetDataByDevice.ContainsKey($gdDev)) { $apogeeGetDataByDevice[$gdDev] = 0 }
+                    $apogeeGetDataByDevice[$gdDev]++
+                }
+                if (-not $apogeeGetDataSample) { $apogeeGetDataSample = $line }
+            }
+        }
+
+        if ($reProjectUp.IsMatch($line)) {
+            $projectUp++
+            if ($projectLifecycleEvents.Count -lt 200) {
+                [void]$projectLifecycleEvents.Add([pscustomobject]@{ Kind = 'up'; Time = $ts; Sample = $line })
+            }
+        }
+        if ($reProjectStartMode.IsMatch($line)) { $projectStartMode++ }
+        if ($reProjectShutdown.IsMatch($line)) {
+            $projectShutdown++
+            if ($projectLifecycleEvents.Count -lt 200) {
+                [void]$projectLifecycleEvents.Add([pscustomobject]@{ Kind = 'shutdown'; Time = $ts; Sample = $line })
+            }
+        }
+        if ($reProjectStopped.IsMatch($line)) {
+            $projectStopped++
+            if ($projectLifecycleEvents.Count -lt 200) {
+                [void]$projectLifecycleEvents.Add([pscustomobject]@{ Kind = 'stopped'; Time = $ts; Sample = $line })
+            }
+        }
+        $mPmonRr = $rePmonMgrRestart.Match($line)
+        if ($mPmonRr.Success) {
+            $pmonMgrRestart++
+            $rn = $mPmonRr.Groups[1].Value.Trim()
+            if ($rn) {
+                if (-not $pmonRestartByComp.ContainsKey($rn)) { $pmonRestartByComp[$rn] = 0 }
+                $pmonRestartByComp[$rn]++
+            }
+        }
+        if ($reMgrStartProj.IsMatch($line)) {
+            $mgrStartProj++
+            $sk = ($comp -replace '\s+', '')
+            if ($sk) {
+                if (-not $mgrStartByComp.ContainsKey($sk)) { $mgrStartByComp[$sk] = 0 }
+                $mgrStartByComp[$sk]++
+            }
+        }
+        if ($reMgrStopMsg.IsMatch($line)) {
+            $mgrStop++
+            $sk = ($comp -replace '\s+', '')
+            if ($sk) {
+                if (-not $mgrStopByComp.ContainsKey($sk)) { $mgrStopByComp[$sk] = 0 }
+                $mgrStopByComp[$sk]++
+            }
+        }
+        if ($reDriverReady.IsMatch($line)) { $driverReady++ }
+        $mBlock = $reBlockingStart.Match($line)
+        if ($mBlock.Success) {
+            $blockingDetected++
+            $bk = $mBlock.Groups[1].Value.Trim()
+            if ($bk) {
+                if (-not $blockingByComp.ContainsKey($bk)) { $blockingByComp[$bk] = 0 }
+                $blockingByComp[$bk]++
+            }
+            if (-not $blockingSample) { $blockingSample = $line }
+        }
+        $mUnblock = $reBlockingEnd.Match($line)
+        if ($mUnblock.Success) {
+            $blockingCleared++
+            $uk = $mUnblock.Groups[1].Value.Trim()
+            if ($uk) {
+                if (-not $unblockingByComp.ContainsKey($uk)) { $unblockingByComp[$uk] = 0 }
+                $unblockingByComp[$uk]++
+            }
+            if (-not $unblockingSample) { $unblockingSample = $line }
         }
     }
 }
@@ -1178,8 +1486,22 @@ Write-Host (" BACnet    : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:
 Write-Host (" CNS       : ResolveNodes={0:N0} ReducedFunction={1:N0} TryRenewSession={2:N0}" -f `
     $cnsResolveNodes, $cnsReducedFunction, $cnsTryRenew)
 Write-Host (" CoHo      : stuck/drop={0:N0}" -f $cohoStuckEvents)
-Write-Host (" Apogee    : events={0:N0} UpdatePoints={1:N0} PPCL={2:N0}" -f `
-    $apogeeEvents, $apogeeUpdatePoints, $apogeePpclNames.Count)
+Write-Host (" Apogee    : events={0:N0} UpdatePoints={1:N0} PPCL={2:N0} | Drv={3:N0} overflow={4:N0} seq={5:N0} AlertID={6:N0} qTimeout={7:N0} getData={8:N0}" -f `
+    $apogeeEvents, $apogeeUpdatePoints, $apogeePpclNames.Count, `
+    $apogeeDrvLines, $apogeeTrendOverflow, $apogeeTrendSeq, $apogeeAlertId, $apogeeQueryTimeout, $apogeeGetDataFail)
+Write-Host (" Managers  : starts={0:N0} stops={1:N0} pmon-restarts={2:N0} blocking={3:N0} unblocked={4:N0}" -f `
+    $mgrStartProj, $mgrStop, $pmonMgrRestart, $blockingDetected, $blockingCleared)
+Write-Host (" Project   : up={0:N0} stopped={1:N0} shutdown={2:N0} START_MODE={3:N0}" -f `
+    $projectUp, $projectStopped, $projectShutdown, $projectStartMode)
+if ($projectUp -gt 0) {
+    $upTimesPreview = @($projectLifecycleEvents | Where-Object { $_.Kind -eq 'up' } | Select-Object -First 5 | ForEach-Object { $_.Time })
+    if ($upTimesPreview.Count -gt 0) {
+        $moreUp = $projectUp - $upTimesPreview.Count
+        $upLabel = $upTimesPreview -join ', '
+        if ($moreUp -gt 0) { $upLabel = '{0} ... (+{1:N0} more)' -f $upLabel, $moreUp }
+        Write-Host ("   up at   : {0}" -f $upLabel) -ForegroundColor DarkGray
+    }
+}
 
 # --- interactive / organize composition ---
 $organizeMode = $Organize
@@ -1324,6 +1646,7 @@ elseif ($organizeMode -eq 'Driver') {
         if ($d -match '(?i)Apogee') { $includeApogeeModule = $true }
     }
     if ($bacCollectTrend -gt 0 -or $bacTimeSync -gt 0) { $includeBacnetModule = $true }
+    if ($apogeeDrvLines -gt 0 -or $apogeeTrendOverflow -gt 0) { $includeApogeeModule = $true }
 }
 else {
     # All
@@ -1408,6 +1731,45 @@ if ($apogeeUpdatePoints -ge 10) {
     $findings.Add(("Apogee UpdatePoints failures: {0:N0} across {1:N0} PPCL programs." -f `
         $apogeeUpdatePoints, $apogeePpclNames.Count))
 }
+if ($apogeeTrendOverflow -ge 50) {
+    $findings.Add(("ApogeeDrv trend buffer overflows: {0:N0} across {1:N0} devices ({2:N0} sequence-gap lines)." -f `
+        $apogeeTrendOverflow, $apogeeTrendByDevice.Count, $apogeeTrendSeq))
+}
+if ($apogeeAlertId -ge 50) {
+    $findings.Add(("ApogeeDrv AlertID issues: {0:N0}." -f $apogeeAlertId))
+}
+if ($apogeeGetDataFail -ge 50) {
+    $findings.Add(("ApogeeDrv get-data failures: {0:N0} across {1:N0} devices." -f `
+        $apogeeGetDataFail, $apogeeGetDataByDevice.Count))
+}
+if ($apogeeQueryTimeout -ge 50) {
+    $findings.Add(("ApogeeDrv query timeouts: {0:N0}." -f $apogeeQueryTimeout))
+}
+if ($projectUp -ge 1 -or $projectStopped -ge 1) {
+    $upTimes = @($projectLifecycleEvents | Where-Object { $_.Kind -eq 'up' } | ForEach-Object { $_.Time })
+    $upTimesNote = ''
+    if ($upTimes.Count -gt 0) {
+        $show = @($upTimes | Select-Object -First 5)
+        $upTimesNote = ' up at: ' + ($show -join ', ')
+        if ($upTimes.Count -gt 5) { $upTimesNote += (' ... (+{0} more)' -f ($upTimes.Count - 5)) }
+    }
+    $findings.Add(("Project lifecycle (pmon): up={0:N0}, stopped={1:N0}, shutdown cmds={2:N0}, START_MODE={3:N0}.{4}" -f `
+        $projectUp, $projectStopped, $projectShutdown, $projectStartMode, $upTimesNote))
+}
+if ($pmonMgrRestart -ge 1) {
+    $topRr = ($pmonRestartByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+    $findings.Add(("pmon auto-restarted managers: {0:N0} event(s){1}." -f `
+        $pmonMgrRestart, $(if ($topRr) { " ($topRr)" } else { '' })))
+}
+if ($blockingDetected -ge 1) {
+    $topBl = ($blockingByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+    $findings.Add(("pmon blocking (no heartbeat): {0:N0} detection(s), {1:N0} cleared{2}." -f `
+        $blockingDetected, $blockingCleared, $(if ($topBl) { " ($topBl)" } else { '' })))
+}
+if ($mgrStartProj -ge 5) {
+    $findings.Add(("Manager Start (PROJ) events: {0:N0}; Manager Stop: {1:N0}; driver ready: {2:N0}." -f `
+        $mgrStartProj, $mgrStop, $driverReady))
+}
 
 if ($perfCats.ContainsKey('Timeout') -and $perfCats['Timeout'] -ge 5) {
     $findings.Add("HIGH: Timeouts detected ($($perfCats['Timeout'])).")
@@ -1452,6 +1814,7 @@ function script:W([string]$s) { [void]$sb.AppendLine($s) }
 W '================================================================================'
 W ' PVSS / WinCC OA Log Analysis Report'
 W '================================================================================'
+W ("Tool      : OfflineAnalyze v{0} by {1}" -f $script:Version, $script:Author)
 W ("Generated : {0}" -f (Get-Date -Format 'yyyy-MM-dd HH:mm:ss'))
 W ("Log file  : {0}" -f $resolvedLog)
 W ("Size      : {0:N2} MB" -f ($fileInfo.Length / 1MB))
@@ -1500,8 +1863,9 @@ if ($includeModuleHeadlines) {
     W (' CNS    : ResolveNodes={0:N0} ReducedFunction={1:N0} TryRenewSession={2:N0}' -f `
         $cnsResolveNodes, $cnsReducedFunction, $cnsTryRenew)
     W (' CoHo   : stuck/drop={0:N0}' -f $cohoStuckEvents)
-    W (' Apogee : events={0:N0} UpdatePoints={1:N0} PPCL={2:N0}' -f `
-        $apogeeEvents, $apogeeUpdatePoints, $apogeePpclNames.Count)
+    W (' Apogee : events={0:N0} UpdatePoints={1:N0} PPCL={2:N0} | Drv overflow={3:N0} seq={4:N0} AlertID={5:N0} getData={6:N0}' -f `
+        $apogeeEvents, $apogeeUpdatePoints, $apogeePpclNames.Count, `
+        $apogeeTrendOverflow, $apogeeTrendSeq, $apogeeAlertId, $apogeeGetDataFail)
     W ''
 }
 
@@ -1650,9 +2014,9 @@ if ($includeCohoModule -and $cohoStuckEvents -gt 0) {
 }
 
 # Module: Apogee
-if ($includeApogeeModule -and $apogeeEvents -gt 0) {
-    W '--- Apogee module (thin) ---'
-    W ' CoHo.Apogee* / Orch.Apogee* header events (typically SEVERE).'
+if ($includeApogeeModule -and ($apogeeEvents -gt 0 -or $apogeeDrvLines -gt 0 -or $apogeeTrendOverflow -gt 0 -or $apogeeAlertId -gt 0 -or $apogeeGetDataFail -gt 0)) {
+    W '--- Apogee module ---'
+    W ' CoHo.Apogee* / Orch.Apogee* (orchestration / ApogeeBACnet path)'
     W ('  Events              : {0:N0}' -f $apogeeEvents)
     W ('  UpdatePoints        : {0:N0}' -f $apogeeUpdatePoints)
     W ('  Trace repetitions   : {0:N0}' -f $apogeeRepetition)
@@ -1668,6 +2032,90 @@ if ($includeApogeeModule -and $apogeeEvents -gt 0) {
         W ('   {0,2}. {1,8:N0}  {2}' -f $rank, $e.Value, $e.Key)
     }
     if ($rank -eq 0) { W '   (none parsed)' }
+    W ''
+    W ' WCCOAApogeeDrv (native Apogee driver)'
+    W ('  Driver lines        : {0:N0}' -f $apogeeDrvLines)
+    W ('  Trend buffer overflow: {0:N0}  (unique devices: {1:N0}, unique trends: {2:N0})' -f `
+        $apogeeTrendOverflow, $apogeeTrendByDevice.Count, $apogeeTrendByName.Count)
+    W ('  Sequence-gap lines  : {0:N0}  (Last sequence number… companion warnings)' -f $apogeeTrendSeq)
+    W ('  AlertID issues      : {0:N0}' -f $apogeeAlertId)
+    W ('  Query timeouts      : {0:N0}' -f $apogeeQueryTimeout)
+    W ('  Get-data failures   : {0:N0}  (unique devices: {1:N0})' -f $apogeeGetDataFail, $apogeeGetDataByDevice.Count)
+    if ($apogeeTrendSample) { W ("  Trend example       : {0}" -f $apogeeTrendSample) }
+    if ($apogeeAlertSample) { W ("  AlertID example     : {0}" -f $apogeeAlertSample) }
+    if ($apogeeTimeoutSample) { W ("  Timeout example     : {0}" -f $apogeeTimeoutSample) }
+    if ($apogeeGetDataSample) { W ("  Get-data example    : {0}" -f $apogeeGetDataSample) }
+    if ($apogeeTrendByDevice.Count -gt 0) {
+        W '  Top devices by trend overflow:'
+        $rank = 0
+        foreach ($e in ($apogeeTrendByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $rank++
+            W ('   {0,4}  {1,6:N0}  {2}' -f $rank, $e.Value, $e.Key)
+        }
+    }
+    if ($apogeeTrendByName.Count -gt 0) {
+        W '  Top trends by overflow:'
+        $rank = 0
+        foreach ($e in ($apogeeTrendByName.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $rank++
+            W ('   {0,4}  {1,6:N0}  {2}' -f $rank, $e.Value, $e.Key)
+        }
+    }
+    if ($apogeeGetDataByDevice.Count -gt 0) {
+        W '  Top devices by get-data failure:'
+        $rank = 0
+        foreach ($e in ($apogeeGetDataByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $rank++
+            W ('   {0,4}  {1,6:N0}  {2}' -f $rank, $e.Value, $e.Key)
+        }
+    }
+    W ''
+}
+
+if ($projectLifecycleEvents.Count -gt 0 -or $projectUp -gt 0 -or $projectStopped -gt 0 -or $projectShutdown -gt 0) {
+    W '--- Project restarts (pmon) ---'
+    W ' Timeline of project up / shutdown / completely stopped (log timestamps). START_MODE counted only (too frequent to list).'
+    W ('  up={0:N0}  stopped={1:N0}  shutdown={2:N0}  START_MODE={3:N0}  listed={4:N0}{5}' -f `
+        $projectUp, $projectStopped, $projectShutdown, $projectStartMode, $projectLifecycleEvents.Count, `
+        $(if (($projectUp + $projectStopped + $projectShutdown) -gt $projectLifecycleEvents.Count) { ' (capped at 200)' } else { '' }))
+    W ('   {0,-12}  {1}' -f 'Kind', 'Time')
+    foreach ($ev in $projectLifecycleEvents) {
+        W ('   {0,-12}  {1}' -f $ev.Kind, $ev.Time)
+    }
+    if ($projectLifecycleEvents.Count -eq 0) { W '   (none listed)' }
+    W ''
+}
+
+if ($mgrStartProj -gt 0 -or $mgrStop -gt 0 -or $pmonMgrRestart -gt 0 -or $blockingDetected -gt 0) {
+    W '--- Manager health (pmon) ---'
+    W ' Start/stop = Manager Start PROJ / Manager Stop. Restarts = Detected stopped manager. Blocking = no heartbeat (busy/overloaded).'
+    W ('  Starts={0:N0}  Stops={1:N0}  Auto-restarts={2:N0}  Blocking={3:N0}  Unblocked={4:N0}  Driver-ready={5:N0}' -f `
+        $mgrStartProj, $mgrStop, $pmonMgrRestart, $blockingDetected, $blockingCleared, $driverReady)
+    if ($blockingSample) { W ("  Blocking example   : {0}" -f $blockingSample) }
+    if ($unblockingSample) { W ("  Unblocked example  : {0}" -f $unblockingSample) }
+    W '  Per-manager (top 25 by activity):'
+    W ('   {0,-40} {1,7} {2,7} {3,8} {4,9} {5,9}' -f 'Manager', 'Starts', 'Stops', 'Restart', 'Blocking', 'Unblock')
+    $lifeKeys = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($map in @($mgrStartByComp, $mgrStopByComp, $pmonRestartByComp, $blockingByComp, $unblockingByComp)) {
+        foreach ($k in @($map.Keys)) { [void]$lifeKeys.Add($k) }
+    }
+    $lifeRows = @(
+        $lifeKeys | ForEach-Object {
+            $n = $_
+            $st = if ($mgrStartByComp.ContainsKey($n)) { [int]$mgrStartByComp[$n] } else { 0 }
+            $sp = if ($mgrStopByComp.ContainsKey($n)) { [int]$mgrStopByComp[$n] } else { 0 }
+            $rr = if ($pmonRestartByComp.ContainsKey($n)) { [int]$pmonRestartByComp[$n] } else { 0 }
+            $bl = if ($blockingByComp.ContainsKey($n)) { [int]$blockingByComp[$n] } else { 0 }
+            $ub = if ($unblockingByComp.ContainsKey($n)) { [int]$unblockingByComp[$n] } else { 0 }
+            [pscustomobject]@{ Name = $n; Starts = $st; Stops = $sp; Restarts = $rr; Blocking = $bl; Unblocked = $ub; Score = ($st + $sp + $rr + $bl + $ub) }
+        } | Sort-Object Score -Descending | Select-Object -First 25
+    )
+    $rank = 0
+    foreach ($r in $lifeRows) {
+        $rank++
+        W ('   {0,-40} {1,7:N0} {2,7:N0} {3,8:N0} {4,9:N0} {5,9:N0}' -f $r.Name, $r.Starts, $r.Stops, $r.Restarts, $r.Blocking, $r.Unblocked)
+    }
+    if ($rank -eq 0) { W '   (none)' }
     W ''
 }
 
@@ -1839,7 +2287,8 @@ if ($writeText) {
     Write-Host ("Text report written to: {0}" -f $textOutPath) -ForegroundColor Green
 }
 if ($writeHtml) {
-    $html = Convert-AnalysisReportToHtml -TextReport $report -LogFile $resolvedLog -Generated $generatedStamp
+    $html = Convert-AnalysisReportToHtml -TextReport $report -LogFile $resolvedLog -Generated $generatedStamp `
+        -Version $script:Version -Author $script:Author
     [System.IO.File]::WriteAllText($htmlOutPath, $html, (Get-LogTextEncoding))
     Write-Host ("HTML report written to: {0}" -f $htmlOutPath) -ForegroundColor Green
 }

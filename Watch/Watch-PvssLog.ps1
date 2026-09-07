@@ -5,6 +5,8 @@
 .DESCRIPTION
   Serves ui\ and /api/pulse|/api/section|/api/manager|/api/health.
   Opens the live log read-only (FileAccess.Read + FileShare.ReadWrite).
+.NOTES
+  Author: Cisum
 #>
 [CmdletBinding()]
 param(
@@ -23,7 +25,11 @@ $ErrorActionPreference = 'Stop'
 $script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:UiRoot = Join-Path $script:Root 'ui'
 $script:Version = (Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
-if (-not $script:Version) { $script:Version = '2.0-dev' }
+if (-not $script:Version) { $script:Version = '2.1' }
+$script:Author = 'Cisum'
+foreach ($verLine in @(Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue)) {
+    if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
+}
 
 # --- helpers (V1.1-aligned) ---
 $script:ReNormTs = [regex]'\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+'
@@ -208,6 +214,37 @@ function New-EmptyState {
         ApogeeOther       = 0
         ApogeePpcl        = @{}
         ApogeeSample      = $null
+        ApogeeDrvLines    = 0
+        ApogeeTrendOverflow = 0
+        ApogeeTrendSeq    = 0
+        ApogeeAlertId     = 0
+        ApogeeQueryTimeout = 0
+        ApogeeGetDataFail = 0
+        ApogeeTrendByDevice = @{}
+        ApogeeTrendByName = @{}
+        ApogeeGetDataByDevice = @{}
+        ApogeeAlertSample = $null
+        ApogeeTrendSample = $null
+        ApogeeTimeoutSample = $null
+        ApogeeGetDataSample = $null
+        ProjectStartMode  = 0
+        ProjectUp         = 0
+        ProjectShutdown   = 0
+        ProjectStopped    = 0
+        PmonMgrRestart    = 0
+        MgrStartProj      = 0
+        MgrStop           = 0
+        DriverReady       = 0
+        MgrStartByComp    = @{}
+        MgrStopByComp     = @{}
+        PmonRestartByComp = @{}
+        BlockingByComp    = @{}
+        UnblockingByComp  = @{}
+        BlockingDetected  = 0
+        BlockingCleared   = 0
+        BlockingSample    = $null
+        UnblockingSample  = $null
+        ProjectRestartEvents = New-Object System.Collections.ArrayList
     }
 }
 
@@ -222,6 +259,21 @@ $script:ReCohoDiscoveryLoc = [regex]'(?i)DiscoveryLoc:([^\s]+)\s+got stuck\b'
 $script:ReCohoDiscoveryCycle = [regex]'(?i)((?:Global|Observer)\s+Discovery Cycle\s+\[[^\]]+\])\s+got stuck\b'
 $script:ReApogeePpcl = [regex]'(?i)PPCL Program Name:\s*(\S+?)(?:System\.|$)'
 $script:ReApogeeComp = [regex]'(?i)(?:CoHo|Orch)\.Apogee'
+$script:ReApogeeTrendOverflow = [regex]'(?i)Trend buffer overflow for trend\s+(.+?)\s+in device\s+(.+?)\.?\s*$'
+$script:ReApogeeTrendSeq = [regex]'(?i)Last sequence number\s+\d+\s+is greater than saved'
+$script:ReApogeeAlertId = [regex]'AlertID\s+\S+'
+$script:ReApogeeQueryTimeout = [regex]'(?i)pending answer run into timeout'
+$script:ReApogeeGetData = [regex]'(?i)Failed to get data for object\s+(.+?)\s+on device\s+([^,]+)'
+$script:ReProjectUp = [regex]'The project is up and running'
+$script:ReProjectStopped = [regex]'Completely stopped the project'
+$script:ReProjectShutdown = [regex]'Got shutdown command'
+$script:ReProjectStartMode = [regex]'Manager Start,\s*START_MODE'
+$script:RePmonMgrRestart = [regex]'Detected stopped manager\s+(\S+)\s+-\s+restarting'
+$script:ReMgrStartProj = [regex]'Manager Start,\s*PROJ,'
+$script:ReMgrStopMsg = [regex]'Manager Stop\s*$'
+$script:ReDriverReady = [regex]'(?i)Driver is configured with .+\s+and is now running'
+$script:ReBlockingStart = [regex]'Blocking Manager\s+(\S+)\s+detected(?:\.\s*No heartbeat since\s+(\d+)\s+seconds?)?'
+$script:ReBlockingEnd = [regex]'Manager\s+(\S+)\s+is no longer blocking'
 $script:BacFlapMin = 3
 
 $script:Sync = [hashtable]::Synchronized(@{
@@ -301,6 +353,13 @@ function script:Clone-ObjectGraph {
         }
         return $arr
     }
+    if ($Value -is [System.Collections.IList] -and -not ($Value -is [string])) {
+        $copy = New-Object System.Collections.ArrayList
+        foreach ($item in @($Value)) {
+            [void]$copy.Add((Clone-ObjectGraph $item))
+        }
+        return $copy
+    }
     return $Value
 }
 
@@ -346,10 +405,62 @@ function script:Ensure-Minute {
     if (-not $Data.ByMinute.ContainsKey($Key)) {
         $Data.ByMinute[$Key] = @{
             FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
-            bacFailed = 0; bacOk = 0
+            bacFailed = 0; bacOk = 0; projectRestart = 0
         }
     }
     return $Data.ByMinute[$Key]
+}
+
+function script:Normalize-ManagerKey {
+    param([string]$Comp)
+    if ([string]::IsNullOrWhiteSpace($Comp)) { return '' }
+    # Keep instance number: CoHo(7) vs CoHo(100) are different managers.
+    return ([regex]::Replace($Comp.Trim(), '\s+', ''))
+}
+
+function script:Add-CountMap {
+    param([hashtable]$Map, [string]$Key)
+    if ([string]::IsNullOrWhiteSpace($Key)) { return }
+    if (-not $Map.ContainsKey($Key)) { $Map[$Key] = 0 }
+    $Map[$Key]++
+}
+
+function script:Build-LifecycleRows {
+    param(
+        [hashtable]$Data,
+        [string]$MatchPattern = '.'
+    )
+    $keys = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($map in @($Data.MgrStartByComp, $Data.MgrStopByComp, $Data.PmonRestartByComp, $Data.BlockingByComp, $Data.UnblockingByComp)) {
+        if (-not $map) { continue }
+        foreach ($k in @($map.Keys)) {
+            if ($k -match $MatchPattern) { [void]$keys.Add($k) }
+        }
+    }
+    $rows = @(
+        $keys | ForEach-Object {
+            $name = $_
+            [ordered]@{
+                name       = $name
+                starts     = if ($Data.MgrStartByComp.ContainsKey($name)) { [int]$Data.MgrStartByComp[$name] } else { 0 }
+                stops      = if ($Data.MgrStopByComp.ContainsKey($name)) { [int]$Data.MgrStopByComp[$name] } else { 0 }
+                restarts   = if ($Data.PmonRestartByComp.ContainsKey($name)) { [int]$Data.PmonRestartByComp[$name] } else { 0 }
+                blocking   = if ($Data.BlockingByComp.ContainsKey($name)) { [int]$Data.BlockingByComp[$name] } else { 0 }
+                unblocked  = if ($Data.UnblockingByComp.ContainsKey($name)) { [int]$Data.UnblockingByComp[$name] } else { 0 }
+            }
+        } | Sort-Object { -([int]$_.blocking + [int]$_.restarts + [int]$_.starts + [int]$_.stops) }, name
+    )
+    $tot = [ordered]@{
+        starts = 0; stops = 0; restarts = 0; blocking = 0; unblocked = 0
+    }
+    foreach ($r in $rows) {
+        $tot.starts += [int]$r.starts
+        $tot.stops += [int]$r.stops
+        $tot.restarts += [int]$r.restarts
+        $tot.blocking += [int]$r.blocking
+        $tot.unblocked += [int]$r.unblocked
+    }
+    return [ordered]@{ totals = $tot; managers = @($rows) }
 }
 
 function script:Process-LogLine {
@@ -387,13 +498,7 @@ function script:Process-LogLine {
     $Data.CompSev[$comp][$sev]++
 
     $mk = if ($ts.Length -ge 16) { $ts.Substring(0, 16) } else { $ts }
-    if (-not $Data.ByMinute.ContainsKey($mk)) {
-        $Data.ByMinute[$mk] = @{
-            FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
-            bacFailed = 0; bacOk = 0
-        }
-    }
-    $bucket = $Data.ByMinute[$mk]
+    $bucket = Ensure-Minute -Data $Data -Key $mk
     if ($bucket.ContainsKey($sev)) { $bucket[$sev]++ }
 
     $isWarning = ($sev -eq 'WARNING')
@@ -553,6 +658,90 @@ function script:Process-LogLine {
         }
         elseif ($script:ReApogeeRep.IsMatch($Line)) { $Data.ApogeeRepetition++ }
         else { $Data.ApogeeOther++ }
+    }
+
+    # WCCOAApogeeDrv (not ApogeeBACnet / CoHo.Apogee*)
+    if ($comp.IndexOf('ApogeeDrv', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
+        $Data.ApogeeDrvLines++
+        $mOv = $script:ReApogeeTrendOverflow.Match($Line)
+        if ($mOv.Success) {
+            $Data.ApogeeTrendOverflow++
+            $tName = $mOv.Groups[1].Value.Trim()
+            $tDev = $mOv.Groups[2].Value.Trim().TrimEnd('.')
+            if ($tName) {
+                if (-not $Data.ApogeeTrendByName.ContainsKey($tName)) { $Data.ApogeeTrendByName[$tName] = 0 }
+                $Data.ApogeeTrendByName[$tName]++
+            }
+            if ($tDev) {
+                if (-not $Data.ApogeeTrendByDevice.ContainsKey($tDev)) { $Data.ApogeeTrendByDevice[$tDev] = 0 }
+                $Data.ApogeeTrendByDevice[$tDev]++
+            }
+            if (-not $Data.ApogeeTrendSample) { $Data.ApogeeTrendSample = $Line }
+        }
+        elseif ($script:ReApogeeTrendSeq.IsMatch($Line)) {
+            $Data.ApogeeTrendSeq++
+            if (-not $Data.ApogeeTrendSample) { $Data.ApogeeTrendSample = $Line }
+        }
+        if ($script:ReApogeeAlertId.IsMatch($Line)) {
+            $Data.ApogeeAlertId++
+            if (-not $Data.ApogeeAlertSample) { $Data.ApogeeAlertSample = $Line }
+        }
+        if ($script:ReApogeeQueryTimeout.IsMatch($Line)) {
+            $Data.ApogeeQueryTimeout++
+            if (-not $Data.ApogeeTimeoutSample) { $Data.ApogeeTimeoutSample = $Line }
+        }
+        $mGd = $script:ReApogeeGetData.Match($Line)
+        if ($mGd.Success) {
+            $Data.ApogeeGetDataFail++
+            $gdDev = $mGd.Groups[2].Value.Trim()
+            if ($gdDev) {
+                if (-not $Data.ApogeeGetDataByDevice.ContainsKey($gdDev)) { $Data.ApogeeGetDataByDevice[$gdDev] = 0 }
+                $Data.ApogeeGetDataByDevice[$gdDev]++
+            }
+            if (-not $Data.ApogeeGetDataSample) { $Data.ApogeeGetDataSample = $Line }
+        }
+    }
+
+    # Project / manager lifecycle (pmon + Manager Start/Stop)
+    if ($script:ReProjectUp.IsMatch($Line)) {
+        $Data.ProjectUp++
+        $bucket.projectRestart = 1
+        if ($Data.ProjectRestartEvents.Count -lt 200) {
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $mk; kind = 'up'; sample = $Line })
+        }
+    }
+    if ($script:ReProjectStartMode.IsMatch($Line)) { $Data.ProjectStartMode++ }
+    if ($script:ReProjectShutdown.IsMatch($Line)) { $Data.ProjectShutdown++ }
+    if ($script:ReProjectStopped.IsMatch($Line)) { $Data.ProjectStopped++ }
+    $mPmonRr = $script:RePmonMgrRestart.Match($Line)
+    if ($mPmonRr.Success) {
+        $Data.PmonMgrRestart++
+        $rn = $mPmonRr.Groups[1].Value.Trim()
+        if ($rn) {
+            if (-not $Data.PmonRestartByComp.ContainsKey($rn)) { $Data.PmonRestartByComp[$rn] = 0 }
+            $Data.PmonRestartByComp[$rn]++
+        }
+    }
+    if ($script:ReMgrStartProj.IsMatch($Line)) {
+        $Data.MgrStartProj++
+        Add-CountMap -Map $Data.MgrStartByComp -Key (Normalize-ManagerKey -Comp $comp)
+    }
+    if ($script:ReMgrStopMsg.IsMatch($Line)) {
+        $Data.MgrStop++
+        Add-CountMap -Map $Data.MgrStopByComp -Key (Normalize-ManagerKey -Comp $comp)
+    }
+    if ($script:ReDriverReady.IsMatch($Line)) { $Data.DriverReady++ }
+    $mBlock = $script:ReBlockingStart.Match($Line)
+    if ($mBlock.Success) {
+        $Data.BlockingDetected++
+        Add-CountMap -Map $Data.BlockingByComp -Key $mBlock.Groups[1].Value.Trim()
+        if (-not $Data.BlockingSample) { $Data.BlockingSample = $Line }
+    }
+    $mUnblock = $script:ReBlockingEnd.Match($Line)
+    if ($mUnblock.Success) {
+        $Data.BlockingCleared++
+        Add-CountMap -Map $Data.UnblockingByComp -Key $mUnblock.Groups[1].Value.Trim()
+        if (-not $Data.UnblockingSample) { $Data.UnblockingSample = $Line }
     }
 }
 
@@ -1064,6 +1253,38 @@ function script:Build-Findings {
     if ($d.ApogeeUpdatePoints -ge 10) {
         [void]$findings.Add(("Apogee UpdatePoints failures: {0:N0} across {1:N0} PPCL programs." -f $d.ApogeeUpdatePoints, $d.ApogeePpcl.Count))
     }
+    if ($d.ApogeeTrendOverflow -ge 50) {
+        [void]$findings.Add(("ApogeeDrv trend buffer overflows: {0:N0} across {1:N0} devices ({2:N0} sequence-gap lines)." -f `
+            $d.ApogeeTrendOverflow, $d.ApogeeTrendByDevice.Count, $d.ApogeeTrendSeq))
+    }
+    if ($d.ApogeeAlertId -ge 50) {
+        [void]$findings.Add(("ApogeeDrv AlertID issues: {0:N0}." -f $d.ApogeeAlertId))
+    }
+    if ($d.ApogeeGetDataFail -ge 50) {
+        [void]$findings.Add(("ApogeeDrv get-data failures: {0:N0} across {1:N0} devices." -f `
+            $d.ApogeeGetDataFail, $d.ApogeeGetDataByDevice.Count))
+    }
+    if ($d.ApogeeQueryTimeout -ge 50) {
+        [void]$findings.Add(("ApogeeDrv query timeouts: {0:N0}." -f $d.ApogeeQueryTimeout))
+    }
+    if ($d.ProjectUp -ge 1 -or $d.ProjectStopped -ge 1) {
+        [void]$findings.Add(("Project lifecycle (pmon): up={0:N0}, stopped={1:N0}, shutdown cmds={2:N0}, START_MODE={3:N0}." -f `
+            $d.ProjectUp, $d.ProjectStopped, $d.ProjectShutdown, $d.ProjectStartMode))
+    }
+    if ($d.PmonMgrRestart -ge 1) {
+        $topRr = ($d.PmonRestartByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+        [void]$findings.Add(("pmon auto-restarted managers: {0:N0} event(s){1}." -f `
+            $d.PmonMgrRestart, $(if ($topRr) { " ($topRr)" } else { '' })))
+    }
+    if ($d.BlockingDetected -ge 1) {
+        $topBl = ($d.BlockingByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+        [void]$findings.Add(("pmon blocking (no heartbeat): {0:N0} detection(s), {1:N0} cleared{2}." -f `
+            $d.BlockingDetected, $d.BlockingCleared, $(if ($topBl) { " ($topBl)" } else { '' })))
+    }
+    if ($d.MgrStartProj -ge 5) {
+        [void]$findings.Add(("Manager Start (PROJ) events: {0:N0}; Manager Stop: {1:N0}; driver ready: {2:N0}." -f `
+            $d.MgrStartProj, $d.MgrStop, $d.DriverReady))
+    }
     if ($d.PerfCats.ContainsKey('Timeout') -and $d.PerfCats['Timeout'] -ge 5) {
         [void]$findings.Add("HIGH: Timeouts detected ($($d.PerfCats['Timeout'])).")
     }
@@ -1127,7 +1348,7 @@ function script:Build-ChartSeries {
         if (-not $acc.ContainsKey($key)) {
             $acc[$key] = @{
                 FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
-                bacFailed = 0; bacOk = 0
+                bacFailed = 0; bacOk = 0; projectRestart = 0
             }
         }
         $dst = $acc[$key]
@@ -1137,19 +1358,28 @@ function script:Build-ChartSeries {
         }
         $dst.bacFailed += [int]$v.bacFailed
         $dst.bacOk += [int]$v.bacOk
+        if ([int]$v.projectRestart -gt 0) { $dst.projectRestart = 1 }
     }
 
     $rows = @(
         $acc.GetEnumerator() | Sort-Object Name | ForEach-Object {
             $v = $_.Value
-            $row = [ordered]@{ t = $_.Key; bacFailed = [int]$v.bacFailed; bacOk = [int]$v.bacOk }
+            $row = [ordered]@{
+                t = $_.Key; bacFailed = [int]$v.bacFailed; bacOk = [int]$v.bacOk
+                projectRestart = [int]$v.projectRestart
+            }
             foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
                 if ($SevFilter[$s]) { $row[$s] = [int]$v[$s] } else { $row[$s] = 0 }
             }
             $row
         }
     )
-    return [ordered]@{ granularity = $gran; byMinute = $rows }
+    return [ordered]@{
+        granularity = $gran
+        byMinute = $rows
+        projectUp = [int]$Data.ProjectUp
+        projectStopped = [int]$Data.ProjectStopped
+    }
 }
 
 function script:Build-PulseObject {
@@ -1190,7 +1420,11 @@ function script:Build-PulseObject {
                 }
                 cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
                 coho   = [ordered]@{ stuck = $d.CohoStuck }
-                apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
+                apogee = [ordered]@{
+                    events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints
+                    drvLines = $d.ApogeeDrvLines; trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
+                    alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
+                }
             }
             topManagers     = @()
             series          = [ordered]@{ granularity = 'minute'; byMinute = @() }
@@ -1232,7 +1466,11 @@ function script:Build-PulseObject {
             }
             cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
             coho   = [ordered]@{ stuck = $d.CohoStuck }
-            apogee = [ordered]@{ events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints }
+            apogee = [ordered]@{
+                events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints
+                drvLines = $d.ApogeeDrvLines; trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
+                alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
+            }
         }
         topManagers     = $topMgr
         series          = $series
@@ -1327,6 +1565,7 @@ function script:Build-SectionObject {
                     timeSyncCodes = $tsCodes; timeSyncTop = $tsProps
                     failedSample = $d.BacFailedSample; okSample = $d.BacOkSample; objectListSample = $d.BacObjectListSample
                     activity = $activity; endedFailedList = $endedList; objectListTop = $objTop
+                    lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)GmsBACnet|WCCOAGmsBACnet')
                 }
             }
         }
@@ -1336,6 +1575,7 @@ function script:Build-SectionObject {
                 cns        = [ordered]@{
                     resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; icns = $d.CnsICns; tryRenew = $d.CnsTryRenew
                     patterns = @(Get-TopPatterns -CountMap $d.CnsPatterns -SampleMap $d.CnsPatternSamples -TimeMap $d.CnsPatternTimes -N $TopN)
+                    lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)ApplicationFramework|ICns')
                 }
             }
         }
@@ -1345,7 +1585,14 @@ function script:Build-SectionObject {
                     [ordered]@{ name = $_.Key; count = [int]$_.Value }
                 }
             )
-            return [ordered]@{ generation = $gen; coho = [ordered]@{ stuck = $d.CohoStuck; sample = $d.CohoSample; topNames = $names } }
+            return [ordered]@{
+                generation = $gen
+                coho = [ordered]@{
+                    stuck = $d.CohoStuck; sample = $d.CohoSample; topNames = $names
+                    lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)CoHo|GmsCoHo')
+                    blockingSample = $d.BlockingSample; unblockingSample = $d.UnblockingSample
+                }
+            }
         }
         'apogee' {
             $ppcl = @(
@@ -1353,11 +1600,35 @@ function script:Build-SectionObject {
                     [ordered]@{ name = $_.Key; count = [int]$_.Value }
                 }
             )
+            $trendDev = @(
+                $d.ApogeeTrendByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                    [ordered]@{ device = $_.Key; count = [int]$_.Value }
+                }
+            )
+            $trendNames = @(
+                $d.ApogeeTrendByName.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                    [ordered]@{ trend = $_.Key; count = [int]$_.Value }
+                }
+            )
+            $getDev = @(
+                $d.ApogeeGetDataByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                    [ordered]@{ device = $_.Key; count = [int]$_.Value }
+                }
+            )
             return [ordered]@{
                 generation = $gen
                 apogee     = [ordered]@{
                     events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints; repetition = $d.ApogeeRepetition
                     other = $d.ApogeeOther; uniquePpcl = $d.ApogeePpcl.Count; sample = $d.ApogeeSample; topPpcl = $ppcl
+                    drvLines = $d.ApogeeDrvLines
+                    trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
+                    alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
+                    trendDevices = $d.ApogeeTrendByDevice.Count; trendNames = $d.ApogeeTrendByName.Count
+                    getDataDevices = $d.ApogeeGetDataByDevice.Count
+                    trendSample = $d.ApogeeTrendSample; alertSample = $d.ApogeeAlertSample
+                    timeoutSample = $d.ApogeeTimeoutSample; getDataSample = $d.ApogeeGetDataSample
+                    topTrendDevices = $trendDev; topTrends = $trendNames; topGetDataDevices = $getDev
+                    lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)ApogeeDrv')
                 }
             }
         }
@@ -1406,6 +1677,7 @@ function script:Build-ManagerObject {
         count              = $count
         severities         = $sevMap
         patternsBySeverity = $p
+        lifecycle          = (Build-LifecycleRows -Data $d -MatchPattern ('^' + [regex]::Escape((Normalize-ManagerKey -Comp $MgrName)) + '$'))
     }
 }
 
@@ -1493,6 +1765,10 @@ function script:Reduce-SeriesPoints {
             }
         }
         if ($Aggregate -eq 'Max' -or $Aggregate -eq 'MaxBac') {
+            $hadRestart = 0
+            foreach ($row in $chunk) {
+                if ([int]$row.projectRestart -gt 0) { $hadRestart = 1; break }
+            }
             $agg = [ordered]@{
                 t         = [string]$best.t
                 FATAL     = [int]$best.FATAL
@@ -1502,6 +1778,7 @@ function script:Reduce-SeriesPoints {
                 INFO      = [int]$best.INFO
                 bacFailed = [int]$best.bacFailed
                 bacOk     = [int]$best.bacOk
+                projectRestart = $hadRestart
             }
             [void]$out.Add($agg)
             continue
@@ -1510,13 +1787,14 @@ function script:Reduce-SeriesPoints {
         $agg = [ordered]@{
             t         = [string]$mid.t
             FATAL     = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
-            bacFailed = 0; bacOk = 0
+            bacFailed = 0; bacOk = 0; projectRestart = 0
         }
         foreach ($row in $chunk) {
             foreach ($k in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO', 'bacFailed', 'bacOk')) {
                 $v = [int]$row.$k
                 $agg[$k] = [int]$agg[$k] + $v
             }
+            if ([int]$row.projectRestart -gt 0) { $agg.projectRestart = 1 }
         }
         [void]$out.Add($agg)
     }
@@ -1649,6 +1927,11 @@ function script:Build-VolumeSvg {
             [void]$sb.Append(('<rect x="{0:0.##}" y="{1:0.##}" width="{2:0.##}" height="{3:0.##}" fill="{4}"/>' -f [double]$x, [double]$yBase, [double]$barW, [double]$h, [string]$colors[$s]))
         }
     }
+    for ($i = 0; $i -lt $n; $i++) {
+        if ([int]$pts[$i].projectRestart -le 0) { continue }
+        $x = $padL + $i * $slot + $slot / 2.0
+        [void]$sb.Append(('<line x1="{0:0.##}" y1="{1}" x2="{0:0.##}" y2="{2}" stroke="#e0a000" stroke-width="2" stroke-dasharray="4 3" opacity="0.9"/>' -f [double]$x, $padT, ($padT + $plotH)))
+    }
     if ($rawN -gt $pts.Count) {
         [void]$sb.Append(('<text x="{0}" y="14" fill="#879baa" font-size="9" text-anchor="end">display {1}/{2} (peak-preserving)</text>' -f ($Width - $padR), $pts.Count, $rawN))
     }
@@ -1690,6 +1973,11 @@ function script:Build-BacnetSvg {
     # Match dashboard line colors: Failed=SEVERE magenta, OK=INFO green
     [void]$sb.Append(('<polyline fill="none" stroke="#c000a0" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="{0}"/>' -f ($failPts -join ' ')))
     [void]$sb.Append(('<polyline fill="none" stroke="#008000" stroke-width="2" stroke-linejoin="round" stroke-linecap="round" points="{0}"/>' -f ($okPts -join ' ')))
+    for ($i = 0; $i -lt $n; $i++) {
+        if ([int]$pts[$i].projectRestart -le 0) { continue }
+        $x = $padL + $i * $slot + $slot / 2.0
+        [void]$sb.Append(('<line x1="{0:0.##}" y1="{1}" x2="{0:0.##}" y2="{2}" stroke="#e0a000" stroke-width="2" stroke-dasharray="4 3" opacity="0.9"/>' -f [double]$x, $padT, ($padT + $plotH)))
+    }
     if ($rawN -gt $pts.Count) {
         [void]$sb.Append(('<text x="{0}" y="14" fill="#879baa" font-size="9" text-anchor="end">display {1}/{2} (peak-preserving)</text>' -f ($Width - $padR), $pts.Count, $rawN))
     }
@@ -1823,7 +2111,7 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     [void]$sb.AppendLine('<header>')
     [void]$sb.AppendLine('<div class="brand">PVSS Log Watch</div>')
     [void]$sb.AppendLine(('<h1>Snapshot report <span class="meta">v{0}</span></h1>' -f (& $e $Snap.meta.version)))
-    [void]$sb.AppendLine(('<p class="meta">Generated {0}</p>' -f (& $e $Snap.meta.generated)))
+    [void]$sb.AppendLine(('<p class="meta">Generated {0}  &middot;  by {1}</p>' -f (& $e $Snap.meta.generated), (& $e $script:Author)))
     [void]$sb.AppendLine(('<p class="meta">Log: <span class="mono">{0}</span></p>' -f (& $e $Snap.meta.logPath)))
     [void]$sb.AppendLine(('<p class="meta">{0}  &middot;  {1}</p>' -f (& $e $winLabel), (& $e $span)))
     [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  parsed lines: {1:N0}  &middot;  gen {2}</p>' -f `
@@ -1964,9 +2252,13 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
 
     $apo = $Snap.apogee
     [void]$sb.AppendLine('<h2>Apogee</h2><div class="card">')
-    if ($apo) {
-        [void]$sb.AppendLine(('<p>Events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; unique PPCL: <strong>{2:N0}</strong></p>' -f `
+    if ($apo -and (([int]$apo.events + [int]$apo.drvLines + [int]$apo.trendOverflow + [int]$apo.alertId + [int]$apo.getDataFail) -gt 0)) {
+        [void]$sb.AppendLine(('<p>CoHo/Orch events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; unique PPCL: <strong>{2:N0}</strong></p>' -f `
             [int]$apo.events, [int]$apo.updatePoints, [int]$apo.uniquePpcl))
+        [void]$sb.AppendLine(('<p>ApogeeDrv: lines <strong>{0:N0}</strong> &middot; trend overflow <strong>{1:N0}</strong> &middot; sequence gaps <strong>{2:N0}</strong> &middot; AlertID <strong>{3:N0}</strong> &middot; query timeout <strong>{4:N0}</strong> &middot; get-data fail <strong>{5:N0}</strong></p>' -f `
+            [int]$apo.drvLines, [int]$apo.trendOverflow, [int]$apo.trendSeq, [int]$apo.alertId, [int]$apo.queryTimeout, [int]$apo.getDataFail))
+        if ($apo.trendSample) { [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$apo.trendSample)))) }
+        if ($apo.alertSample) { [void]$sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $e ([string]$apo.alertSample)))) }
     }
     else { [void]$sb.AppendLine('<p class="muted">No Apogee data.</p>') }
     [void]$sb.AppendLine('</div>')
@@ -1984,7 +2276,8 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     [void]$sb.AppendLine('</div>')
 
-    [void]$sb.AppendLine('<footer>Snapshot from live Watch state (no re-scan). Same Siemens dark palette as the dashboard.</footer>')
+    [void]$sb.AppendLine(('<footer>Snapshot from live Watch state (no re-scan). Watch v{0} by {1}.</footer>' -f `
+        (& $e $Snap.meta.version), (& $e $script:Author)))
     [void]$sb.AppendLine('</main></body></html>')
     return $sb.ToString()
 }
@@ -2069,6 +2362,7 @@ function script:Handle-Api {
             $obj = [ordered]@{
                 ok           = $true
                 version      = "$($script:Version)"
+                author       = "$($script:Author)"
                 logPath      = "$($script:Sync['LogPath'])"
                 prefillPath  = "$($script:Sync['PrefillPath'])"
                 listeningUrl = "$($script:Sync['ListeningUrl'])"
@@ -2322,7 +2616,7 @@ if (-not (Test-Path -LiteralPath $script:UiRoot)) {
 
 $listener = Start-Listener -PreferredPort $Port
 $url = $script:Sync['ListeningUrl']
-Write-Host ("PVSS Log Watch {0}" -f $script:Version) -ForegroundColor Cyan
+Write-Host ("PVSS Log Watch {0} by {1}" -f $script:Version, $script:Author) -ForegroundColor Cyan
 Write-Host ("Listening: {0}" -f $url) -ForegroundColor Green
 Write-Host 'Log access: FileAccess.Read only (share allows WinCC to append).' -ForegroundColor DarkGray
 Write-Host 'Ctrl+C to stop.' -ForegroundColor DarkGray

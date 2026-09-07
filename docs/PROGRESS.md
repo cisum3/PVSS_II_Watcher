@@ -1,8 +1,9 @@
 # Implementation Progress — PVSS Log Analyzer
 
-**Release: V1.1** (batch triage tool — frozen for packaging)
+**Release: V1.2** (batch triage tool — OfflineAnalyze)
 
-Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.1.
+Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.2.
+Author: Cisum.
 
 | Status | Meaning |
 |--------|---------|
@@ -53,9 +54,15 @@ Zip for field use — batch-only package (do not include PRD/PROGRESS/examples/l
 - `OfflineAnalyze\readMe.txt`
 - `OfflineAnalyze\VERSION.txt`
 
-(Or zip the contents of `OfflineAnalyze\` as a flat V1.1 folder for sites that only need offline reports.)
+(Or zip the contents of `OfflineAnalyze\` as a flat folder for sites that only need offline reports.)
 
 ---
+
+## Changelog
+
+| Date | Event |
+|------|--------|
+| 2026-09-06 | **V1.2** - project restart timeline; manager blocking/health; HTML pattern cards; author Cisum |
 
 ## Changelog
 

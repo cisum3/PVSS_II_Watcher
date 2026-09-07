@@ -58,6 +58,7 @@
       fileLength: 42000000,
       findings: [
         'BACnet device status chatter: 1,200 Failed and 980 OK transitions (85 unique devices Failed).',
+        'Project lifecycle (pmon): up=2, stopped=1, shutdown cmds=1, START_MODE=2.',
         'CNS volume: ResolveNodes=140, ReducedFunction=12, ICns=4.'
       ],
       severityCounts: { FATAL: 2, SEVERE: 180, ERROR: 40, WARNING: 920, INFO: 12000 },
@@ -65,7 +66,7 @@
         bacnet: { failed: 1200, ok: 980, endedFailed: 42, objectList: 15, collectTrend: 450, timeSync: 80, collectTrendProps: 120, timeSyncProps: 40 },
         cns: { resolveNodes: 140, reducedFunction: 12, tryRenew: 3 },
         coho: { stuck: 8 },
-        apogee: { events: 22, updatePoints: 11 }
+        apogee: { events: 22, updatePoints: 11, drvLines: 800, trendOverflow: 400, trendSeq: 410, alertId: 90, queryTimeout: 40, getDataFail: 50 },
       },
       topManagers: [
         { name: 'WCCOAGmsBACnet', count: 8500 },
@@ -76,9 +77,9 @@
       series: {
         granularity: 'minute',
         byMinute: [
-          { t: '2026.09.05 15:00', FATAL: 0, SEVERE: 2, ERROR: 1, WARNING: 10, INFO: 80, bacFailed: 5, bacOk: 4 },
-          { t: '2026.09.05 15:01', FATAL: 0, SEVERE: 4, ERROR: 0, WARNING: 12, INFO: 90, bacFailed: 8, bacOk: 6 },
-          { t: '2026.09.05 15:02', FATAL: 1, SEVERE: 3, ERROR: 2, WARNING: 8, INFO: 70, bacFailed: 3, bacOk: 7 }
+          { t: '2026.09.05 15:00', FATAL: 0, SEVERE: 2, ERROR: 1, WARNING: 10, INFO: 80, bacFailed: 5, bacOk: 4, projectRestart: 1 },
+          { t: '2026.09.05 15:01', FATAL: 0, SEVERE: 4, ERROR: 0, WARNING: 12, INFO: 90, bacFailed: 8, bacOk: 6, projectRestart: 0 },
+          { t: '2026.09.05 15:02', FATAL: 1, SEVERE: 3, ERROR: 2, WARNING: 8, INFO: 70, bacFailed: 3, bacOk: 7, projectRestart: 0 }
         ]
       }
     };
@@ -157,7 +158,16 @@
         apogee: {
           events: 22, updatePoints: 11, repetition: 2, other: 9, uniquePpcl: 4,
           sample: '… CoHo.Apogee …',
-          topPpcl: [{ name: 'PROG_A', count: 6 }, { name: 'PROG_B', count: 3 }]
+          topPpcl: [{ name: 'PROG_A', count: 6 }, { name: 'PROG_B', count: 3 }],
+          drvLines: 800, trendOverflow: 400, trendSeq: 410, alertId: 90, queryTimeout: 40, getDataFail: 50,
+          trendDevices: 12, trendNames: 80, getDataDevices: 5,
+          trendSample: 'Trend buffer overflow for trend X:0  in device ETHERNET|NODE.',
+          alertSample: 'AlertService, sendAck, AlertID GMSAPOGEE_2_123 is not known',
+          timeoutSample: 'pending answer run into timeout - aborting single query',
+          getDataSample: 'Failed to get data for object X on device ETHERNET|NODE, Status = Timeout…',
+          topTrendDevices: [{ device: 'ETHERNET|NODE1', count: 40 }, { device: 'ETHERNET|NODE2', count: 22 }],
+          topTrends: [{ trend: 'BLDG.POINT:0', count: 12 }],
+          topGetDataDevices: [{ device: 'ETHERNET|NODE3', count: 18 }]
         }
       };
     }
@@ -167,7 +177,7 @@
         perfCategories: [{ name: 'Timeout', count: 6 }, { name: 'CNS/Resolve', count: 140 }],
         unparsedLines: 120,
         parsedLines: 50000,
-        health: { version: '2.0-dev', port: 8787 }
+        health: { version: '2.1', author: 'Cisum', port: 8787 }
       };
     }
     return { generation: 1 };
@@ -201,7 +211,7 @@
           return { status: 200, json: mockManager(decodeURIComponent(mn)) };
         }
         if (path.indexOf('/api/health') === 0) {
-          return { status: 200, json: { ok: true, version: '2.0-dev', mock: true, prefillPath: '' } };
+          return { status: 200, json: { ok: true, version: '2.1', author: 'Cisum', mock: true, prefillPath: '' } };
         }
         return { status: 404, json: null };
       });
@@ -404,10 +414,42 @@
     return 'minute';
   }
 
+  function projectRestartPlugin() {
+    return {
+      id: 'projectRestartLines',
+      afterDatasetsDraw: function (chart) {
+        var flags = (chart.options && chart.options.plugins && chart.options.plugins.projectRestarts) || [];
+        if (!flags.length) return;
+        var xScale = chart.scales.x;
+        var yScale = chart.scales.y;
+        if (!xScale || !yScale) return;
+        var ctx = chart.ctx;
+        for (var i = 0; i < flags.length; i++) {
+          if (!flags[i]) continue;
+          var x = xScale.getPixelForValue(i);
+          if (!isFinite(x)) continue;
+          ctx.save();
+          ctx.beginPath();
+          ctx.strokeStyle = 'rgba(224, 160, 0, 0.9)';
+          ctx.lineWidth = 2;
+          ctx.setLineDash([5, 4]);
+          ctx.moveTo(x, yScale.top);
+          ctx.lineTo(x, yScale.bottom);
+          ctx.stroke();
+          ctx.restore();
+        }
+      }
+    };
+  }
+
   function updateCharts(series) {
     ensureCharts();
     var rows = (series && series.byMinute) || [];
     var gran = (series && series.granularity) || 'minute';
+    var restartFlags = rows.map(function (r) { return !!(r.projectRestart); });
+    var hasRestart = restartFlags.some(function (v) { return v; });
+    var hint = $('chartRestartHint');
+    if (hint) hint.hidden = !hasRestart;
     var sevList = selectedSeverities().filter(function (s) { return s !== 'INFO' || state.severities.INFO; });
     var labels = rows.map(function (r) { return formatChartLabel(r.t, gran); });
     var hasVol = rows.some(function (r) {
@@ -428,7 +470,10 @@
       var volOpts = {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: hasVol, position: 'bottom', labels: { boxWidth: 10 } } },
+        plugins: {
+          legend: { display: hasVol, position: 'bottom', labels: { boxWidth: 10 } },
+          projectRestarts: hasVol ? restartFlags : []
+        },
         scales: {
           x: { stacked: true, ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 45, minRotation: 0 } },
           y: { stacked: true, beginAtZero: true }
@@ -438,12 +483,14 @@
         state.chartVolume = new Chart($('chartVolume'), {
           type: 'bar',
           data: { labels: hasVol ? labels : [], datasets: datasets },
-          options: volOpts
+          options: volOpts,
+          plugins: [projectRestartPlugin()]
         });
       } else {
         state.chartVolume.data.labels = hasVol ? labels : [];
         state.chartVolume.data.datasets = datasets;
         state.chartVolume.options.plugins.legend.display = hasVol;
+        state.chartVolume.options.plugins.projectRestarts = hasVol ? restartFlags : [];
         state.chartVolume.update('none');
       }
     }
@@ -473,7 +520,10 @@
       var bacOpts = {
         responsive: true,
         maintainAspectRatio: false,
-        plugins: { legend: { display: hasLine, position: 'bottom', labels: { boxWidth: 10 } } },
+        plugins: {
+          legend: { display: hasLine, position: 'bottom', labels: { boxWidth: 10 } },
+          projectRestarts: hasLine ? restartFlags : []
+        },
         scales: {
           x: { ticks: { autoSkip: true, maxTicksLimit: 12, maxRotation: 45, minRotation: 0 } },
           y: { beginAtZero: true }
@@ -483,12 +533,14 @@
         state.chartBacnet = new Chart($('chartBacnet'), {
           type: 'line',
           data: { labels: hasLine ? labels : [], datasets: ds2 },
-          options: bacOpts
+          options: bacOpts,
+          plugins: [projectRestartPlugin()]
         });
       } else {
         state.chartBacnet.data.labels = hasLine ? labels : [];
         state.chartBacnet.data.datasets = ds2;
         state.chartBacnet.options.plugins.legend.display = hasLine;
+        state.chartBacnet.options.plugins.projectRestarts = hasLine ? restartFlags : [];
         state.chartBacnet.update('none');
       }
     }
@@ -624,6 +676,11 @@
     $('mgrDetailTitle').textContent = data.name || state.selectedManager;
     var body = $('mgrDetailBody');
     body.innerHTML = '<p class="meta">Lines: ' + Number(data.count || 0).toLocaleString() + '</p>';
+    if (lifecycleHasSignal(data.lifecycle)) {
+      var lifeWrap = document.createElement('div');
+      lifeWrap.innerHTML = renderLifecycleHtml(data.lifecycle);
+      body.appendChild(lifeWrap);
+    }
     renderPatternListInto(body, data.patternsBySeverity);
     updateMgrListCollapseUi();
     if (state.mgrListCollapsed) {
@@ -670,118 +727,246 @@
     host.appendChild(wrap);
   }
 
+  function renderLifecycleHtml(life, samples) {
+    if (!life) return '';
+    var rows = life.managers || [];
+    var t = life.totals || {};
+    var hits = (t.starts || 0) + (t.stops || 0) + (t.restarts || 0) + (t.blocking || 0) + (t.unblocked || 0);
+    if (!hits && !rows.length) return '';
+    function sampleForSection(raw) {
+      if (!raw) return '';
+      for (var i = 0; i < rows.length; i++) {
+        if (raw.indexOf(rows[i].name) >= 0) return raw;
+      }
+      return rows.length ? '' : raw;
+    }
+    var h = '<h2>Manager health (pmon)</h2>';
+    h += '<p class="meta">Start/stop from Manager Start PROJ / Manager Stop. Restarts = pmon “Detected stopped manager…”. Blocking = no heartbeat (overloaded / too busy).</p>';
+    var bs = sampleForSection(samples && samples.blockingSample);
+    var us = sampleForSection(samples && samples.unblockingSample);
+    if (bs) h += '<p class="meta mono">' + escapeHtml(bs) + '</p>';
+    if (us) h += '<p class="meta mono">' + escapeHtml(us) + '</p>';
+    if (rows.length) {
+      h += '<table class="data"><thead><tr><th>Manager</th><th>Starts</th><th>Stops</th><th>Restarts</th><th>Blocking</th><th>Unblocked</th></tr></thead><tbody>';
+      rows.forEach(function (r) {
+        h += '<tr><td class="mono">' + escapeHtml(r.name) + '</td><td>' + r.starts +
+          '</td><td>' + r.stops + '</td><td>' + r.restarts +
+          '</td><td>' + r.blocking + '</td><td>' + r.unblocked + '</td></tr>';
+      });
+      h += '</tbody></table>';
+    }
+    return h;
+  }
+
+  function lifecycleHasSignal(life) {
+    if (!life || !life.totals) return false;
+    var t = life.totals;
+    return ((t.starts || 0) + (t.stops || 0) + (t.restarts || 0) + (t.blocking || 0) + (t.unblocked || 0)) > 0;
+  }
+
   function renderBacnet(b) {
     var el = $('bacnetBody');
-    if (!b || ((b.failed || 0) + (b.ok || 0) + (b.objectList || 0) + (b.collectTrend || 0) + (b.timeSync || 0) === 0)) {
+    var hasSig = b && ((b.failed || 0) + (b.ok || 0) + (b.objectList || 0) + (b.collectTrend || 0) + (b.timeSync || 0) > 0);
+    var hasLife = b && lifecycleHasSignal(b.lifecycle);
+    if (!hasSig && !hasLife) {
       el.innerHTML = '<p class="meta">No BACnet signals in the current window.</p>';
       return;
     }
-    var html = '<p>Failed transitions: <strong>' + b.failed + '</strong> · OK: <strong>' + b.ok +
-      '</strong> · ended Failed: <strong>' + b.endedFailed + '</strong> · ended OK: <strong>' + b.endedOk +
-      '</strong> · flappers: <strong>' + b.flappers + '</strong> · object-list: <strong>' + b.objectList + '</strong></p>';
-    if (b.failedSample) html += '<p class="meta mono">' + escapeHtml(b.failedSample) + '</p>';
+    var html = '';
+    if (hasSig) {
+      html += '<p>Failed transitions: <strong>' + b.failed + '</strong> · OK: <strong>' + b.ok +
+        '</strong> · ended Failed: <strong>' + b.endedFailed + '</strong> · ended OK: <strong>' + b.endedOk +
+        '</strong> · flappers: <strong>' + b.flappers + '</strong> · object-list: <strong>' + b.objectList + '</strong></p>';
+      if (b.failedSample) html += '<p class="meta mono">' + escapeHtml(b.failedSample) + '</p>';
 
-    html += '<h2>Device status activity</h2><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>';
-    (b.activity || []).forEach(function (r) {
-      html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.failed + '</td><td>' + r.ok +
-        '</td><td>' + r.flips + '</td><td>' + escapeHtml(r.last) + '</td></tr>';
-    });
-    html += '</tbody></table>';
-    html += '<h2>Ended Failed</h2><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th></tr></thead><tbody>';
-    (b.endedFailedList || []).forEach(function (r) {
-      html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.failed + '</td><td>' + r.ok +
-        '</td><td>' + r.flips + '</td></tr>';
-    });
-    html += '</tbody></table>';
-    html += '<h2>Object list</h2>';
-    if (b.objectListSample) html += '<p class="meta mono">' + escapeHtml(b.objectListSample) + '</p>';
-    html += '<table class="data"><thead><tr><th>Device</th><th>Count</th></tr></thead><tbody>';
-    (b.objectListTop || []).forEach(function (r) {
-      html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.count + '</td></tr>';
-    });
-    html += '</tbody></table>';
+      html += '<h2>Device status activity</h2><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th><th>Last</th></tr></thead><tbody>';
+      (b.activity || []).forEach(function (r) {
+        html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.failed + '</td><td>' + r.ok +
+          '</td><td>' + r.flips + '</td><td>' + escapeHtml(r.last) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      html += '<h2>Ended Failed</h2><table class="data"><thead><tr><th>Device</th><th>Failed</th><th>OK</th><th>Flips</th></tr></thead><tbody>';
+      (b.endedFailedList || []).forEach(function (r) {
+        html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.failed + '</td><td>' + r.ok +
+          '</td><td>' + r.flips + '</td></tr>';
+      });
+      html += '</tbody></table>';
+      html += '<h2>Object list</h2>';
+      if (b.objectListSample) html += '<p class="meta mono">' + escapeHtml(b.objectListSample) + '</p>';
+      html += '<table class="data"><thead><tr><th>Device</th><th>Count</th></tr></thead><tbody>';
+      (b.objectListTop || []).forEach(function (r) {
+        html += '<tr><td>' + escapeHtml(r.device) + '</td><td>' + r.count + '</td></tr>';
+      });
+      html += '</tbody></table>';
 
-    function cmdBlock(title, blurb, count, propCount, sample, codes, props) {
-      var h = '<h2>' + title + '</h2>';
-      h += '<p class="meta">' + blurb + '</p>';
-      h += '<p>Events: <strong>' + (count || 0) + '</strong> · unique properties: <strong>' + (propCount || 0) + '</strong></p>';
-      if (sample) h += '<p class="meta mono">' + escapeHtml(sample) + '</p>';
-      if (codes && codes.length) {
-        h += '<h3>Error codes</h3><table class="data"><thead><tr><th>Code</th><th>Count</th></tr></thead><tbody>';
-        codes.forEach(function (r) {
-          h += '<tr><td class="mono">' + escapeHtml(String(r.code)) + '</td><td>' + r.count + '</td></tr>';
-        });
-        h += '</tbody></table>';
+      function cmdBlock(title, blurb, count, propCount, sample, codes, props) {
+        var h = '<h2>' + title + '</h2>';
+        h += '<p class="meta">' + blurb + '</p>';
+        h += '<p>Events: <strong>' + (count || 0) + '</strong> · unique properties: <strong>' + (propCount || 0) + '</strong></p>';
+        if (sample) h += '<p class="meta mono">' + escapeHtml(sample) + '</p>';
+        if (codes && codes.length) {
+          h += '<h3>Error codes</h3><table class="data"><thead><tr><th>Code</th><th>Count</th></tr></thead><tbody>';
+          codes.forEach(function (r) {
+            h += '<tr><td class="mono">' + escapeHtml(String(r.code)) + '</td><td>' + r.count + '</td></tr>';
+          });
+          h += '</tbody></table>';
+        }
+        if (props && props.length) {
+          h += '<h3>Top properties</h3><table class="data"><thead><tr><th>Property</th><th>Count</th></tr></thead><tbody>';
+          props.forEach(function (r) {
+            h += '<tr><td class="mono">' + escapeHtml(r.property) + '</td><td>' + r.count + '</td></tr>';
+          });
+          h += '</tbody></table>';
+        }
+        return h;
       }
-      if (props && props.length) {
-        h += '<h3>Top properties</h3><table class="data"><thead><tr><th>Property</th><th>Count</th></tr></thead><tbody>';
-        props.forEach(function (r) {
-          h += '<tr><td class="mono">' + escapeHtml(r.property) + '</td><td>' + r.count + '</td></tr>';
-        });
-        h += '</tbody></table>';
+
+      if ((b.collectTrend || 0) > 0 || (b.timeSync || 0) > 0) {
+        html += cmdBlock(
+          'BACnetCollectTrend',
+          'Driver command failures when collecting trends (often Log_Enable). Usually logged under CoHo/GmsOrchBatchCmd, not WCCOAGmsBACnet.',
+          b.collectTrend, b.collectTrendProps, b.collectTrendSample, b.collectTrendCodes, b.collectTrendTop
+        );
+        html += cmdBlock(
+          'BACnetTimeSync',
+          'Driver command failures when pushing device time sync (often Local_Time). Same CoHo/orchestration path as CollectTrend.',
+          b.timeSync, b.timeSyncProps, b.timeSyncSample, b.timeSyncCodes, b.timeSyncTop
+        );
       }
-      return h;
     }
-
-    if ((b.collectTrend || 0) > 0 || (b.timeSync || 0) > 0) {
-      html += cmdBlock(
-        'BACnetCollectTrend',
-        'Driver command failures when collecting trends (often Log_Enable). Usually logged under CoHo/GmsOrchBatchCmd, not WCCOAGmsBACnet.',
-        b.collectTrend, b.collectTrendProps, b.collectTrendSample, b.collectTrendCodes, b.collectTrendTop
-      );
-      html += cmdBlock(
-        'BACnetTimeSync',
-        'Driver command failures when pushing device time sync (often Local_Time). Same CoHo/orchestration path as CollectTrend.',
-        b.timeSync, b.timeSyncProps, b.timeSyncSample, b.timeSyncCodes, b.timeSyncTop
-      );
-    }
-
-    el.innerHTML = html;
+    html += renderLifecycleHtml(b.lifecycle);
+    el.innerHTML = html || '<p class="meta">No BACnet signals in the current window.</p>';
   }
 
   function renderCns(c) {
     var el = $('cnsBody');
-    if (!c || ((c.resolveNodes || 0) + (c.reducedFunction || 0) + (c.tryRenew || 0) === 0)) {
+    var hasSig = c && ((c.resolveNodes || 0) + (c.reducedFunction || 0) + (c.tryRenew || 0) > 0);
+    var hasLife = c && lifecycleHasSignal(c.lifecycle);
+    if (!hasSig && !hasLife) {
       el.innerHTML = '<p class="meta">No CNS signals in the current window.</p>';
       return;
     }
-    el.innerHTML = '<p>ResolveNodes: <strong>' + c.resolveNodes + '</strong> · ReducedFunction: <strong>' +
-      c.reducedFunction + '</strong> · ICns: <strong>' + (c.icns || 0) + '</strong> · TryRenewSession: <strong>' +
-      c.tryRenew + '</strong></p>';
-    renderPatternListInto(el, { SEVERE: c.patterns || [] });
+    el.innerHTML = '';
+    if (hasSig) {
+      var p = document.createElement('p');
+      p.innerHTML = 'ResolveNodes: <strong>' + c.resolveNodes + '</strong> · ReducedFunction: <strong>' +
+        c.reducedFunction + '</strong> · ICns: <strong>' + (c.icns || 0) + '</strong> · TryRenewSession: <strong>' +
+        c.tryRenew + '</strong>';
+      el.appendChild(p);
+      renderPatternListInto(el, { SEVERE: c.patterns || [] });
+    }
+    var lifeWrap = document.createElement('div');
+    lifeWrap.innerHTML = renderLifecycleHtml(c.lifecycle);
+    if (lifeWrap.innerHTML) el.appendChild(lifeWrap);
   }
 
   function renderCoho(c) {
     var el = $('cohoBody');
-    if (!c || !(c.stuck > 0)) {
-      el.innerHTML = '<p class="meta">No CoHo stuck/drop signals in the current window.</p>';
+    var hasSig = c && (c.stuck > 0);
+    var hasLife = c && lifecycleHasSignal(c.lifecycle);
+    if (!hasSig && !hasLife) {
+      el.innerHTML = '<p class="meta">No CoHo stuck/drop or manager-health signals in the current window.</p>';
       return;
     }
-    var html = '<p>Stuck/drop: <strong>' + c.stuck + '</strong></p>';
-    if (c.sample) html += '<p class="meta mono">' + escapeHtml(c.sample) + '</p>';
-    html += '<table class="data"><thead><tr><th>Count</th><th>Name</th></tr></thead><tbody>';
-    (c.topNames || []).forEach(function (r) {
-      html += '<tr><td>' + r.count + '</td><td class="mono">' + escapeHtml(r.name) + '</td></tr>';
+    var html = '';
+    if (hasSig) {
+      html += '<p>Stuck/drop: <strong>' + c.stuck + '</strong></p>';
+      if (c.sample) html += '<p class="meta mono">' + escapeHtml(c.sample) + '</p>';
+      html += '<table class="data"><thead><tr><th>Count</th><th>Name</th></tr></thead><tbody>';
+      (c.topNames || []).forEach(function (r) {
+        html += '<tr><td>' + r.count + '</td><td class="mono">' + escapeHtml(r.name) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+    }
+    html += renderLifecycleHtml(c.lifecycle, {
+      blockingSample: c.blockingSample,
+      unblockingSample: c.unblockingSample
     });
-    html += '</tbody></table>';
     el.innerHTML = html;
   }
 
   function renderApogee(a) {
     var el = $('apogeeBody');
-    if (!a || !(a.events > 0)) {
+    var drvHits = a ? ((a.drvLines || 0) + (a.trendOverflow || 0) + (a.trendSeq || 0) +
+      (a.alertId || 0) + (a.queryTimeout || 0) + (a.getDataFail || 0)) : 0;
+    var hasSig = a && ((a.events > 0) || (drvHits > 0));
+    var hasLife = a && lifecycleHasSignal(a.lifecycle);
+    if (!hasSig && !hasLife) {
       el.innerHTML = '<p class="meta">No Apogee signals in the current window.</p>';
       return;
     }
-    var html = '<p>Events: <strong>' + a.events + '</strong> · UpdatePoints: <strong>' + a.updatePoints +
-      '</strong> · Repetition: <strong>' + a.repetition + '</strong> · Other: <strong>' + (a.other || 0) +
-      '</strong> · unique PPCL: <strong>' + a.uniquePpcl + '</strong></p>';
-    if (a.sample) html += '<p class="meta mono">' + escapeHtml(a.sample) + '</p>';
-    html += '<table class="data"><thead><tr><th>Count</th><th>PPCL</th></tr></thead><tbody>';
-    (a.topPpcl || []).forEach(function (r) {
-      html += '<tr><td>' + r.count + '</td><td class="mono">' + escapeHtml(r.name) + '</td></tr>';
-    });
-    html += '</tbody></table>';
+    var html = '';
+    if (hasSig) {
+      html += '<p>CoHo/Orch events: <strong>' + (a.events || 0) + '</strong> · UpdatePoints: <strong>' +
+        (a.updatePoints || 0) + '</strong> · Repetition: <strong>' + (a.repetition || 0) +
+        '</strong> · Other: <strong>' + (a.other || 0) +
+        '</strong> · unique PPCL: <strong>' + (a.uniquePpcl || 0) + '</strong></p>';
+      if (a.sample) html += '<p class="meta mono">' + escapeHtml(a.sample) + '</p>';
+      html += '<h2>UpdatePoints / PPCL (CoHo.Apogee* / Orch.Apogee*)</h2>';
+      html += '<p class="meta">Orchestration / ApogeeBACnet path — not WCCOAApogeeDrv.</p>';
+      html += '<table class="data"><thead><tr><th>Count</th><th>PPCL</th></tr></thead><tbody>';
+      (a.topPpcl || []).forEach(function (r) {
+        html += '<tr><td>' + r.count + '</td><td class="mono">' + escapeHtml(r.name) + '</td></tr>';
+      });
+      html += '</tbody></table>';
+
+      if (drvHits > 0) {
+        html += '<h2>WCCOAApogeeDrv</h2>';
+        html += '<p class="meta">Native Apogee driver lines (trend collection, alerts, queries).</p>';
+        html += '<p>Driver lines: <strong>' + (a.drvLines || 0) +
+          '</strong> · trend overflow: <strong>' + (a.trendOverflow || 0) +
+          '</strong> · sequence gaps: <strong>' + (a.trendSeq || 0) +
+          '</strong> · AlertID: <strong>' + (a.alertId || 0) +
+          '</strong> · query timeout: <strong>' + (a.queryTimeout || 0) +
+          '</strong> · get-data fail: <strong>' + (a.getDataFail || 0) + '</strong></p>';
+
+        html += '<h3>Trend buffer overflow</h3>';
+        html += '<p class="meta">Missed trend samples on the panel; “Last sequence number…” lines are the companion sequence-gap warnings.</p>';
+        html += '<p>Overflows: <strong>' + (a.trendOverflow || 0) +
+          '</strong> · sequence-gap lines: <strong>' + (a.trendSeq || 0) +
+          '</strong> · unique devices: <strong>' + (a.trendDevices || 0) +
+          '</strong> · unique trends: <strong>' + (a.trendNames || 0) + '</strong></p>';
+        if (a.trendSample) html += '<p class="meta mono">' + escapeHtml(a.trendSample) + '</p>';
+        if ((a.topTrendDevices || []).length) {
+          html += '<table class="data"><thead><tr><th>Device</th><th>Count</th></tr></thead><tbody>';
+          a.topTrendDevices.forEach(function (r) {
+            html += '<tr><td class="mono">' + escapeHtml(r.device) + '</td><td>' + r.count + '</td></tr>';
+          });
+          html += '</tbody></table>';
+        }
+        if ((a.topTrends || []).length) {
+          html += '<h3>Top trends</h3><table class="data"><thead><tr><th>Trend</th><th>Count</th></tr></thead><tbody>';
+          a.topTrends.forEach(function (r) {
+            html += '<tr><td class="mono">' + escapeHtml(r.trend) + '</td><td>' + r.count + '</td></tr>';
+          });
+          html += '</tbody></table>';
+        }
+
+        html += '<h3>AlertID</h3>';
+        html += '<p class="meta">Unknown / out-of-order alert handling (sendAck, sendGoneAlert, etc.).</p>';
+        html += '<p>Events: <strong>' + (a.alertId || 0) + '</strong></p>';
+        if (a.alertSample) html += '<p class="meta mono">' + escapeHtml(a.alertSample) + '</p>';
+
+        html += '<h3>Query timeout</h3>';
+        html += '<p class="meta">RequestHandler pending-answer timeouts.</p>';
+        html += '<p>Events: <strong>' + (a.queryTimeout || 0) + '</strong></p>';
+        if (a.timeoutSample) html += '<p class="meta mono">' + escapeHtml(a.timeoutSample) + '</p>';
+
+        html += '<h3>Failed to get data</h3>';
+        html += '<p class="meta">Object read failures (often network timeout) on ApogeeDrv.</p>';
+        html += '<p>Events: <strong>' + (a.getDataFail || 0) +
+          '</strong> · unique devices: <strong>' + (a.getDataDevices || 0) + '</strong></p>';
+        if (a.getDataSample) html += '<p class="meta mono">' + escapeHtml(a.getDataSample) + '</p>';
+        if ((a.topGetDataDevices || []).length) {
+          html += '<table class="data"><thead><tr><th>Device</th><th>Count</th></tr></thead><tbody>';
+          a.topGetDataDevices.forEach(function (r) {
+            html += '<tr><td class="mono">' + escapeHtml(r.device) + '</td><td>' + r.count + '</td></tr>';
+          });
+          html += '</tbody></table>';
+        }
+      }
+    }
+    html += renderLifecycleHtml(a.lifecycle);
     el.innerHTML = html;
   }
 
@@ -1106,6 +1291,11 @@
     apiGet('/api/health').then(function (res) {
       var h = res.json || {};
       if (h.prefillPath) $('logPath').value = h.prefillPath;
+      var verEl = $('appVersion');
+      if (verEl && (h.version || h.author)) {
+        verEl.hidden = false;
+        verEl.textContent = 'v' + (h.version || '') + (h.author ? (' · ' + h.author) : '');
+      }
       if (h.listeningUrl) setStatus('Idle — host ' + escapeHtml(h.listeningUrl));
     }).catch(function () {
       setStatus('Idle — host not reachable (open via Run-Watch.cmd)');

@@ -1,7 +1,7 @@
 # Future backlog — PVSS Log Analyzer
 
 **Shipped baseline:** Watch **2.1** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
-**Current (unshipped):** Watch **2.2** — config, adaptive poll, richer snapshot, overview restarts, area chips; confirm before ship
+**Current:** Watch **2.2** — feature-complete; documentation review before ship confirm
 
 **Rule:** Keep this file short. Add ideas as bullets. Do **not** grow archived PRDs/PROGRESS.
 Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + readMes).

@@ -7,4 +7,4 @@ Development docs & test assets (not shipped in field packages)
   config / progs      Optional site context from sample projects (dev only)
 
 Field package root: Run-Watch.cmd + readMe.txt + Watch\ (ui, host, OfflineAnalyze).
-Shipped baseline: Watch 2.2 / OfflineAnalyze 1.2 — bump VERSION before the next field zip.
+Pending ship: Watch 2.2 / OfflineAnalyze 1.2 — confirm in chat, then treat as shipped baseline.

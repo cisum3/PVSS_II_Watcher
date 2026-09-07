@@ -16,7 +16,7 @@ MaxPortTries=40
 # How often the dashboard polls once loading is done (seconds).
 # While a window is loading, the UI polls about every 0.5s for progress %.
 # RefreshSeconds: integer 1-60 (default 3)
-RefreshSeconds=1
+RefreshSeconds=3
 
 # Open a browser when the host starts.
 # OpenBrowser: true|false (default true)
@@ -52,7 +52,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C1P.log
+LogPath=
 
 
 

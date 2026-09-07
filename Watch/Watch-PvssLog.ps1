@@ -7,6 +7,7 @@
   Opens the live log read-only (FileAccess.Read + FileShare.ReadWrite).
 .NOTES
   Author: Cisum
+  Preferences: Watch\watch-config.txt (CLI overrides file).
 #>
 [CmdletBinding()]
 param(
@@ -24,12 +25,285 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 $script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:UiRoot = Join-Path $script:Root 'ui'
+$script:ConfigPath = Join-Path $script:Root 'watch-config.txt'
 $script:Version = (Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
-if (-not $script:Version) { $script:Version = '2.1' }
+if (-not $script:Version) { $script:Version = '2.2' }
 $script:Author = 'Cisum'
 foreach ($verLine in @(Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue)) {
     if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
 }
+
+function script:ConvertTo-ConfigBool {
+    param([string]$Text, [bool]$Default = $false)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return @{ Ok = $false; Value = $Default } }
+    switch -Regex ($Text.Trim()) {
+        '^(1|true|yes|on)$' { return @{ Ok = $true; Value = $true } }
+        '^(0|false|no|off)$' { return @{ Ok = $true; Value = $false } }
+        default { return @{ Ok = $false; Value = $Default } }
+    }
+}
+
+function script:Get-WatchConfigDefaults {
+    return [ordered]@{
+        PreferredPort         = 8787
+        MaxPortTries          = 40
+        RefreshSeconds        = 3
+        OpenBrowser           = $true
+        Browser               = 'default'
+        DefaultWindowMinutes  = 60
+        DefaultWindowEntire   = $false
+        DefaultSeverities     = @('FATAL', 'SEVERE', 'ERROR', 'WARNING')
+        TopN                  = 10
+        SamplePerPattern      = 1
+        BacFlapMin            = 3
+        LogPath               = ''
+    }
+}
+
+function script:Format-WatchConfigValue {
+    param([string]$Key, $Value)
+    switch ($Key) {
+        'OpenBrowser' { if ($Value) { return 'true' } else { return 'false' } }
+        'DefaultWindowEntire' { if ($Value) { return 'true' } else { return 'false' } }
+        'DefaultSeverities' { return ((@($Value) | ForEach-Object { "$_" }) -join ',') }
+        default { return "$Value" }
+    }
+}
+
+function script:Set-WatchConfigKeys {
+    param([hashtable]$Updates)
+    if (-not $Updates -or $Updates.Count -eq 0) { return }
+    $lines = New-Object System.Collections.Generic.List[string]
+    if (Test-Path -LiteralPath $script:ConfigPath) {
+        foreach ($ln in Get-Content -LiteralPath $script:ConfigPath -Encoding UTF8) { [void]$lines.Add($ln) }
+    }
+    else {
+        [void]$lines.Add('# Watch preferences (auto-created)')
+        [void]$lines.Add('')
+    }
+    foreach ($key in @($Updates.Keys)) {
+        $newLine = ('{0}={1}' -f $key, (Format-WatchConfigValue -Key $key -Value $Updates[$key]))
+        $found = $false
+        for ($i = 0; $i -lt $lines.Count; $i++) {
+            if ($lines[$i] -match ('^\s*' + [regex]::Escape($key) + '\s*=')) {
+                $lines[$i] = $newLine
+                $found = $true
+                break
+            }
+        }
+        if (-not $found) {
+            [void]$lines.Add('')
+            [void]$lines.Add($newLine)
+        }
+    }
+    $lines | Set-Content -LiteralPath $script:ConfigPath -Encoding UTF8
+}
+
+function script:Test-WatchConfigBrowser {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $false }
+    $t = $Text.Trim()
+    $low = $t.ToLowerInvariant()
+    if ($low -eq 'default' -or $low -eq 'chrome' -or $low -eq 'msedge' -or $low -eq 'edge') { return $true }
+    if (Test-Path -LiteralPath $t) { return $true }
+    return $false
+}
+
+function script:Read-WatchConfig {
+    $defaults = Get-WatchConfigDefaults
+    $cfg = Get-WatchConfigDefaults
+    $warnings = New-Object System.Collections.Generic.List[string]
+    $corrections = @{}
+    $known = @(
+        'PreferredPort', 'MaxPortTries', 'RefreshSeconds', 'OpenBrowser', 'Browser',
+        'DefaultWindowMinutes', 'DefaultWindowEntire', 'DefaultSeverities',
+        'TopN', 'SamplePerPattern', 'BacFlapMin', 'LogPath'
+    )
+
+    if (-not (Test-Path -LiteralPath $script:ConfigPath)) {
+        return [ordered]@{ Config = $cfg; Warnings = @($warnings); Corrections = $corrections }
+    }
+
+    $lines = @(Get-Content -LiteralPath $script:ConfigPath -Encoding UTF8 -ErrorAction SilentlyContinue)
+    if ($null -eq $lines) {
+        [void]$warnings.Add(('Could not read config file; using built-in defaults: {0}' -f $script:ConfigPath))
+        return [ordered]@{ Config = $cfg; Warnings = @($warnings); Corrections = $corrections }
+    }
+
+    foreach ($raw in $lines) {
+        $line = $raw.Trim()
+        if (-not $line -or $line.StartsWith('#')) { continue }
+        $eq = $line.IndexOf('=')
+        if ($eq -lt 1) {
+            [void]$warnings.Add(('Ignored malformed line (expected Key=Value): {0}' -f $line))
+            continue
+        }
+        $key = $line.Substring(0, $eq).Trim()
+        $val = $line.Substring($eq + 1).Trim()
+        if ($known -notcontains $key) {
+            [void]$warnings.Add(('Unknown config key ignored: {0}' -f $key))
+            continue
+        }
+
+        switch ($key) {
+            'PreferredPort' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 65535) { $cfg.PreferredPort = $n }
+                else {
+                    [void]$warnings.Add(("PreferredPort='{0}' invalid (need integer 1-65535); reset to {1}" -f $val, $defaults.PreferredPort))
+                    $cfg.PreferredPort = $defaults.PreferredPort
+                    $corrections[$key] = $defaults.PreferredPort
+                }
+            }
+            'MaxPortTries' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 200) { $cfg.MaxPortTries = $n }
+                else {
+                    [void]$warnings.Add(("MaxPortTries='{0}' invalid (need integer 1-200); reset to {1}" -f $val, $defaults.MaxPortTries))
+                    $cfg.MaxPortTries = $defaults.MaxPortTries
+                    $corrections[$key] = $defaults.MaxPortTries
+                }
+            }
+            'RefreshSeconds' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 60) { $cfg.RefreshSeconds = $n }
+                else {
+                    [void]$warnings.Add(("RefreshSeconds='{0}' invalid (need integer 1-60); reset to {1}" -f $val, $defaults.RefreshSeconds))
+                    $cfg.RefreshSeconds = $defaults.RefreshSeconds
+                    $corrections[$key] = $defaults.RefreshSeconds
+                }
+            }
+            'OpenBrowser' {
+                $b = ConvertTo-ConfigBool -Text $val -Default $defaults.OpenBrowser
+                if ($b.Ok) { $cfg.OpenBrowser = [bool]$b.Value }
+                else {
+                    [void]$warnings.Add(("OpenBrowser='{0}' invalid (need true|false); reset to {1}" -f $val, (Format-WatchConfigValue -Key OpenBrowser -Value $defaults.OpenBrowser)))
+                    $cfg.OpenBrowser = [bool]$defaults.OpenBrowser
+                    $corrections[$key] = $defaults.OpenBrowser
+                }
+            }
+            'Browser' {
+                if (Test-WatchConfigBrowser -Text $val) { $cfg.Browser = $val.Trim() }
+                else {
+                    [void]$warnings.Add(("Browser='{0}' invalid (default|chrome|msedge|existing .exe path); reset to {1}" -f $val, $defaults.Browser))
+                    $cfg.Browser = [string]$defaults.Browser
+                    $corrections[$key] = $defaults.Browser
+                }
+            }
+            'DefaultWindowMinutes' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 10080) { $cfg.DefaultWindowMinutes = $n }
+                else {
+                    [void]$warnings.Add(("DefaultWindowMinutes='{0}' invalid (need integer 1-10080); reset to {1}" -f $val, $defaults.DefaultWindowMinutes))
+                    $cfg.DefaultWindowMinutes = $defaults.DefaultWindowMinutes
+                    $corrections[$key] = $defaults.DefaultWindowMinutes
+                }
+            }
+            'DefaultWindowEntire' {
+                $b = ConvertTo-ConfigBool -Text $val -Default $defaults.DefaultWindowEntire
+                if ($b.Ok) { $cfg.DefaultWindowEntire = [bool]$b.Value }
+                else {
+                    [void]$warnings.Add(("DefaultWindowEntire='{0}' invalid (need true|false); reset to {1}" -f $val, (Format-WatchConfigValue -Key DefaultWindowEntire -Value $defaults.DefaultWindowEntire)))
+                    $cfg.DefaultWindowEntire = [bool]$defaults.DefaultWindowEntire
+                    $corrections[$key] = $defaults.DefaultWindowEntire
+                }
+            }
+            'DefaultSeverities' {
+                $rawParts = @($val -split ',' | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ })
+                $good = New-Object System.Collections.Generic.List[string]
+                $bad = New-Object System.Collections.Generic.List[string]
+                foreach ($p in $rawParts) {
+                    if ($p -match '^(FATAL|SEVERE|ERROR|WARNING|INFO)$') {
+                        if (-not $good.Contains($p)) { [void]$good.Add($p) }
+                    }
+                    else { [void]$bad.Add($p) }
+                }
+                if ($good.Count -gt 0) {
+                    $cfg.DefaultSeverities = @($good)
+                    if ($bad.Count -gt 0) {
+                        [void]$warnings.Add(("DefaultSeverities dropped unknown token(s): {0}; kept {1}" -f ($bad -join ','), ($good -join ',')))
+                        $corrections[$key] = @($good)
+                    }
+                }
+                else {
+                    [void]$warnings.Add(("DefaultSeverities='{0}' invalid; reset to {1}" -f $val, (($defaults.DefaultSeverities) -join ',')))
+                    $cfg.DefaultSeverities = @($defaults.DefaultSeverities)
+                    $corrections[$key] = @($defaults.DefaultSeverities)
+                }
+            }
+            'TopN' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 5 -and $n -le 100) { $cfg.TopN = $n }
+                else {
+                    [void]$warnings.Add(("TopN='{0}' invalid (need integer 5-100); reset to {1}" -f $val, $defaults.TopN))
+                    $cfg.TopN = $defaults.TopN
+                    $corrections[$key] = $defaults.TopN
+                }
+            }
+            'SamplePerPattern' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 20) { $cfg.SamplePerPattern = $n }
+                else {
+                    [void]$warnings.Add(("SamplePerPattern='{0}' invalid (need integer 1-20); reset to {1}" -f $val, $defaults.SamplePerPattern))
+                    $cfg.SamplePerPattern = $defaults.SamplePerPattern
+                    $corrections[$key] = $defaults.SamplePerPattern
+                }
+            }
+            'BacFlapMin' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 50) { $cfg.BacFlapMin = $n }
+                else {
+                    [void]$warnings.Add(("BacFlapMin='{0}' invalid (need integer 1-50); reset to {1}" -f $val, $defaults.BacFlapMin))
+                    $cfg.BacFlapMin = $defaults.BacFlapMin
+                    $corrections[$key] = $defaults.BacFlapMin
+                }
+            }
+            'LogPath' {
+                # Prefill only; missing file is OK (operator may Start later). Empty allowed.
+                $cfg.LogPath = $val
+            }
+        }
+    }
+
+    return [ordered]@{ Config = $cfg; Warnings = @($warnings); Corrections = $corrections }
+}
+
+function script:Set-WatchConfigLogPath {
+    param([string]$Path)
+    Set-WatchConfigKeys -Updates @{ LogPath = $Path }
+}
+
+# Load watch-config.txt then apply CLI overrides (bound params win).
+$script:ConfigLoad = Read-WatchConfig
+$script:Config = $script:ConfigLoad.Config
+if ($script:ConfigLoad.Corrections -and $script:ConfigLoad.Corrections.Count -gt 0) {
+    try { Set-WatchConfigKeys -Updates $script:ConfigLoad.Corrections } catch { }
+}
+if (-not $PSBoundParameters.ContainsKey('Port')) { $Port = [int]$script:Config.PreferredPort }
+if (-not $PSBoundParameters.ContainsKey('LastMinutes')) { $LastMinutes = [int]$script:Config.DefaultWindowMinutes }
+if (-not $PSBoundParameters.ContainsKey('RefreshSeconds')) { $RefreshSeconds = [int]$script:Config.RefreshSeconds }
+if (-not $PSBoundParameters.ContainsKey('TopN')) { $TopN = [int]$script:Config.TopN }
+if (-not $PSBoundParameters.ContainsKey('SamplePerPattern')) { $SamplePerPattern = [int]$script:Config.SamplePerPattern }
+$script:OpenBrowser = [bool]$script:Config.OpenBrowser
+if ($PSBoundParameters.ContainsKey('NoBrowser')) { $script:OpenBrowser = -not [bool]$NoBrowser }
+$script:BrowserChoice = [string]$script:Config.Browser
+$script:MaxPortTries = [int]$script:Config.MaxPortTries
+$script:BacFlapMin = [int]$script:Config.BacFlapMin
+$script:DefaultSeverities = @($script:Config.DefaultSeverities)
+$script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
+$script:RefreshSeconds = [int]$RefreshSeconds
+if ($script:RefreshSeconds -lt 1) { $script:RefreshSeconds = 1 }
+if ($script:RefreshSeconds -gt 60) { $script:RefreshSeconds = 60 }
+
+$script:PrefillPath = ''
+if ($PSBoundParameters.ContainsKey('LogPath') -and -not [string]::IsNullOrWhiteSpace($LogPath)) {
+    $script:PrefillPath = $LogPath.Trim()
+}
+elseif (-not [string]::IsNullOrWhiteSpace([string]$script:Config.LogPath)) {
+    $script:PrefillPath = ([string]$script:Config.LogPath).Trim()
+}
+
+$script:ConfigWarnings = @($script:ConfigLoad.Warnings)
 
 # --- helpers (V1.1-aligned) ---
 $script:ReNormTs = [regex]'\d{4}\.\d{2}\.\d{2}\s+\d{2}:\d{2}:\d{2}\.\d+'
@@ -136,29 +410,6 @@ function Get-MinuteKey {
     param([string]$Ts)
     if ($Ts.Length -ge 16) { return $Ts.Substring(0, 16) }
     return $Ts
-}
-
-function Read-PrefillPath {
-    param([string]$Preferred)
-    if (-not [string]::IsNullOrWhiteSpace($Preferred)) { return $Preferred.Trim() }
-    $cfg = Join-Path $script:Root 'watch-log-path.txt'
-    if (-not (Test-Path -LiteralPath $cfg)) { return '' }
-    foreach ($line in Get-Content -LiteralPath $cfg -Encoding UTF8) {
-        $t = $line.Trim()
-        if ($t -and -not $t.StartsWith('#')) { return $t }
-    }
-    return ''
-}
-
-function Save-WatchLogPath {
-    param([string]$Path)
-    $cfg = Join-Path $script:Root 'watch-log-path.txt'
-    $header = @(
-        '# Live PVSS_II.log path for Watch-PvssLog (V2)'
-        '# Lines starting with # are ignored. First non-comment line is used as prefill.'
-        ''
-    )
-    ($header + $Path) | Set-Content -LiteralPath $cfg -Encoding UTF8
 }
 
 function New-EmptyState {
@@ -274,7 +525,6 @@ $script:ReMgrStopMsg = [regex]'Manager Stop\s*$'
 $script:ReDriverReady = [regex]'(?i)Driver is configured with .+\s+and is now running'
 $script:ReBlockingStart = [regex]'Blocking Manager\s+(\S+)\s+detected(?:\.\s*No heartbeat since\s+(\d+)\s+seconds?)?'
 $script:ReBlockingEnd = [regex]'Manager\s+(\S+)\s+is no longer blocking'
-$script:BacFlapMin = 3
 
 $script:Sync = [hashtable]::Synchronized(@{
         Generation     = 0
@@ -300,10 +550,10 @@ $script:Sync = [hashtable]::Synchronized(@{
         LogPath        = ''
         FileLength     = 0L
         FilePos        = 0L
-        WindowEntire   = $false
+        WindowEntire   = [bool]$script:DefaultWindowEntire
         LastMinutes    = $LastMinutes
         Cutoff         = $null
-        PrefillPath    = (Read-PrefillPath -Preferred $LogPath)
+        PrefillPath    = "$($script:PrefillPath)"
         ListeningUrl   = ''
         BoundPort      = 0
         Data           = (New-EmptyState)
@@ -2367,6 +2617,14 @@ function script:Handle-Api {
                 prefillPath  = "$($script:Sync['PrefillPath'])"
                 listeningUrl = "$($script:Sync['ListeningUrl'])"
                 port         = [int]$script:Sync['BoundPort']
+                preferredPort = [int]$Port
+                refreshSeconds = [int]$script:RefreshSeconds
+                defaults     = [ordered]@{
+                    lastMinutes  = [int]$script:Sync['LastMinutes']
+                    windowEntire = [bool]$script:Sync['WindowEntire']
+                    severities   = @($script:DefaultSeverities)
+                    topN         = [int]$TopN
+                }
                 tailRunning  = [bool]$script:Sync['TailRunning']
                 paused       = [bool]$script:Sync['Paused']
                 loading      = [bool]$script:Sync['Loading']
@@ -2396,8 +2654,9 @@ function script:Handle-Api {
             $test.Close()
             Clear-EntireCache -Reason 'path change'
             $script:Sync['LogPath'] = $p
-            Save-WatchLogPath -Path $p
+            Set-WatchConfigLogPath -Path $p
             $script:Sync['PrefillPath'] = $p
+            $script:PrefillPath = $p
             if ($body.PSObject.Properties.Name -contains 'window' -and [string]$body.window -eq 'entire') {
                 $script:Sync['WindowEntire'] = $true
             }
@@ -2588,10 +2847,11 @@ function script:Handle-Request {
 }
 
 function script:Start-Listener {
-    param([int]$PreferredPort)
+    param([int]$PreferredPort, [int]$MaxTries = 40)
+    if ($MaxTries -lt 1) { $MaxTries = 1 }
     $listener = New-Object System.Net.HttpListener
     $bound = $null
-    for ($p = $PreferredPort; $p -lt ($PreferredPort + 40); $p++) {
+    for ($p = $PreferredPort; $p -lt ($PreferredPort + $MaxTries); $p++) {
         $listener = New-Object System.Net.HttpListener
         $prefix = "http://127.0.0.1:$p/"
         $listener.Prefixes.Add($prefix)
@@ -2606,7 +2866,37 @@ function script:Start-Listener {
             try { $listener.Close() } catch {}
         }
     }
-    throw "Could not bind a port starting at $PreferredPort"
+    throw "Could not bind a port starting at $PreferredPort (tried $MaxTries)"
+}
+
+function script:Open-WatchBrowser {
+    param([string]$Url, [string]$Choice = 'default')
+    $choice = if ([string]::IsNullOrWhiteSpace($Choice)) { 'default' } else { $Choice.Trim() }
+    $chrome = @(
+        "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
+        "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe"
+    )
+    $edge = @(
+        "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
+        "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe"
+    )
+    $candidates = @()
+    switch -Regex ($choice.ToLowerInvariant()) {
+        '^chrome$' { $candidates = $chrome }
+        '^(msedge|edge)$' { $candidates = $edge }
+        '^default$' { $candidates = @() }
+        default {
+            if (Test-Path -LiteralPath $choice) { $candidates = @($choice) }
+            else { $candidates = @() }
+        }
+    }
+    foreach ($browser in $candidates) {
+        if (Test-Path -LiteralPath $browser) {
+            Start-Process -FilePath $browser -ArgumentList $Url | Out-Null
+            return
+        }
+    }
+    Start-Process $Url | Out-Null
 }
 
 # --- main ---
@@ -2614,28 +2904,22 @@ if (-not (Test-Path -LiteralPath $script:UiRoot)) {
     throw "UI folder missing: $script:UiRoot"
 }
 
-$listener = Start-Listener -PreferredPort $Port
+$listener = Start-Listener -PreferredPort $Port -MaxTries $script:MaxPortTries
 $url = $script:Sync['ListeningUrl']
 Write-Host ("PVSS Log Watch {0} by {1}" -f $script:Version, $script:Author) -ForegroundColor Cyan
 Write-Host ("Listening: {0}" -f $url) -ForegroundColor Green
+Write-Host ("Config: {0}  (refresh={1}s, port prefer={2})" -f $script:ConfigPath, $script:RefreshSeconds, $Port) -ForegroundColor DarkGray
+if ($script:ConfigWarnings -and $script:ConfigWarnings.Count -gt 0) {
+    Write-Host 'Config issues (invalid values reset to defaults in watch-config.txt):' -ForegroundColor Yellow
+    foreach ($w in $script:ConfigWarnings) {
+        Write-Host ("  - {0}" -f $w) -ForegroundColor Yellow
+    }
+}
 Write-Host 'Log access: FileAccess.Read only (share allows WinCC to append).' -ForegroundColor DarkGray
 Write-Host 'Ctrl+C to stop.' -ForegroundColor DarkGray
 
-if (-not $NoBrowser) {
-    $opened = $false
-    foreach ($browser in @(
-            "${env:ProgramFiles}\Google\Chrome\Application\chrome.exe",
-            "${env:ProgramFiles(x86)}\Google\Chrome\Application\chrome.exe",
-            "${env:ProgramFiles(x86)}\Microsoft\Edge\Application\msedge.exe",
-            "${env:ProgramFiles}\Microsoft\Edge\Application\msedge.exe"
-        )) {
-        if (Test-Path -LiteralPath $browser) {
-            Start-Process -FilePath $browser -ArgumentList $url | Out-Null
-            $opened = $true
-            break
-        }
-    }
-    if (-not $opened) { Start-Process $url | Out-Null }
+if ($script:OpenBrowser) {
+    Open-WatchBrowser -Url $url -Choice $script:BrowserChoice
 }
 
 # Interleave HTTP with short catch-up time-slices (~200ms) so /api/pulse can report %

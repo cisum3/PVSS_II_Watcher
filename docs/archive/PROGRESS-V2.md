@@ -1,16 +1,19 @@
 # Implementation Progress — PVSS Log Analyzer V2
 
-**Release target: V2.0** (PowerShell host + browser live dashboard)
+> **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).
+
+**Shipped: Watch 2.1** (2026-09-06, Cisum) — live smoke OK; manager health/blocking, findings layout, Entire cache, snapshot, modules confirmed in field use.  
+OfflineAnalyze **1.2** shipped in the same package (project restart timeline, HTML pattern cards, manager health).
 
 Tracks work against locked [`PRD-V2.md`](PRD-V2.md).  
-V1.1 OfflineAnalyze tool remains under `OfflineAnalyze\` (see [`PROGRESS.md`](PROGRESS.md)).
+OfflineAnalyze remains under `OfflineAnalyze\` (see [`PROGRESS.md`](PROGRESS.md)).
 
 | Status | Meaning |
 |--------|---------|
 | **Built** | Implemented in code by the agent; not yet verified by you |
 | **Confirmed** | You have run it and confirmed it works |
 
-**Rule:** Confirm with you before marking an item **Confirmed** / phase done. Review the next phase before starting it.
+**Rule (historical):** Confirm before marking **Confirmed**. Living work now uses [`../BACKLOG.md`](../BACKLOG.md) + version bumps.
 
 ---
 
@@ -18,11 +21,11 @@ V1.1 OfflineAnalyze tool remains under `OfflineAnalyze\` (see [`PROGRESS.md`](PR
 
 | Phase | Description | Built | Confirmed | Notes |
 |-------|-------------|:-----:|:---------:|-------|
-| **2A** | UI shell: sticky chrome, section nav, mock pulse/section/manager JSON | yes | | Self-test OK |
-| **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | yes | | Self-test OK |
-| **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | yes | | Self-test OK |
-| **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | yes | | Self-test OK |
-| **2E** | Docs, package polish, `VERSION.txt` → 2.0; Snapshot download | yes | | Awaiting your confirm |
+| **2A** | UI shell: sticky chrome, section nav, mock pulse/section/manager JSON | yes | yes | Self-test OK |
+| **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | yes | yes | Self-test OK |
+| **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | yes | yes | Self-test OK |
+| **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | yes | yes | Self-test OK |
+| **2E** | Docs, package polish, Snapshot download; Watch 2.1 / Offline 1.2 ship | yes | yes | Live smoke 2026-09-06 |
 
 ---
 
@@ -112,13 +115,15 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 
 ---
 
-## P1 / Deferred (not blocking 2.0 MVP)
+## P1 / Deferred (historical snapshot at ship)
+
+Open items carried forward to [`../BACKLOG.md`](../BACKLOG.md). Do not keep growing this table.
 
 | Item | Priority | Notes |
 |------|----------|-------|
 | Adjustable poll interval; preferred `-Port` UX polish | P1 | Port fallback already P0 |
 | Catch-up / Entire **%** progress | P1 | **You confirmed OK** — pulse `loadProgressPct` / `loadMessage`; C2P Entire ~85s |
-| Cache **Entire** analysis when switching windows | P1 | **Built** — in-memory snapshot + incremental tail on return; invalidate on Restart / rotate / path change / fail. Confirmed pending your run |
+| Cache **Entire** analysis when switching windows | P1 | **Confirmed** — in-memory snapshot + incremental tail; invalidate on Restart / rotate / path change / fail |
 | File-end window anchor + chart rollup | P1 | **You confirmed OK** — rolling window vs log EOF; series minute/hour/day; empty overlay fix |
 | WebSocket/SSE | Deferred | |
 | Area (SYS/IMPL); manager instance rollup | Deferred | |
@@ -147,3 +152,4 @@ Manual: `Run-Watch.cmd` → Start with a path under `docs\PVSS_II_Examples\` (or
 | 2026-09-06 | Cache Entire analysis across window switches (in-memory snapshot + incremental tail) |
 | 2026-09-06 | Manager health in sections: starts/stops/pmon restarts + blocking/unblocked (per manager, e.g. CoHo) |
 | 2026-09-06 | Versions: Watch **2.1**, OfflineAnalyze **1.2**; authored by **Cisum** |
+| 2026-09-06 | **SHIPPED** after live smoke; PRD/PROGRESS moved to `docs/archive\`; living ideas → `docs/BACKLOG.md` |

@@ -1,0 +1,53 @@
+# Watch preferences (Watch-PvssLog.ps1)
+# Edit values below. Lines starting with # are ignored.
+# CLI flags override these when you launch with -Port / -LogPath / etc.
+# Invalid values are rejected, logged in the host console, and reset to defaults.
+# See package root readMe.txt for a short overview.
+#
+# On Start, LogPath is updated automatically to the path you used.
+# Host is always localhost (127.0.0.1) only.
+
+# TCP port to try first. If busy, tries the next ports.
+# PreferredPort: integer 1-65535 (default 8787)
+PreferredPort=8787
+# MaxPortTries: integer 1-200 (default 40)
+MaxPortTries=40
+
+# How often the dashboard polls the host (seconds).
+# RefreshSeconds: integer 1-60 (default 3)
+RefreshSeconds=3
+
+# Open a browser when the host starts.
+# OpenBrowser: true|false (default true)
+OpenBrowser=true
+
+# Which browser to open.
+# Browser: default | chrome | msedge | or full path to an .exe (default default)
+Browser=default
+
+# Initial time window when the UI loads (minutes). Ignored if DefaultWindowEntire=true.
+# DefaultWindowMinutes: integer 1-10080 (default 60)  [10080 = 7 days]
+DefaultWindowMinutes=60
+# DefaultWindowEntire: true|false (default false)
+DefaultWindowEntire=false
+
+# Initial severity chips (comma-separated). INFO off unless listed.
+# DefaultSeverities: FATAL,SEVERE,ERROR,WARNING,INFO (default FATAL,SEVERE,ERROR,WARNING)
+DefaultSeverities=FATAL,SEVERE,ERROR,WARNING
+
+# Pattern / table depth.
+# TopN: integer 5-100 (default 10)
+TopN=10
+# SamplePerPattern: integer 1-20 (default 1)
+SamplePerPattern=1
+
+# BACnet "flapper" threshold (Failed/OK status changes).
+# BacFlapMin: integer 1-50 (default 3)
+BacFlapMin=3
+
+# Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
+# LogPath: empty or a file path (updated on Start)
+LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C1P.log.bak
+
+
+

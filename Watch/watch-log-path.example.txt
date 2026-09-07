@@ -1,6 +1,0 @@
-# Live PVSS_II.log path for Watch-PvssLog (V2)
-# Copy this file to watch-log-path.txt and set one path below.
-# Lines starting with # are ignored. First non-comment line is used as prefill.
-#
-# Example:
-C:\GMSprojects\Project_Name\log\PVSS_II.log

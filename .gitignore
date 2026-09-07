@@ -13,11 +13,13 @@ PVSS_II*.log*
 *.7z
 *.rar
 
-# V2 operator-local live path (do not ship real site paths)
-watch-log-path.txt
-Watch/watch-log-path.txt
+# V2 operator-local host log (do not ship with secrets / noise)
 watch-host.log
 Watch/watch-host.log
+
+# Obsolete (replaced by Watch/watch-config.txt) — ignore leftovers
+watch-log-path.txt
+Watch/watch-log-path.txt
 
 # Editor / OS
 .DS_Store

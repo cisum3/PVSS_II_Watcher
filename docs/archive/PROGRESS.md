@@ -1,6 +1,8 @@
 # Implementation Progress — PVSS Log Analyzer
 
-**Release: V1.2** (batch triage tool — OfflineAnalyze)
+> **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).
+
+**Release: V1.2** (batch triage tool — OfflineAnalyze) — **shipped** 2026-09-06 with Watch 2.1 package.
 
 Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.2.
 Author: Cisum.
@@ -36,11 +38,9 @@ Author: Cisum.
 
 ---
 
-## Deferred to V2 (not in V1.1)
+## Deferred to V2 (historical)
 
-See [`PROGRESS-V2.md`](PROGRESS-V2.md) / [`PRD-V2.md`](PRD-V2.md) — live dashboard in progress.
-
-Notable V2 backlog (tracked there): cache Entire analysis across window switches so returning to Entire does not full re-parse.
+See [`PROGRESS-V2.md`](PROGRESS-V2.md) / [`PRD-V2.md`](PRD-V2.md). Living ideas: [`../BACKLOG.md`](../BACKLOG.md).
 
 ---
 

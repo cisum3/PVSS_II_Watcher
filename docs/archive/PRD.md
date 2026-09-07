@@ -1,7 +1,10 @@
 # PRD: PVSS / WinCC OA Log Analyzer Improvements
 
+> **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).  
+> Shipped OfflineAnalyze lineage continues at **v1.2** (2026-09-06).
+
 > **V1 frozen (release V1.1).** This document is the historical V1 PRD.  
-> **V2 work** is locked in [`PRD-V2.md`](PRD-V2.md). Track build in [`PROGRESS-V2.md`](PROGRESS-V2.md).
+> **V2 work** was locked in [`PRD-V2.md`](PRD-V2.md); build tracker [`PROGRESS-V2.md`](PROGRESS-V2.md).
 
 **Product:** `Analyze-PvssLog.ps1` (+ `Run-Analyze.cmd`, `Run-Analyze-Interactive.cmd`, `readMe.txt`)  
 **Status:** Locked / shipped as **V1.1**  

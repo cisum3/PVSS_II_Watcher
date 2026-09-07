@@ -17,6 +17,7 @@
     paused: false,
     windowEntire: false,
     lastMinutes: 60,
+    refreshSeconds: 3,
     severities: { FATAL: true, SEVERE: true, ERROR: true, WARNING: true, INFO: false },
     generation: null,
     sectionGeneration: {},
@@ -177,7 +178,8 @@
         perfCategories: [{ name: 'Timeout', count: 6 }, { name: 'CNS/Resolve', count: 140 }],
         unparsedLines: 120,
         parsedLines: 50000,
-        health: { version: '2.1', author: 'Cisum', port: 8787 }
+        health: { version: '2.2', author: 'Cisum', port: 8787, refreshSeconds: 3,
+          defaults: { lastMinutes: 60, windowEntire: false, severities: ['FATAL', 'SEVERE', 'ERROR', 'WARNING'] } }
       };
     }
     return { generation: 1 };
@@ -211,7 +213,9 @@
           return { status: 200, json: mockManager(decodeURIComponent(mn)) };
         }
         if (path.indexOf('/api/health') === 0) {
-          return { status: 200, json: { ok: true, version: '2.1', author: 'Cisum', mock: true, prefillPath: '' } };
+          return { status: 200, json: { ok: true, version: '2.2', author: 'Cisum', mock: true, prefillPath: '',
+            refreshSeconds: 3,
+            defaults: { lastMinutes: 60, windowEntire: false, severities: ['FATAL', 'SEVERE', 'ERROR', 'WARNING'] } } };
         }
         return { status: 404, json: null };
       });
@@ -1058,7 +1062,8 @@
 
   function startPolling() {
     stopPolling();
-    state.pollTimer = setInterval(pollPulse, 3000);
+    var ms = Math.max(1000, Math.min(60000, (state.refreshSeconds || 3) * 1000));
+    state.pollTimer = setInterval(pollPulse, ms);
     pollPulse();
   }
 
@@ -1280,16 +1285,51 @@
     });
   }
 
+  function applyHealthDefaults(h) {
+    if (!h) return;
+    if (h.refreshSeconds) {
+      var rs = parseInt(h.refreshSeconds, 10);
+      if (rs >= 1 && rs <= 60) state.refreshSeconds = rs;
+    }
+    var d = h.defaults || {};
+    if (typeof d.windowEntire === 'boolean') {
+      state.windowEntire = d.windowEntire;
+    }
+    if (d.lastMinutes) {
+      var lm = parseInt(d.lastMinutes, 10);
+      if (lm >= 1) state.lastMinutes = lm;
+    }
+    if (d.severities && d.severities.length) {
+      SEVS.forEach(function (s) { state.severities[s] = false; });
+      d.severities.forEach(function (s) {
+        var u = String(s).toUpperCase();
+        if (state.severities.hasOwnProperty(u)) state.severities[u] = true;
+      });
+      document.querySelectorAll('#sevChips .chip-sev').forEach(function (b) {
+        var s = b.getAttribute('data-sev');
+        var on = !!state.severities[s];
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    syncWindowButtons();
+  }
+
   function boot() {
     bindUi();
     syncWindowButtons();
     updateChromeButtons();
     if (state.useMock) {
       setStatus('Mock mode — press Start to load sample dashboard');
+      applyHealthDefaults({
+        refreshSeconds: 3,
+        defaults: { lastMinutes: 60, windowEntire: false, severities: ['FATAL', 'SEVERE', 'ERROR', 'WARNING'] }
+      });
       return;
     }
     apiGet('/api/health').then(function (res) {
       var h = res.json || {};
+      applyHealthDefaults(h);
       if (h.prefillPath) $('logPath').value = h.prefillPath;
       var verEl = $('appVersion');
       if (verEl && (h.version || h.author)) {

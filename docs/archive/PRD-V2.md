@@ -1,9 +1,12 @@
 # PRD: PVSS Log Analyzer V2 — Live Dashboard
 
+> **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).  
+> Shipped field baseline: Watch **2.1** + OfflineAnalyze **1.2** (Cisum), 2026-09-06.
+
 **Product:** PowerShell local host + Chrome UI (`Watch-PvssLog.ps1` / `Run-Watch.cmd`)  
-**Status:** Locked / ready to build  
-**Date:** 2026-09-05  
-**Depends on:** V1.1 OfflineAnalyze analyzer (kept under `OfflineAnalyze\`; not replaced)
+**Status:** Locked / **shipped** (Watch 2.1)  
+**Date:** 2026-09-05 (ship note 2026-09-06)  
+**Depends on:** OfflineAnalyze under `OfflineAnalyze\` (not replaced)
 
 **Goal:** A **live triage dashboard in Chrome**, fed by a **local PowerShell host** that tails the live `PVSS_II.log`. Charts, filters, and module stats update as the log grows. Fully offline (no CDN, no installs beyond Windows PowerShell + a browser).
 

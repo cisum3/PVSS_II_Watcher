@@ -18,7 +18,8 @@ param(
     [switch]$NoBrowser,
     [switch]$NoPause,
     [int]$TopN = 10,
-    [int]$SamplePerPattern = 1
+    [int]$SamplePerPattern = 1,
+    [int]$SampleMaxChars = 500
 )
 
 Set-StrictMode -Version Latest
@@ -56,6 +57,7 @@ function script:Get-WatchConfigDefaults {
         DefaultAreas          = @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')
         TopN                  = 10
         SamplePerPattern      = 1
+        SampleMaxChars        = 500
         BacFlapMin            = 3
         LogPath               = ''
     }
@@ -119,7 +121,7 @@ function script:Read-WatchConfig {
     $known = @(
         'PreferredPort', 'MaxPortTries', 'RefreshSeconds', 'OpenBrowser', 'Browser',
         'DefaultWindowMinutes', 'DefaultWindowEntire', 'DefaultSeverities', 'DefaultAreas',
-        'TopN', 'SamplePerPattern', 'BacFlapMin', 'LogPath'
+        'TopN', 'SamplePerPattern', 'SampleMaxChars', 'BacFlapMin', 'LogPath'
     )
 
     if (-not (Test-Path -LiteralPath $script:ConfigPath)) {
@@ -274,6 +276,15 @@ function script:Read-WatchConfig {
                     $corrections[$key] = $defaults.SamplePerPattern
                 }
             }
+            'SampleMaxChars' {
+                $n = 0
+                if ([int]::TryParse($val, [ref]$n) -and $n -ge 100 -and $n -le 2000) { $cfg.SampleMaxChars = $n }
+                else {
+                    [void]$warnings.Add(("SampleMaxChars='{0}' invalid (need integer 100-2000); reset to {1}" -f $val, $defaults.SampleMaxChars))
+                    $cfg.SampleMaxChars = $defaults.SampleMaxChars
+                    $corrections[$key] = $defaults.SampleMaxChars
+                }
+            }
             'BacFlapMin' {
                 $n = 0
                 if ([int]::TryParse($val, [ref]$n) -and $n -ge 1 -and $n -le 50) { $cfg.BacFlapMin = $n }
@@ -309,11 +320,15 @@ if (-not $PSBoundParameters.ContainsKey('LastMinutes')) { $LastMinutes = [int]$s
 if (-not $PSBoundParameters.ContainsKey('RefreshSeconds')) { $RefreshSeconds = [int]$script:Config.RefreshSeconds }
 if (-not $PSBoundParameters.ContainsKey('TopN')) { $TopN = [int]$script:Config.TopN }
 if (-not $PSBoundParameters.ContainsKey('SamplePerPattern')) { $SamplePerPattern = [int]$script:Config.SamplePerPattern }
+if (-not $PSBoundParameters.ContainsKey('SampleMaxChars')) { $SampleMaxChars = [int]$script:Config.SampleMaxChars }
 $script:OpenBrowser = [bool]$script:Config.OpenBrowser
 if ($PSBoundParameters.ContainsKey('NoBrowser')) { $script:OpenBrowser = -not [bool]$NoBrowser }
 $script:BrowserChoice = [string]$script:Config.Browser
 $script:MaxPortTries = [int]$script:Config.MaxPortTries
 $script:BacFlapMin = [int]$script:Config.BacFlapMin
+$script:SampleMaxChars = [int]$SampleMaxChars
+if ($script:SampleMaxChars -lt 100) { $script:SampleMaxChars = 100 }
+if ($script:SampleMaxChars -gt 2000) { $script:SampleMaxChars = 2000 }
 $script:DefaultSeverities = @($script:Config.DefaultSeverities)
 $script:DefaultAreas = @($script:Config.DefaultAreas)
 $script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
@@ -373,7 +388,7 @@ function Normalize-Message {
     $t = $script:ReNormDp.Replace($t, 'DP=<ID>')
     $t = $script:ReNormNum.Replace($t, '<NUM>')
     $t = $script:ReNormSpace.Replace($t, ' ')
-    if ($t.Length -gt 180) { $t = $t.Substring(0, 180) + '...' }
+    if ($t.Length -gt $script:SampleMaxChars) { $t = $t.Substring(0, $script:SampleMaxChars) + '...' }
     return $t.Trim()
 }
 
@@ -414,7 +429,8 @@ function Add-Pattern {
         }
     }
     if ($SampleLimit -gt 0 -and $SampleMap[$Norm].Count -lt $SampleLimit) {
-        $sample = if ($Line.Length -gt 300) { $Line.Substring(0, 300) + '...' } else { $Line }
+        $max = if ($script:SampleMaxChars -gt 0) { [int]$script:SampleMaxChars } else { 500 }
+        $sample = if ($Line.Length -gt $max) { $Line.Substring(0, $max) + '...' } else { $Line }
         [void]$SampleMap[$Norm].Add($sample)
     }
 }

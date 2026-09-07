@@ -45,6 +45,9 @@ DefaultAreas=SYS,IMPL,CTRL,PARAM,OTHER
 TopN=10
 # SamplePerPattern: integer 1-20 (default 1)
 SamplePerPattern=1
+# Max characters kept for pattern labels and example log lines (then ...).
+# SampleMaxChars: integer 100-2000 (default 500)
+SampleMaxChars=500
 
 # BACnet "flapper" threshold (Failed/OK status changes).
 # BacFlapMin: integer 1-50 (default 3)
@@ -52,7 +55,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C2P.log
+LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C3P.log
 
 
 

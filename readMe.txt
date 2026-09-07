@@ -95,6 +95,7 @@ and rewritten back to the default (self-correcting). Host is always localhost
   DefaultSeverities              Initial chips, e.g. FATAL,SEVERE,ERROR,WARNING
   DefaultAreas                   Initial area chips, e.g. SYS,IMPL,CTRL,PARAM,OTHER
   TopN / SamplePerPattern        Pattern table depth / samples
+  SampleMaxChars                 Max length for pattern labels and examples
   BacFlapMin                     BACnet flapper threshold
   LogPath                        Prefill path; updated automatically on Start
 

@@ -396,7 +396,7 @@ function Normalize-Message {
     $t = [regex]::Replace($t, '\bDP=\d+\.\d+:[^;\s]+', 'DP=<ID>')
     $t = [regex]::Replace($t, '\b\d{5,}\b', '<NUM>')
     $t = [regex]::Replace($t, '\s+', ' ')
-    if ($t.Length -gt 180) { $t = $t.Substring(0, 180) + '...' }
+    if ($t.Length -gt 300) { $t = $t.Substring(0, 300) + '...' }
     return $t.Trim()
 }
 
@@ -449,7 +449,7 @@ function Add-Pattern {
         }
     }
     if ($SampleLimit -gt 0 -and $SampleMap[$Norm].Count -lt $SampleLimit) {
-        $sample = if ($Line.Length -gt 300) { $Line.Substring(0, 300) + '...' } else { $Line }
+        $sample = if ($Line.Length -gt 500) { $Line.Substring(0, 500) + '...' } else { $Line }
         [void]$SampleMap[$Norm].Add($sample)
     }
 }

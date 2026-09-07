@@ -18,6 +18,10 @@
     windowEntire: false,
     lastMinutes: 60,
     refreshSeconds: 3,
+    loadingPollMs: 500,
+    awaitingLoad: false,
+    sawLoading: false,
+    loadRequestDone: false,
     severities: { FATAL: true, SEVERE: true, ERROR: true, WARNING: true, INFO: false },
     generation: null,
     sectionGeneration: {},
@@ -25,6 +29,7 @@
     activeView: 'overview',
     pulse: null,
     pollTimer: null,
+    polling: false,
     lastPulseAt: null,
     chartVolume: null,
     chartBacnet: null,
@@ -556,6 +561,14 @@
     state.paused = !!p.paused;
     state.running = !!(p.tailRunning || p.loading || state.useMock);
     if (p.logPath && !$('logPath').value) $('logPath').value = p.logPath;
+    if (p.loading) {
+      state.sawLoading = true;
+      state.loadRequestDone = false;
+    } else if (state.awaitingLoad && (state.sawLoading || state.loadRequestDone)) {
+      state.awaitingLoad = false;
+      state.sawLoading = false;
+      state.loadRequestDone = false;
+    }
 
     $('idleHint').hidden = true;
     $('overviewBody').hidden = false;
@@ -1060,16 +1073,48 @@
     });
   }
 
+  function desiredPollMs() {
+    // Fast while Start / window catch-up is in progress; otherwise RefreshSeconds.
+    if (state.starting || state.awaitingLoad || (state.pulse && state.pulse.loading)) {
+      return Math.max(250, Math.min(2000, state.loadingPollMs || 500));
+    }
+    return Math.max(1000, Math.min(60000, (state.refreshSeconds || 3) * 1000));
+  }
+
+  function stopPollingTimer() {
+    if (state.pollTimer) {
+      clearTimeout(state.pollTimer);
+      state.pollTimer = null;
+    }
+  }
+
+  function runPollCycle() {
+    if (!state.polling) return;
+    stopPollingTimer();
+    var done = function () {
+      if (!state.polling) return;
+      state.pollTimer = setTimeout(runPollCycle, desiredPollMs());
+    };
+    var p = pollPulse();
+    if (p && typeof p.then === 'function') p.then(done, done);
+    else done();
+  }
+
   function startPolling() {
-    stopPolling();
-    var ms = Math.max(1000, Math.min(60000, (state.refreshSeconds || 3) * 1000));
-    state.pollTimer = setInterval(pollPulse, ms);
-    pollPulse();
+    state.polling = true;
+    stopPollingTimer();
+    runPollCycle();
   }
 
   function stopPolling() {
-    if (state.pollTimer) clearInterval(state.pollTimer);
-    state.pollTimer = null;
+    state.polling = false;
+    stopPollingTimer();
+  }
+
+  function nudgePolling() {
+    if (!state.polling) return;
+    stopPollingTimer();
+    runPollCycle();
   }
 
   function showView(name) {
@@ -1096,6 +1141,9 @@
   }
 
   function showLoading(msg) {
+    state.awaitingLoad = true;
+    state.sawLoading = false;
+    state.loadRequestDone = false;
     setBanner('bannerLoading', msg || 'Loading window…');
     setStatus('<span class="warn">loading</span> · waiting for host…');
   }
@@ -1108,6 +1156,7 @@
     // Show loading immediately — do not wait for the host (catch-up can take many seconds).
     showLoading(state.windowEntire ? 'Loading entire file… 0%' : ('Loading last ' + state.lastMinutes + ' minutes… 0%'));
     if (state.useMock) {
+      nudgePolling();
       pollPulse();
       return;
     }
@@ -1116,8 +1165,12 @@
       window: state.windowEntire ? 'entire' : 'minutes',
       lastMinutes: state.lastMinutes
     }).then(function () {
-      pollPulse();
+      state.loadRequestDone = true;
+      nudgePolling();
     }).catch(function (e) {
+      state.awaitingLoad = false;
+      state.sawLoading = false;
+      state.loadRequestDone = false;
       setBanner('bannerLoading', '');
       setBanner('bannerError', String(e.message || e));
     });
@@ -1235,15 +1288,21 @@
         window: state.windowEntire ? 'entire' : 'minutes',
         lastMinutes: state.lastMinutes
       };
+      // Poll fast while Start/catch-up is in flight (awaitingLoad until pulse.loading clears).
+      startPolling();
       apiPost('/api/logPath', body).then(function () {
         state.running = true;
         state.starting = false;
+        state.loadRequestDone = true;
         updateChromeButtons();
-        startPolling();
-        pollPulse();
+        nudgePolling();
       }).catch(function (e) {
         state.starting = false;
+        state.awaitingLoad = false;
+        state.sawLoading = false;
+        state.loadRequestDone = false;
         state.running = false;
+        stopPolling();
         setBanner('bannerLoading', '');
         setBanner('bannerError', String(e.message || e));
         updateChromeButtons();
@@ -1260,6 +1319,9 @@
     $('btnRestart').addEventListener('click', function () {
       stopPolling();
       state.starting = false;
+      state.awaitingLoad = false;
+      state.sawLoading = false;
+      state.loadRequestDone = false;
       apiPost('/api/control', { action: 'restart' }).then(function () {
         state.running = false;
         state.paused = false;

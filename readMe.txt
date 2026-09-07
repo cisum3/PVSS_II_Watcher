@@ -65,6 +65,8 @@ Quick start — live Watch
 
 5. Use Pause / Resume / Restart as needed.
    Change severity chips and time window anytime (reloads the window).
+   While loading, the UI polls about every 0.5s for % progress; afterward
+   it uses RefreshSeconds from watch-config.txt.
 
 6. Snapshot downloads an HTML report of the current in-memory analysis
    (browser download only; same Siemens dark look as the dashboard).
@@ -80,7 +82,7 @@ and rewritten back to the default (self-correcting). Host is always localhost
 (127.0.0.1) only.
 
   PreferredPort / MaxPortTries   First port to try, then next N ports
-  RefreshSeconds                 Dashboard poll interval (1-60)
+  RefreshSeconds                 Steady-state poll interval (1-60); ~0.5s while loading
   OpenBrowser / Browser          Auto-open UI; default | chrome | msedge | exe path
   DefaultWindowMinutes           Initial window (minutes)
   DefaultWindowEntire            true = start on Entire

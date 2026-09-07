@@ -1,4 +1,4 @@
-# Watch preferences (Watch-PvssLog.ps1)
+﻿# Watch preferences (Watch-PvssLog.ps1)
 # Edit values below. Lines starting with # are ignored.
 # CLI flags override these when you launch with -Port / -LogPath / etc.
 # Invalid values are rejected, logged in the host console, and reset to defaults.
@@ -13,7 +13,8 @@ PreferredPort=8787
 # MaxPortTries: integer 1-200 (default 40)
 MaxPortTries=40
 
-# How often the dashboard polls the host (seconds).
+# How often the dashboard polls once loading is done (seconds).
+# While a window is loading, the UI polls about every 0.5s for progress %.
 # RefreshSeconds: integer 1-60 (default 3)
 RefreshSeconds=3
 

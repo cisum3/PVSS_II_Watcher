@@ -51,6 +51,16 @@
           <button type="button" class="chip chip-sev" data-sev="INFO" aria-pressed="false" title="Include INFO in volume chart (default off)">INFO</button>
         </div>
       </div>
+      <div class="filter-group filter-group-area">
+        <span class="filter-group-title" id="lblArea">Area filters</span>
+        <div class="seg area-seg" id="areaChips" role="group" aria-labelledby="lblArea">
+          <button type="button" class="chip chip-area active" data-area="SYS" aria-pressed="true" title="System / platform / driver / pmon">SYS</button>
+          <button type="button" class="chip chip-area active" data-area="IMPL" aria-pressed="true" title="Implementation / application (.NET, AFW, …)">IMPL</button>
+          <button type="button" class="chip chip-area active" data-area="CTRL" aria-pressed="true" title="Control / script">CTRL</button>
+          <button type="button" class="chip chip-area active" data-area="PARAM" aria-pressed="true" title="Parameter / config">PARAM</button>
+          <button type="button" class="chip chip-area active" data-area="OTHER" aria-pressed="true" title="Any area not SYS/IMPL/CTRL/PARAM (always tracked)">OTHER</button>
+        </div>
+      </div>
     </div>
     <div class="chrome-row">
       <span id="statusLine" class="status-line">Idle — enter path and Start</span>
@@ -99,6 +109,14 @@
             </div>
           </div>
           <p id="chartRestartHint" class="meta" hidden>Dashed amber line = project up / restart (pmon).</p>
+          <div id="projectRestartsPanel" class="project-restarts" hidden>
+            <h2>Project restarts (pmon)</h2>
+            <p id="projectRestartsMeta" class="meta"></p>
+            <table class="data" id="projectRestartsTable">
+              <thead><tr><th>Kind</th><th>Time</th></tr></thead>
+              <tbody></tbody>
+            </table>
+          </div>
           <h2>Top managers</h2>
           <div id="mgrStrip" class="mgr-strip"></div>
           <h2>Key findings</h2>

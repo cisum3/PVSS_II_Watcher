@@ -239,6 +239,14 @@ input:focus, button:focus {
   opacity: 1;
 }
 
+.chip-area:not(.active) {
+  opacity: 0.78;
+}
+
+.chip-area:not(.active):hover {
+  opacity: 1;
+}
+
 .status-line {
   color: var(--text-muted);
   font-size: 0.85rem;
@@ -365,6 +373,16 @@ h3 { font-size: 0.92rem; color: var(--text-muted); }
   padding: 0.45rem 0.65rem;
   border-radius: 0 2px 2px 0;
 }
+
+.project-restarts {
+  margin: 0.35rem 0 1rem;
+}
+.project-restarts .data {
+  max-width: 36rem;
+}
+.project-restarts .kind-up { color: #90d090; }
+.project-restarts .kind-shutdown { color: #ffd0a0; }
+.project-restarts .kind-stopped { color: #ffb0b0; }
 
 .charts {
   display: grid;

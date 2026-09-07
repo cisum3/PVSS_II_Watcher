@@ -53,6 +53,7 @@ function script:Get-WatchConfigDefaults {
         DefaultWindowMinutes  = 60
         DefaultWindowEntire   = $false
         DefaultSeverities     = @('FATAL', 'SEVERE', 'ERROR', 'WARNING')
+        DefaultAreas          = @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')
         TopN                  = 10
         SamplePerPattern      = 1
         BacFlapMin            = 3
@@ -66,6 +67,7 @@ function script:Format-WatchConfigValue {
         'OpenBrowser' { if ($Value) { return 'true' } else { return 'false' } }
         'DefaultWindowEntire' { if ($Value) { return 'true' } else { return 'false' } }
         'DefaultSeverities' { return ((@($Value) | ForEach-Object { "$_" }) -join ',') }
+        'DefaultAreas' { return ((@($Value) | ForEach-Object { "$_" }) -join ',') }
         default { return "$Value" }
     }
 }
@@ -116,7 +118,7 @@ function script:Read-WatchConfig {
     $corrections = @{}
     $known = @(
         'PreferredPort', 'MaxPortTries', 'RefreshSeconds', 'OpenBrowser', 'Browser',
-        'DefaultWindowMinutes', 'DefaultWindowEntire', 'DefaultSeverities',
+        'DefaultWindowMinutes', 'DefaultWindowEntire', 'DefaultSeverities', 'DefaultAreas',
         'TopN', 'SamplePerPattern', 'BacFlapMin', 'LogPath'
     )
 
@@ -231,6 +233,29 @@ function script:Read-WatchConfig {
                     $corrections[$key] = @($defaults.DefaultSeverities)
                 }
             }
+            'DefaultAreas' {
+                $rawParts = @($val -split ',' | ForEach-Object { $_.Trim().ToUpperInvariant() } | Where-Object { $_ })
+                $good = New-Object System.Collections.Generic.List[string]
+                $bad = New-Object System.Collections.Generic.List[string]
+                foreach ($p in $rawParts) {
+                    if ($p -match '^(SYS|IMPL|CTRL|PARAM|OTHER)$') {
+                        if (-not $good.Contains($p)) { [void]$good.Add($p) }
+                    }
+                    else { [void]$bad.Add($p) }
+                }
+                if ($good.Count -gt 0) {
+                    $cfg.DefaultAreas = @($good)
+                    if ($bad.Count -gt 0) {
+                        [void]$warnings.Add(("DefaultAreas dropped unknown token(s): {0}; kept {1}" -f ($bad -join ','), ($good -join ',')))
+                        $corrections[$key] = @($good)
+                    }
+                }
+                else {
+                    [void]$warnings.Add(("DefaultAreas='{0}' invalid; reset to {1}" -f $val, (($defaults.DefaultAreas) -join ',')))
+                    $cfg.DefaultAreas = @($defaults.DefaultAreas)
+                    $corrections[$key] = @($defaults.DefaultAreas)
+                }
+            }
             'TopN' {
                 $n = 0
                 if ([int]::TryParse($val, [ref]$n) -and $n -ge 5 -and $n -le 100) { $cfg.TopN = $n }
@@ -290,6 +315,7 @@ $script:BrowserChoice = [string]$script:Config.Browser
 $script:MaxPortTries = [int]$script:Config.MaxPortTries
 $script:BacFlapMin = [int]$script:Config.BacFlapMin
 $script:DefaultSeverities = @($script:Config.DefaultSeverities)
+$script:DefaultAreas = @($script:Config.DefaultAreas)
 $script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
 $script:RefreshSeconds = [int]$RefreshSeconds
 if ($script:RefreshSeconds -lt 1) { $script:RefreshSeconds = 1 }
@@ -413,18 +439,41 @@ function Get-MinuteKey {
 }
 
 function New-EmptyState {
+    $areaKeys = @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')
+    $sevKeys = @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')
+    $patternsByArea = @{}
+    $patternSampleByArea = @{}
+    $patternTimeByArea = @{}
+    foreach ($a in $areaKeys) {
+        $patternsByArea[$a] = @{}
+        $patternSampleByArea[$a] = @{}
+        $patternTimeByArea[$a] = @{}
+        foreach ($s in $sevKeys) {
+            $patternsByArea[$a][$s] = @{}
+            $patternSampleByArea[$a][$s] = @{}
+            $patternTimeByArea[$a][$s] = @{}
+        }
+    }
     return @{
         Severity          = @{}
+        SeverityByArea    = @{}
+        AreaCounts        = @{ SYS = 0; IMPL = 0; CTRL = 0; PARAM = 0; OTHER = 0 }
+        AreaOtherNames    = @{}
         Components        = @{}
+        ComponentsByArea  = @{}
         CompSev           = @{}
         PatternsBySev     = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{}; INFO = @{} }
         PatternSampleBySev = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{}; INFO = @{} }
         PatternTimeBySev  = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{}; INFO = @{} }
+        PatternsByArea    = $patternsByArea
+        PatternSampleByArea = $patternSampleByArea
+        PatternTimeByArea = $patternTimeByArea
         CompPatterns      = @{}
         CompPatternSamples = @{}
         CompPatternTimes  = @{}
         PerfCats          = @{}
         ByMinute          = @{}  # minuteKey -> counts
+        ByMinuteByArea    = @{}  # minuteKey -> area -> counts
         FirstTs           = $null
         LastTs            = $null
         ParsedLines       = 0
@@ -650,6 +699,14 @@ function script:Save-EntireCache {
         $script:Sync['FilePos'], $script:Sync['Data'].ParsedLines) DarkCyan
 }
 
+function script:Normalize-AreaKey {
+    param([string]$Raw)
+    if ([string]::IsNullOrWhiteSpace($Raw)) { return 'OTHER' }
+    $a = $Raw.Trim().ToUpperInvariant()
+    if ($a -eq 'SYS' -or $a -eq 'IMPL' -or $a -eq 'CTRL' -or $a -eq 'PARAM') { return $a }
+    return 'OTHER'
+}
+
 function script:Ensure-Minute {
     param([hashtable]$Data, [string]$Key)
     if (-not $Data.ByMinute.ContainsKey($Key)) {
@@ -659,6 +716,21 @@ function script:Ensure-Minute {
         }
     }
     return $Data.ByMinute[$Key]
+}
+
+function script:Ensure-MinuteArea {
+    param([hashtable]$Data, [string]$Key, [string]$Area)
+    if (-not $Data.ByMinuteByArea.ContainsKey($Key)) {
+        $Data.ByMinuteByArea[$Key] = @{}
+    }
+    $byArea = $Data.ByMinuteByArea[$Key]
+    if (-not $byArea.ContainsKey($Area)) {
+        $byArea[$Area] = @{
+            FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+            bacFailed = 0; bacOk = 0; projectRestart = 0
+        }
+    }
+    return $byArea[$Area]
 }
 
 function script:Normalize-ManagerKey {
@@ -728,6 +800,8 @@ function script:Process-LogLine {
     }
     $comp = $m.Groups[1].Value.Trim()
     $ts = $m.Groups[2].Value
+    $areaRaw = $m.Groups[3].Value.Trim()
+    $areaKey = Normalize-AreaKey -Raw $areaRaw
     $sev = $m.Groups[4].Value.Trim().ToUpperInvariant()
     if ($sev -eq 'WARN') { $sev = 'WARNING' }
 
@@ -741,15 +815,27 @@ function script:Process-LogLine {
     $Data.LastTs = $ts
     if (-not $Data.Severity.ContainsKey($sev)) { $Data.Severity[$sev] = 0 }
     $Data.Severity[$sev]++
+    if (-not $Data.AreaCounts.ContainsKey($areaKey)) { $Data.AreaCounts[$areaKey] = 0 }
+    $Data.AreaCounts[$areaKey]++
+    if ($areaKey -eq 'OTHER' -and $areaRaw) {
+        Add-CountMap -Map $Data.AreaOtherNames -Key $areaRaw
+    }
+    if (-not $Data.SeverityByArea.ContainsKey($areaKey)) { $Data.SeverityByArea[$areaKey] = @{} }
+    if (-not $Data.SeverityByArea[$areaKey].ContainsKey($sev)) { $Data.SeverityByArea[$areaKey][$sev] = 0 }
+    $Data.SeverityByArea[$areaKey][$sev]++
     if (-not $Data.Components.ContainsKey($comp)) { $Data.Components[$comp] = 0 }
     $Data.Components[$comp]++
+    if (-not $Data.ComponentsByArea.ContainsKey($areaKey)) { $Data.ComponentsByArea[$areaKey] = @{} }
+    if (-not $Data.ComponentsByArea[$areaKey].ContainsKey($comp)) { $Data.ComponentsByArea[$areaKey][$comp] = 0 }
+    $Data.ComponentsByArea[$areaKey][$comp]++
     if (-not $Data.CompSev.ContainsKey($comp)) { $Data.CompSev[$comp] = @{} }
     if (-not $Data.CompSev[$comp].ContainsKey($sev)) { $Data.CompSev[$comp][$sev] = 0 }
     $Data.CompSev[$comp][$sev]++
 
     $mk = if ($ts.Length -ge 16) { $ts.Substring(0, 16) } else { $ts }
     $bucket = Ensure-Minute -Data $Data -Key $mk
-    if ($bucket.ContainsKey($sev)) { $bucket[$sev]++ }
+    $bucketArea = Ensure-MinuteArea -Data $Data -Key $mk -Area $areaKey
+    if ($bucket.ContainsKey($sev)) { $bucket[$sev]++; $bucketArea[$sev]++ }
 
     $isWarning = ($sev -eq 'WARNING')
     $isSevere = ($sev -eq 'SEVERE' -or $sev -eq 'FATAL' -or $sev -eq 'ERROR')
@@ -772,6 +858,10 @@ function script:Process-LogLine {
         $norm = Normalize-Message -Text $Line
         Add-Pattern -CountMap $Data.PatternsBySev[$sevBucket] -SampleMap $Data.PatternSampleBySev[$sevBucket] `
             -TimeMap $Data.PatternTimeBySev[$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        if ($Data.PatternsByArea.ContainsKey($areaKey) -and $Data.PatternsByArea[$areaKey].ContainsKey($sevBucket)) {
+            Add-Pattern -CountMap $Data.PatternsByArea[$areaKey][$sevBucket] -SampleMap $Data.PatternSampleByArea[$areaKey][$sevBucket] `
+                -TimeMap $Data.PatternTimeByArea[$areaKey][$sevBucket] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        }
         if (-not $Data.CompPatterns.ContainsKey($comp)) {
             $Data.CompPatterns[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
             $Data.CompPatternSamples[$comp] = @{ FATAL = @{}; SEVERE = @{}; ERROR = @{}; WARNING = @{} }
@@ -786,6 +876,10 @@ function script:Process-LogLine {
         $norm = Normalize-Message -Text $Line
         Add-Pattern -CountMap $Data.PatternsBySev['INFO'] -SampleMap $Data.PatternSampleBySev['INFO'] `
             -TimeMap $Data.PatternTimeBySev['INFO'] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        if ($Data.PatternsByArea.ContainsKey($areaKey) -and $Data.PatternsByArea[$areaKey].ContainsKey('INFO')) {
+            Add-Pattern -CountMap $Data.PatternsByArea[$areaKey]['INFO'] -SampleMap $Data.PatternSampleByArea[$areaKey]['INFO'] `
+                -TimeMap $Data.PatternTimeByArea[$areaKey]['INFO'] -Norm $norm -Line $Line -Timestamp $ts -SampleLimit $SamplePerPattern
+        }
     }
 
     if ($comp.IndexOf('BACnet', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
@@ -800,6 +894,7 @@ function script:Process-LogLine {
             $Data.BacFailedByDevice[$bacDevId]++
             if (-not $Data.BacFailedSample) { $Data.BacFailedSample = $Line }
             $bucket.bacFailed++
+            $bucketArea.bacFailed++
         }
         else {
             $mo = $script:ReBacOk.Match($Line)
@@ -811,6 +906,7 @@ function script:Process-LogLine {
                 $Data.BacOkByDevice[$bacDevId]++
                 if (-not $Data.BacOkSample) { $Data.BacOkSample = $Line }
                 $bucket.bacOk++
+                $bucketArea.bacOk++
             }
         }
         if ($bacDevId -and $bacNewStatus) {
@@ -956,21 +1052,22 @@ function script:Process-LogLine {
     if ($script:ReProjectUp.IsMatch($Line)) {
         $Data.ProjectUp++
         $bucket.projectRestart = 1
+        $bucketArea.projectRestart = 1
         if ($Data.ProjectRestartEvents.Count -lt 200) {
-            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'up'; sample = $Line })
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'up'; area = $areaKey; sample = $Line })
         }
     }
     if ($script:ReProjectStartMode.IsMatch($Line)) { $Data.ProjectStartMode++ }
     if ($script:ReProjectShutdown.IsMatch($Line)) {
         $Data.ProjectShutdown++
         if ($Data.ProjectRestartEvents.Count -lt 200) {
-            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'shutdown'; sample = $Line })
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'shutdown'; area = $areaKey; sample = $Line })
         }
     }
     if ($script:ReProjectStopped.IsMatch($Line)) {
         $Data.ProjectStopped++
         if ($Data.ProjectRestartEvents.Count -lt 200) {
-            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'stopped'; sample = $Line })
+            [void]$Data.ProjectRestartEvents.Add([ordered]@{ t = $ts; kind = 'stopped'; area = $areaKey; sample = $Line })
         }
     }
     $mPmonRr = $script:RePmonMgrRestart.Match($Line)
@@ -1572,6 +1669,140 @@ function script:Parse-QuerySevs {
     return $set
 }
 
+function script:Parse-QueryAreas {
+    param([System.Collections.Specialized.NameValueCollection]$Q)
+    $raw = $Q['areas']
+    $set = @{}
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) { $set[$a] = $false }
+    if ([string]::IsNullOrWhiteSpace($raw)) {
+        foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) { $set[$a] = $true }
+        return $set
+    }
+    foreach ($part in ($raw -split ',')) {
+        $p = $part.Trim().ToUpperInvariant()
+        if ($set.ContainsKey($p)) { $set[$p] = $true }
+    }
+    return $set
+}
+
+function script:Test-AreaFilterAllOn {
+    param($AreaFilter)
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
+        if (-not $AreaFilter[$a]) { return $false }
+    }
+    return $true
+}
+
+function script:Get-EnabledAreas {
+    param($AreaFilter)
+    $out = @()
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
+        if ($AreaFilter[$a]) { $out += $a }
+    }
+    return $out
+}
+
+function script:Get-FilteredSeverityCounts {
+    param($Data, $AreaFilter)
+    $sevCounts = [ordered]@{}
+    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) { $sevCounts[$s] = 0 }
+    if (Test-AreaFilterAllOn -AreaFilter $AreaFilter) {
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+            if ($Data.Severity.ContainsKey($s)) { $sevCounts[$s] = [int]$Data.Severity[$s] }
+        }
+        return $sevCounts
+    }
+    foreach ($a in (Get-EnabledAreas -AreaFilter $AreaFilter)) {
+        if (-not $Data.SeverityByArea.ContainsKey($a)) { continue }
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+            if ($Data.SeverityByArea[$a].ContainsKey($s)) {
+                $sevCounts[$s] = [int]$sevCounts[$s] + [int]$Data.SeverityByArea[$a][$s]
+            }
+        }
+    }
+    return $sevCounts
+}
+
+function script:Get-FilteredTopManagers {
+    param($Data, $AreaFilter, [int]$N = 20)
+    if (Test-AreaFilterAllOn -AreaFilter $AreaFilter) {
+        return @(
+            $Data.Components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $N | ForEach-Object {
+                [ordered]@{ name = $_.Key; count = [int]$_.Value }
+            }
+        )
+    }
+    $acc = @{}
+    foreach ($a in (Get-EnabledAreas -AreaFilter $AreaFilter)) {
+        if (-not $Data.ComponentsByArea.ContainsKey($a)) { continue }
+        foreach ($e in $Data.ComponentsByArea[$a].GetEnumerator()) {
+            if (-not $acc.ContainsKey($e.Key)) { $acc[$e.Key] = 0 }
+            $acc[$e.Key] = [int]$acc[$e.Key] + [int]$e.Value
+        }
+    }
+    return @(
+        $acc.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $N | ForEach-Object {
+            [ordered]@{ name = $_.Key; count = [int]$_.Value }
+        }
+    )
+}
+
+function script:Get-FilteredTopPatterns {
+    param($Data, [string]$Sev, $AreaFilter, [int]$N)
+    if (Test-AreaFilterAllOn -AreaFilter $AreaFilter) {
+        return @(Get-TopPatterns -CountMap $Data.PatternsBySev[$Sev] -SampleMap $Data.PatternSampleBySev[$Sev] -TimeMap $Data.PatternTimeBySev[$Sev] -N $N)
+    }
+    $count = @{}
+    $sample = @{}
+    $time = @{}
+    foreach ($a in (Get-EnabledAreas -AreaFilter $AreaFilter)) {
+        if (-not $Data.PatternsByArea.ContainsKey($a)) { continue }
+        if (-not $Data.PatternsByArea[$a].ContainsKey($Sev)) { continue }
+        $cm = $Data.PatternsByArea[$a][$Sev]
+        $sm = $Data.PatternSampleByArea[$a][$Sev]
+        $tm = $Data.PatternTimeByArea[$a][$Sev]
+        foreach ($e in $cm.GetEnumerator()) {
+            $k = $e.Key
+            if (-not $count.ContainsKey($k)) { $count[$k] = 0 }
+            $count[$k] = [int]$count[$k] + [int]$e.Value
+            if ($null -ne $sm -and $sm.ContainsKey($k) -and $null -ne $sm[$k]) {
+                if (-not $sample.ContainsKey($k)) { $sample[$k] = New-Object System.Collections.ArrayList }
+                foreach ($s in @($sm[$k])) {
+                    if ($sample[$k].Count -ge $SamplePerPattern) { break }
+                    [void]$sample[$k].Add([string]$s)
+                }
+            }
+            if ($null -ne $tm -and $tm.ContainsKey($k)) {
+                $first = [string]$tm[$k]['First']
+                $last = [string]$tm[$k]['Last']
+                if (-not $time.ContainsKey($k)) {
+                    $time[$k] = @{ First = $first; Last = $last }
+                }
+                else {
+                    if ($first -and (-not $time[$k]['First'] -or $first -lt $time[$k]['First'])) { $time[$k]['First'] = $first }
+                    if ($last -and (-not $time[$k]['Last'] -or $last -gt $time[$k]['Last'])) { $time[$k]['Last'] = $last }
+                }
+            }
+        }
+    }
+    return @(Get-TopPatterns -CountMap $count -SampleMap $sample -TimeMap $time -N $N)
+}
+
+function script:Get-AreaCountsPayload {
+    param($Data)
+    $counts = [ordered]@{ SYS = 0; IMPL = 0; CTRL = 0; PARAM = 0; OTHER = 0 }
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
+        if ($Data.AreaCounts -and $Data.AreaCounts.ContainsKey($a)) { $counts[$a] = [int]$Data.AreaCounts[$a] }
+    }
+    $others = @()
+    if ($Data.AreaOtherNames) {
+        foreach ($e in @($Data.AreaOtherNames.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+            $others += [ordered]@{ name = [string]$e.Key; count = [int]$e.Value }
+        }
+    }
+    return [ordered]@{ counts = $counts; otherNames = $others }
+}
+
 function script:Get-ChartGranularity {
     param(
         [string]$FirstTs,
@@ -1592,36 +1823,63 @@ function script:Get-ChartGranularity {
 }
 
 function script:Build-ChartSeries {
-    param($Data, $SevFilter)
+    param($Data, $SevFilter, $AreaFilter = $null)
+    if ($null -eq $AreaFilter) {
+        $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
+    }
     $gran = Get-ChartGranularity -FirstTs $Data.FirstTs -LastTs $Data.LastTs -MinuteBucketCount $Data.ByMinute.Count
     if ($gran -eq 'minute' -and $Data.ByMinute.Count -gt 400) { $gran = 'hour' }
 
     $acc = @{}
-    foreach ($e in $Data.ByMinute.GetEnumerator()) {
-        $src = $e.Key
-        $key = switch ($gran) {
-            'day' {
-                if ($src.Length -ge 10) { $src.Substring(0, 10) } else { $src }
+    $useAreaSplit = -not (Test-AreaFilterAllOn -AreaFilter $AreaFilter)
+    $enabledAreas = @(Get-EnabledAreas -AreaFilter $AreaFilter)
+
+    if ($useAreaSplit -and $Data.ByMinuteByArea) {
+        foreach ($e in $Data.ByMinuteByArea.GetEnumerator()) {
+            $src = $e.Key
+            $key = switch ($gran) {
+                'day' { if ($src.Length -ge 10) { $src.Substring(0, 10) } else { $src } }
+                'hour' { if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src } }
+                default { $src }
             }
-            'hour' {
-                if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src }
+            if (-not $acc.ContainsKey($key)) {
+                $acc[$key] = @{
+                    FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+                    bacFailed = 0; bacOk = 0; projectRestart = 0
+                }
             }
-            default { $src }
-        }
-        if (-not $acc.ContainsKey($key)) {
-            $acc[$key] = @{
-                FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
-                bacFailed = 0; bacOk = 0; projectRestart = 0
+            $dst = $acc[$key]
+            foreach ($a in $enabledAreas) {
+                if (-not $e.Value.ContainsKey($a)) { continue }
+                $v = $e.Value[$a]
+                foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) { $dst[$s] += [int]$v[$s] }
+                $dst.bacFailed += [int]$v.bacFailed
+                $dst.bacOk += [int]$v.bacOk
+                if ([int]$v.projectRestart -gt 0) { $dst.projectRestart = 1 }
             }
         }
-        $dst = $acc[$key]
-        $v = $e.Value
-        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
-            $dst[$s] += [int]$v[$s]
+    }
+    else {
+        foreach ($e in $Data.ByMinute.GetEnumerator()) {
+            $src = $e.Key
+            $key = switch ($gran) {
+                'day' { if ($src.Length -ge 10) { $src.Substring(0, 10) } else { $src } }
+                'hour' { if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src } }
+                default { $src }
+            }
+            if (-not $acc.ContainsKey($key)) {
+                $acc[$key] = @{
+                    FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0
+                    bacFailed = 0; bacOk = 0; projectRestart = 0
+                }
+            }
+            $dst = $acc[$key]
+            $v = $e.Value
+            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) { $dst[$s] += [int]$v[$s] }
+            $dst.bacFailed += [int]$v.bacFailed
+            $dst.bacOk += [int]$v.bacOk
+            if ([int]$v.projectRestart -gt 0) { $dst.projectRestart = 1 }
         }
-        $dst.bacFailed += [int]$v.bacFailed
-        $dst.bacOk += [int]$v.bacOk
-        if ([int]$v.projectRestart -gt 0) { $dst.projectRestart = 1 }
     }
 
     $rows = @(
@@ -1646,7 +1904,10 @@ function script:Build-ChartSeries {
 }
 
 function script:Build-PulseObject {
-    param($SevFilter)
+    param($SevFilter, $AreaFilter = $null)
+    if ($null -eq $AreaFilter) {
+        $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
+    }
     $d = $script:Sync['Data']
     $win = if ($script:Sync['WindowEntire']) {
         [ordered]@{ mode = 'entire'; lastMinutes = 0; first = $d.FirstTs; last = $d.LastTs }
@@ -1654,13 +1915,11 @@ function script:Build-PulseObject {
     else {
         [ordered]@{ mode = 'minutes'; lastMinutes = [int]$script:Sync['LastMinutes']; first = $d.FirstTs; last = $d.LastTs }
     }
+    $areaPayload = Get-AreaCountsPayload -Data $d
 
     # While catch-up runs, keep pulse cheap so % updates do not stall the scan.
     if ($script:Sync['Loading']) {
-        $sevCounts = [ordered]@{}
-        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
-            $sevCounts[$s] = if ($d.Severity.ContainsKey($s)) { [int]$d.Severity[$s] } else { 0 }
-        }
+        $sevCounts = Get-FilteredSeverityCounts -Data $d -AreaFilter $AreaFilter
         return [ordered]@{
             generation      = [int]$script:Sync['Generation']
             window          = $win
@@ -1675,6 +1934,8 @@ function script:Build-PulseObject {
             fileLength      = [int64]$script:Sync['FileLength']
             findings        = @()
             severityCounts  = $sevCounts
+            areaCounts      = $areaPayload.counts
+            areaOtherNames  = $areaPayload.otherNames
             moduleHeadlines = [ordered]@{
                 bacnet = [ordered]@{
                     failed = $d.BacFailed; ok = $d.BacOk; endedFailed = 0; endedOk = 0; flappers = 0; objectList = $d.BacObjectList
@@ -1691,22 +1952,33 @@ function script:Build-PulseObject {
             }
             topManagers     = @()
             series          = [ordered]@{ granularity = 'minute'; byMinute = @() }
+            projectLifecycle = [ordered]@{
+                up = [int]$d.ProjectUp; stopped = [int]$d.ProjectStopped
+                shutdown = [int]$d.ProjectShutdown; startMode = [int]$d.ProjectStartMode
+                events = @(); capped = $false
+            }
         }
     }
 
-    $sevCounts = [ordered]@{}
-    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
-        $sevCounts[$s] = if ($d.Severity.ContainsKey($s)) { [int]$d.Severity[$s] } else { 0 }
-    }
+    $sevCounts = Get-FilteredSeverityCounts -Data $d -AreaFilter $AreaFilter
     $endedFailed = @($d.BacLastStatus.GetEnumerator() | Where-Object { $_.Value -eq 'Failed' }).Count
     $endedOk = @($d.BacLastStatus.GetEnumerator() | Where-Object { $_.Value -eq 'OK' }).Count
     $flappers = @($d.BacFlipByDevice.GetEnumerator() | Where-Object { $_.Value -ge $script:BacFlapMin }).Count
-    $topMgr = @(
-        $d.Components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
-            [ordered]@{ name = $_.Key; count = [int]$_.Value }
+    $topMgr = @(Get-FilteredTopManagers -Data $d -AreaFilter $AreaFilter -N 20)
+    $series = Build-ChartSeries -Data $d -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $projEvents = @()
+    if ($d.ProjectRestartEvents) {
+        $allAreas = Test-AreaFilterAllOn -AreaFilter $AreaFilter
+        foreach ($ev in @($d.ProjectRestartEvents)) {
+            $evArea = if ($ev.area) { [string]$ev.area } else { 'SYS' }
+            if (-not $allAreas -and -not $AreaFilter[$evArea]) { continue }
+            $projEvents += [ordered]@{
+                t    = [string]$ev.t
+                kind = [string]$ev.kind
+                area = $evArea
+            }
         }
-    )
-    $series = Build-ChartSeries -Data $d -SevFilter $SevFilter
+    }
     return [ordered]@{
         generation      = [int]$script:Sync['Generation']
         window          = $win
@@ -1721,6 +1993,8 @@ function script:Build-PulseObject {
         fileLength      = [int64]$script:Sync['FileLength']
         findings        = @(Build-Findings)
         severityCounts  = $sevCounts
+        areaCounts      = $areaPayload.counts
+        areaOtherNames  = $areaPayload.otherNames
         moduleHeadlines = [ordered]@{
             bacnet = [ordered]@{
                 failed = $d.BacFailed; ok = $d.BacOk; endedFailed = $endedFailed; endedOk = $endedOk; flappers = $flappers; objectList = $d.BacObjectList
@@ -1737,11 +2011,22 @@ function script:Build-PulseObject {
         }
         topManagers     = $topMgr
         series          = $series
+        projectLifecycle = [ordered]@{
+            up         = [int]$d.ProjectUp
+            stopped    = [int]$d.ProjectStopped
+            shutdown   = [int]$d.ProjectShutdown
+            startMode  = [int]$d.ProjectStartMode
+            events     = @($projEvents)
+            capped     = (($d.ProjectUp + $d.ProjectStopped + $d.ProjectShutdown) -gt $projEvents.Count)
+        }
     }
 }
 
 function script:Build-SectionObject {
-    param([string]$Name, $SevFilter)
+    param([string]$Name, $SevFilter, $AreaFilter = $null)
+    if ($null -eq $AreaFilter) {
+        $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
+    }
     $d = $script:Sync['Data']
     $gen = [int]$script:Sync['Generation']
     switch ($Name.ToLowerInvariant()) {
@@ -1749,20 +2034,22 @@ function script:Build-SectionObject {
             $p = [ordered]@{}
             foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
                 if ($SevFilter[$s]) {
-                    $p[$s] = @(Get-TopPatterns -CountMap $d.PatternsBySev[$s] -SampleMap $d.PatternSampleBySev[$s] -TimeMap $d.PatternTimeBySev[$s] -N $TopN)
+                    $p[$s] = @(Get-FilteredTopPatterns -Data $d -Sev $s -AreaFilter $AreaFilter -N $TopN)
                 }
                 else { $p[$s] = @() }
             }
             return [ordered]@{ generation = $gen; patternsBySeverity = $p }
         }
         'managers' {
+            $tops = @(Get-FilteredTopManagers -Data $d -AreaFilter $AreaFilter -N 5000)
             $list = @(
-                $d.Components.GetEnumerator() | Sort-Object Value -Descending | ForEach-Object {
+                foreach ($row in $tops) {
+                    $name = [string]$row.name
                     $sevMap = [ordered]@{ FATAL = 0; SEVERE = 0; ERROR = 0; WARNING = 0; INFO = 0 }
-                    if ($d.CompSev.ContainsKey($_.Key)) {
-                        foreach ($k in $d.CompSev[$_.Key].Keys) { $sevMap[$k] = [int]$d.CompSev[$_.Key][$k] }
+                    if ($d.CompSev.ContainsKey($name)) {
+                        foreach ($k in $d.CompSev[$name].Keys) { $sevMap[$k] = [int]$d.CompSev[$name][$k] }
                     }
-                    [ordered]@{ name = $_.Key; count = [int]$_.Value; severities = $sevMap }
+                    [ordered]@{ name = $name; count = [int]$row.count; severities = $sevMap }
                 }
             )
             return [ordered]@{ generation = $gen; managers = $list }
@@ -1953,36 +2240,33 @@ function script:HtmlEncode {
 }
 
 function script:Build-SnapshotObject {
-    param($SevFilter)
+    param($SevFilter, $AreaFilter = $null)
+    if ($null -eq $AreaFilter) {
+        $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
+    }
     if (-not $script:Sync['LogPath'] -or -not $script:Sync['Data']) {
         throw 'Start a session before taking a snapshot.'
     }
     if ($script:Sync['Loading']) {
         throw 'Catch-up still running. Wait until loading finishes, then snapshot.'
     }
-    $pulse = Build-PulseObject -SevFilter $SevFilter
-    $patterns = Build-SectionObject -Name 'patterns' -SevFilter $SevFilter
-    $managers = Build-SectionObject -Name 'managers' -SevFilter $SevFilter
-    $bacnet = Build-SectionObject -Name 'bacnet' -SevFilter $SevFilter
-    $cns = Build-SectionObject -Name 'cns' -SevFilter $SevFilter
-    $coho = Build-SectionObject -Name 'coho' -SevFilter $SevFilter
-    $apogee = Build-SectionObject -Name 'apogee' -SevFilter $SevFilter
-    $perf = Build-SectionObject -Name 'perf' -SevFilter $SevFilter
+    $pulse = Build-PulseObject -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $patterns = Build-SectionObject -Name 'patterns' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $managers = Build-SectionObject -Name 'managers' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $bacnet = Build-SectionObject -Name 'bacnet' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $cns = Build-SectionObject -Name 'cns' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $coho = Build-SectionObject -Name 'coho' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $apogee = Build-SectionObject -Name 'apogee' -SevFilter $SevFilter -AreaFilter $AreaFilter
+    $perf = Build-SectionObject -Name 'perf' -SevFilter $SevFilter -AreaFilter $AreaFilter
     $d = $script:Sync['Data']
     $life = Build-LifecycleRows -Data $d
-    $projEvents = @()
-    if ($d.ProjectRestartEvents) {
-        foreach ($ev in @($d.ProjectRestartEvents)) {
-            $projEvents += [ordered]@{
-                t      = [string]$ev.t
-                kind   = [string]$ev.kind
-                sample = [string]$ev.sample
-            }
-        }
-    }
     $sevList = @()
     foreach ($sk in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
         if ($SevFilter[$sk]) { $sevList += $sk }
+    }
+    $areaList = @()
+    foreach ($ak in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
+        if ($AreaFilter[$ak]) { $areaList += $ak }
     }
     return [ordered]@{
         meta = [ordered]@{
@@ -1994,23 +2278,18 @@ function script:Build-SnapshotObject {
             generation  = [int]$script:Sync['Generation']
             parsedLines = [int]$script:Sync['Data'].ParsedLines
             severities  = @($sevList)
+            areas       = @($areaList)
         }
         window          = $pulse.window
         findings        = @($pulse.findings)
         severityCounts  = $pulse.severityCounts
+        areaCounts      = $pulse.areaCounts
         series          = $pulse.series
         moduleHeadlines = $pulse.moduleHeadlines
         topManagers     = @($pulse.topManagers)
         patternsBySeverity = $patterns.patternsBySeverity
         managers        = @($managers.managers)
-        projectLifecycle = [ordered]@{
-            up         = [int]$d.ProjectUp
-            stopped    = [int]$d.ProjectStopped
-            shutdown   = [int]$d.ProjectShutdown
-            startMode  = [int]$d.ProjectStartMode
-            events     = @($projEvents)
-            capped     = (($d.ProjectUp + $d.ProjectStopped + $d.ProjectShutdown) -gt $projEvents.Count)
-        }
+        projectLifecycle = $pulse.projectLifecycle
         managerHealth = [ordered]@{
             totals           = $life.totals
             driverReady      = [int]$d.DriverReady
@@ -2334,6 +2613,7 @@ function script:Convert-SnapshotToHtml {
     }
     else { '' }
     $sevOn = if ($Snap.meta.severities) { ($Snap.meta.severities -join ', ') } else { '(none)' }
+    $areaOn = if ($Snap.meta.areas) { ($Snap.meta.areas -join ', ') } else { 'SYS, IMPL, CTRL, PARAM, OTHER' }
 
     [void]$sb.AppendLine('<!DOCTYPE html>')
     [void]$sb.AppendLine('<html lang="en"><head><meta charset="utf-8" />')
@@ -2504,8 +2784,10 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     [void]$sb.AppendLine(('<p class="meta">Generated {0}</p>' -f (& $e $Snap.meta.generated)))
     [void]$sb.AppendLine(('<p class="meta">Log: <span class="mono">{0}</span></p>' -f (& $e $Snap.meta.logPath)))
     [void]$sb.AppendLine(('<p class="meta">{0}  &middot;  {1}</p>' -f (& $e $winLabel), (& $e $span)))
-    [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  parsed lines: {1:N0}  &middot;  gen {2}</p>' -f `
-        (& $e $sevOn), [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
+    [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  Area filters: {1}</p>' -f (& $e $sevOn), (& $e $areaOn)))
+    [void]$sb.AppendLine(('<p class="meta">Parsed lines: {0:N0}  &middot;  gen {1}</p>' -f `
+        [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
+    [void]$sb.AppendLine(('<p class="meta">Module pages (BACnet/CNS/…) show all areas; area filter applies to charts, patterns, managers, and severity KPIs.</p>'))
     [void]$sb.AppendLine('</div><main>')
 
     [void]$sb.AppendLine('<section id="findings"><h2>Findings</h2><ul class="findings">')
@@ -2952,6 +3234,7 @@ function script:Handle-Api {
                     lastMinutes  = [int]$script:Sync['LastMinutes']
                     windowEntire = [bool]$script:Sync['WindowEntire']
                     severities   = @($script:DefaultSeverities)
+                    areas        = @($script:DefaultAreas)
                     topN         = [int]$TopN
                 }
                 tailRunning  = [bool]$script:Sync['TailRunning']
@@ -3071,6 +3354,7 @@ function script:Handle-Api {
 
     if ($path -eq '/api/pulse' -and $req.HttpMethod -eq 'GET') {
         $sev = Parse-QuerySevs -Q $req.QueryString
+        $areas = Parse-QueryAreas -Q $req.QueryString
         $since = $req.QueryString['sinceGeneration']
         if ($since -and ("$since" -eq "$($script:Sync['Generation'])") -and -not $script:Sync['Loading']) {
             $Context.Response.StatusCode = 304
@@ -3078,7 +3362,7 @@ function script:Handle-Api {
             $Context.Response.Close()
             return
         }
-        $obj = Build-PulseObject -SevFilter $sev
+        $obj = Build-PulseObject -SevFilter $sev -AreaFilter $areas
         Write-JsonResponse -Context $Context -Object $obj -ETag ('"{0}"' -f $script:Sync['Generation'])
         return
     }
@@ -3087,7 +3371,8 @@ function script:Handle-Api {
         $name = $req.QueryString['name']
         if (-not $name) { Write-StatusResponse -Context $Context -Code 400 -Message 'name required'; return }
         $sev = Parse-QuerySevs -Q $req.QueryString
-        $obj = Build-SectionObject -Name $name -SevFilter $sev
+        $areas = Parse-QueryAreas -Q $req.QueryString
+        $obj = Build-SectionObject -Name $name -SevFilter $sev -AreaFilter $areas
         Write-JsonResponse -Context $Context -Object $obj -ETag ('"{0}"' -f $script:Sync['Generation'])
         return
     }
@@ -3113,9 +3398,10 @@ function script:Handle-Api {
                 return
             }
             $sev = Parse-QuerySevs -Q $req.QueryString
+            $areas = Parse-QueryAreas -Q $req.QueryString
             $fmt = ([string]$req.QueryString['format']).ToLowerInvariant()
             if ([string]::IsNullOrWhiteSpace($fmt)) { $fmt = 'html' }
-            $snap = Build-SnapshotObject -SevFilter $sev
+            $snap = Build-SnapshotObject -SevFilter $sev -AreaFilter $areas
             $stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
             if ($fmt -eq 'json') {
                 $json = $snap | ConvertTo-Json -Depth 10 -Compress

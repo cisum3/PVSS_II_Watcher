@@ -3,6 +3,7 @@
   'use strict';
 
   var SEVS = ['FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO'];
+  var AREAS = ['SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER'];
   var SEV_COLORS = {
     FATAL: '#E00000',
     SEVERE: '#C000A0',
@@ -23,6 +24,7 @@
     sawLoading: false,
     loadRequestDone: false,
     severities: { FATAL: true, SEVERE: true, ERROR: true, WARNING: true, INFO: false },
+    areas: { SYS: true, IMPL: true, CTRL: true, PARAM: true, OTHER: true },
     generation: null,
     sectionGeneration: {},
     selectedManager: null,
@@ -46,6 +48,8 @@
     else p.set('lastMinutes', String(state.lastMinutes));
     var sev = SEVS.filter(function (s) { return state.severities[s]; });
     p.set('severities', sev.join(','));
+    var areas = AREAS.filter(function (a) { return state.areas[a]; });
+    p.set('areas', areas.join(','));
     return p.toString();
   }
 
@@ -86,6 +90,15 @@
           { t: '2026.09.05 15:00', FATAL: 0, SEVERE: 2, ERROR: 1, WARNING: 10, INFO: 80, bacFailed: 5, bacOk: 4, projectRestart: 1 },
           { t: '2026.09.05 15:01', FATAL: 0, SEVERE: 4, ERROR: 0, WARNING: 12, INFO: 90, bacFailed: 8, bacOk: 6, projectRestart: 0 },
           { t: '2026.09.05 15:02', FATAL: 1, SEVERE: 3, ERROR: 2, WARNING: 8, INFO: 70, bacFailed: 3, bacOk: 7, projectRestart: 0 }
+        ]
+      },
+      projectLifecycle: {
+        up: 2, stopped: 1, shutdown: 1, startMode: 2, capped: false,
+        events: [
+          { kind: 'shutdown', t: '2026.09.05 14:10:00.100' },
+          { kind: 'stopped', t: '2026.09.05 14:10:45.200' },
+          { kind: 'up', t: '2026.09.05 14:22:01.000' },
+          { kind: 'up', t: '2026.09.05 15:00:12.500' }
         ]
       }
     };
@@ -336,6 +349,10 @@
     return SEVS.filter(function (s) { return state.severities[s]; });
   }
 
+  function selectedAreas() {
+    return AREAS.filter(function (a) { return state.areas[a]; });
+  }
+
   function renderWindowSpan(w) {
     var el = $('overviewWindow');
     if (!el) return;
@@ -358,6 +375,47 @@
       var li = document.createElement('li');
       li.textContent = f;
       ul.appendChild(li);
+    });
+  }
+
+  function renderProjectRestarts(pl) {
+    var panel = $('projectRestartsPanel');
+    var meta = $('projectRestartsMeta');
+    var tbody = $('projectRestartsTable') && $('projectRestartsTable').querySelector('tbody');
+    if (!panel || !meta || !tbody) return;
+    var evs = (pl && pl.events) ? pl.events : [];
+    var up = pl ? (pl.up || 0) : 0;
+    var stopped = pl ? (pl.stopped || 0) : 0;
+    var shutdown = pl ? (pl.shutdown || 0) : 0;
+    var startMode = pl ? (pl.startMode || 0) : 0;
+    var hasSignal = evs.length > 0 || up > 0 || stopped > 0 || shutdown > 0;
+    if (!hasSignal) {
+      panel.hidden = true;
+      tbody.innerHTML = '';
+      meta.textContent = '';
+      return;
+    }
+    panel.hidden = false;
+    var cap = pl && pl.capped ? ' (list capped at 200)' : '';
+    meta.textContent = 'up=' + Number(up).toLocaleString() +
+      '  ·  stopped=' + Number(stopped).toLocaleString() +
+      '  ·  shutdown=' + Number(shutdown).toLocaleString() +
+      '  ·  START_MODE=' + Number(startMode).toLocaleString() +
+      '  ·  listed=' + evs.length + cap +
+      '. START_MODE counted only (too frequent to list).';
+    tbody.innerHTML = '';
+    if (!evs.length) {
+      var empty = document.createElement('tr');
+      empty.innerHTML = '<td colspan="2" class="meta">Counts present but no event timestamps retained.</td>';
+      tbody.appendChild(empty);
+      return;
+    }
+    evs.forEach(function (ev) {
+      var tr = document.createElement('tr');
+      var kind = String(ev.kind || '');
+      var cls = kind === 'up' ? 'kind-up' : (kind === 'shutdown' ? 'kind-shutdown' : (kind === 'stopped' ? 'kind-stopped' : ''));
+      tr.innerHTML = '<td class="' + cls + '">' + escapeHtml(kind) + '</td><td class="mono">' + escapeHtml(String(ev.t || '')) + '</td>';
+      tbody.appendChild(tr);
     });
   }
 
@@ -585,6 +643,7 @@
 
     renderWindowSpan(p.window);
     renderFindings(p.findings);
+    renderProjectRestarts(p.projectLifecycle);
     renderKpis(p.severityCounts);
     renderMgrStrip(p.topManagers);
     updateCharts(p.series);
@@ -1200,6 +1259,25 @@
             apiPost('/api/control', { action: 'note', message: 'Severity filter → ' + sevLabel }).catch(function () { });
           }
           pollPulse({ force: true });
+          if (state.activeView !== 'overview') loadSection(state.activeView);
+        }
+      });
+    });
+
+    document.querySelectorAll('#areaChips .chip').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var a = b.getAttribute('data-area');
+        state.areas[a] = !state.areas[a];
+        b.classList.toggle('active', state.areas[a]);
+        b.setAttribute('aria-pressed', state.areas[a] ? 'true' : 'false');
+        if (state.running || state.useMock) {
+          var areaLabel = selectedAreas().join(',') || '(none)';
+          setStatus('<span class="warn">applying filters</span> · areas ' + escapeHtml(areaLabel));
+          if (!state.useMock) {
+            apiPost('/api/control', { action: 'note', message: 'Area filter → ' + areaLabel }).catch(function () { });
+          }
+          pollPulse({ force: true });
+          if (state.activeView !== 'overview') loadSection(state.activeView);
         }
       });
     });
@@ -1370,6 +1448,19 @@
       document.querySelectorAll('#sevChips .chip-sev').forEach(function (b) {
         var s = b.getAttribute('data-sev');
         var on = !!state.severities[s];
+        b.classList.toggle('active', on);
+        b.setAttribute('aria-pressed', on ? 'true' : 'false');
+      });
+    }
+    if (d.areas && d.areas.length) {
+      AREAS.forEach(function (a) { state.areas[a] = false; });
+      d.areas.forEach(function (a) {
+        var u = String(a).toUpperCase();
+        if (state.areas.hasOwnProperty(u)) state.areas[u] = true;
+      });
+      document.querySelectorAll('#areaChips .chip-area').forEach(function (b) {
+        var a = b.getAttribute('data-area');
+        var on = !!state.areas[a];
         b.classList.toggle('active', on);
         b.setAttribute('aria-pressed', on ? 'true' : 'false');
       });

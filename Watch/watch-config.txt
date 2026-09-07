@@ -36,6 +36,10 @@ DefaultWindowEntire=false
 # DefaultSeverities: FATAL,SEVERE,ERROR,WARNING,INFO (default FATAL,SEVERE,ERROR,WARNING)
 DefaultSeverities=FATAL,SEVERE,ERROR,WARNING
 
+# Initial area chips (comma-separated). OTHER = any area not SYS/IMPL/CTRL/PARAM.
+# DefaultAreas: SYS,IMPL,CTRL,PARAM,OTHER (default all)
+DefaultAreas=SYS,IMPL,CTRL,PARAM,OTHER
+
 # Pattern / table depth.
 # TopN: integer 5-100 (default 10)
 TopN=10
@@ -48,7 +52,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C1P.log.bak
+LogPath=C:\Users\Admin\Desktop\Work Stuff\Jobs\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C1P.log
 
 
 

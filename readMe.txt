@@ -65,6 +65,9 @@ Quick start — live Watch
 
 5. Use Pause / Resume / Restart as needed.
    Change severity chips and time window anytime (reloads the window).
+   Area chips (SYS / IMPL / CTRL / PARAM / OTHER) filter charts, patterns,
+   and managers the same way — ingest always keeps every area, including
+   unknown areas under OTHER. Module pages still show all areas.
    While loading, the UI polls about every 0.5s for % progress; afterward
    it uses RefreshSeconds from watch-config.txt.
 
@@ -88,6 +91,7 @@ and rewritten back to the default (self-correcting). Host is always localhost
   DefaultWindowMinutes           Initial window (minutes)
   DefaultWindowEntire            true = start on Entire
   DefaultSeverities              Initial chips, e.g. FATAL,SEVERE,ERROR,WARNING
+  DefaultAreas                   Initial area chips, e.g. SYS,IMPL,CTRL,PARAM,OTHER
   TopN / SamplePerPattern        Pattern table depth / samples
   BacFlapMin                     BACnet flapper threshold
   LogPath                        Prefill path; updated automatically on Start

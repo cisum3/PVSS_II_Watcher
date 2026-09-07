@@ -1,6 +1,6 @@
 PVSS / WinCC OA Log Analyzer - OfflineAnalyze
 =============================================
-Version: 1.2
+Version: 1.3
 Author: Cisum
 
 What this is
@@ -31,7 +31,7 @@ Keep this toolset outside the WinCC OA project log directory.
   Run-Analyze.cmd                Full report as HTML (non-interactive)
   Run-Analyze-Interactive.cmd    Scan, then prompt for Severity / Driver / All
   readMe.txt                     This file
-  VERSION.txt                    1.2
+  VERSION.txt                    1.3
 
 
 Quick start
@@ -125,11 +125,11 @@ What the report contains
   - Options used (organize mode, severities, drivers, time window, TopN)
   - Findings (volume / chatter heuristics)
   - Severity counts
-  - BACnet: Failed/OK summary, device activity, ended Failed, object-list
-  - CNS (thin): ResolveNodes / ReducedFunction / TryRenewSession
-  - CoHo (thin): stuck/drop counts and names
-  - Apogee (thin): events, UpdatePoints, top PPCL names
-  - Top managers, performance keyword categories, hourly volume (All mode)
+  - Project restarts (pmon): cycle rows with uptime / stop / downtime
+  - Manager health (pmon), top managers
+  - Performance keyword categories (All mode)
+  - BACnet / CNS / CoHo / Apogee modules
+  - Hourly volume (All mode)
   - Top message patterns by severity (or a driver deep-dive)
 
 Console shows a short scan summary; full detail is in the report file(s).

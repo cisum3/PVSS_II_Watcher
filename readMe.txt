@@ -1,6 +1,6 @@
 PVSS / WinCC OA Log Analyzer
 ============================
-Version: 2.3 (live Watch)  |  OfflineAnalyze: 1.2
+Version: 2.3 (live Watch)  |  OfflineAnalyze: 1.3
 Author: Cisum
 
 What this is
@@ -11,7 +11,7 @@ A Windows-only triage toolkit for large PVSS_II.log files (WinCC OA / GMS).
                          catch up a time window, tail new lines, filter by
                          severity, browse modules/patterns, download a snapshot.
 
-  OfflineAnalyze (1.2)   One-shot offline scan of a log copy; writes an HTML
+  OfflineAnalyze (1.3)   One-shot offline scan of a log copy; writes an HTML
                          (and/or text) report with findings, patterns, and
                          BACnet / CNS / CoHo / Apogee modules.
 
@@ -38,7 +38,7 @@ Keep this folder outside the WinCC OA project log directory.
     VERSION.txt              Watch version (2.3)
     watch-config.txt         Defaults / preferences (edit this)
     ui\                      Dashboard (Siemens dark theme + Chart.js)
-    OfflineAnalyze\          Offline report tool (1.2)
+    OfflineAnalyze\          Offline report tool (1.3)
       Run-Analyze.cmd
       Run-Analyze-Interactive.cmd
       Analyze-PvssLog.ps1
@@ -123,5 +123,5 @@ Important notes
   - Do not install or run these scripts inside the project log folder.
   - Preferences live in Watch\watch-config.txt (LogPath updated on Start).
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-  - Field baseline: Watch 2.3 / OfflineAnalyze 1.2. See CHANGELOG.txt for
+  - Current versions: Watch 2.3 / OfflineAnalyze 1.3. See CHANGELOG.txt for
     what changed in each release.

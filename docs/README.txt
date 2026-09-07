@@ -8,7 +8,7 @@ Development docs & test assets (not shipped in field packages)
 
 Field package root (user-facing): Run-Watch.cmd + readMe.txt + CHANGELOG.txt
   + Watch\ (ui, host, OfflineAnalyze).
-Shipped baseline: Watch 2.2 / OfflineAnalyze 1.2. Watch 2.3 is in progress
-(not field-shipped yet). Bump VERSION + user CHANGELOG before the next field
-zip. Keep readMe.txt / CHANGELOG.txt operator-focused (no refs to docs\ or
-internal backlog).
+Shipped baseline: Watch 2.2 / OfflineAnalyze 1.2. In progress: Watch 2.3 +
+OfflineAnalyze 1.3 (cycle/uptime). Bump VERSION + user CHANGELOG before the
+next field zip. Keep readMe.txt / CHANGELOG.txt operator-focused (no refs to
+docs\ or internal backlog).

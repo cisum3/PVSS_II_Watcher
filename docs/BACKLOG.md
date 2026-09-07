@@ -1,8 +1,8 @@
 # Future backlog — PVSS Log Analyzer
 
 **Shipped baseline:** Watch **2.2** · OfflineAnalyze **1.2** · Author: Cisum (2026-09-06)  
-**In progress:** Watch **2.3** (cycle/uptime view — not shipped yet)  
-**Next field bump after 2.3 ships:** Watch **2.4**
+**In progress:** Watch **2.3** + OfflineAnalyze **1.3** (cycle/uptime view — not shipped yet)  
+**Next field bump after that ships:** Watch **2.4**
 
 **Rule:** Keep this file short. Add ideas as bullets. Do **not** grow archived PRDs/PROGRESS.
 Any change that ships to the field needs a **version bump** first (Watch and/or OfflineAnalyze `VERSION.txt` + user-facing `readMe.txt` / `CHANGELOG.txt`).

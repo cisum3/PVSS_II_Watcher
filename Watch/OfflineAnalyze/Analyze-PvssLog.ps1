@@ -1,6 +1,6 @@
-<#
+﻿<#
 .SYNOPSIS
-  Standalone WinCC OA / GMS (PVSS_II) log analyzer for performance triage. (v1.2)
+  Standalone WinCC OA / GMS (PVSS_II) log analyzer for performance triage. (v1.3)
 
 .DESCRIPTION
   Streams a large PVSS_II.log without loading it into memory.
@@ -123,7 +123,7 @@ $ErrorActionPreference = 'Stop'
 
 $script:ToolRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:Version = (Get-Content (Join-Path $script:ToolRoot 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
-if (-not $script:Version) { $script:Version = '1.2' }
+if (-not $script:Version) { $script:Version = '1.3' }
 $script:Author = 'Cisum'
 foreach ($verLine in @(Get-Content (Join-Path $script:ToolRoot 'VERSION.txt') -ErrorAction SilentlyContinue)) {
     if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
@@ -174,6 +174,147 @@ function Convert-LogTimestamp {
         return $dt2
     }
     return $null
+}
+
+function Format-DurationLabel {
+    param($Seconds)
+    if ($null -eq $Seconds) { return '' }
+    try { $s = [int][math]::Round([double]$Seconds) } catch { return '' }
+    if ($s -lt 0) { return '' }
+    if ($s -lt 60) { return ('{0}s' -f $s) }
+    $m = [int][math]::Floor($s / 60)
+    $r = $s % 60
+    if ($m -lt 60) {
+        if ($r -eq 0) { return ('{0}m' -f $m) }
+        return ('{0}m {1}s' -f $m, $r)
+    }
+    $h = [int][math]::Floor($m / 60)
+    $m2 = $m % 60
+    if ($h -lt 48) {
+        if ($m2 -eq 0) { return ('{0}h' -f $h) }
+        return ('{0}h {1}m' -f $h, $m2)
+    }
+    $d = [int][math]::Floor($h / 24)
+    $h2 = $h % 24
+    if ($h2 -eq 0) { return ('{0}d' -f $d) }
+    return ('{0}d {1}h' -f $d, $h2)
+}
+
+function Get-LogTimestampDeltaSec {
+    param([string]$FromTs, [string]$ToTs)
+    $a = Convert-LogTimestamp -Text $FromTs
+    $b = Convert-LogTimestamp -Text $ToTs
+    if (-not $a -or -not $b) { return $null }
+    return ($b - $a).TotalSeconds
+}
+
+function Build-ProjectLifecycleCycles {
+    param(
+        [object[]]$Events,
+        [string]$WindowFirst,
+        [string]$WindowLast
+    )
+    # Normalize to t/kind (Watch-compatible) from Offline Kind/Time objects.
+    $norm = New-Object System.Collections.Generic.List[object]
+    foreach ($ev in @($Events)) {
+        if ($null -eq $ev) { continue }
+        $t = $null
+        $k = $null
+        if ($ev.PSObject.Properties['t']) { $t = [string]$ev.t }
+        elseif ($ev.PSObject.Properties['Time']) { $t = [string]$ev.Time }
+        if ($ev.PSObject.Properties['kind']) { $k = [string]$ev.kind }
+        elseif ($ev.PSObject.Properties['Kind']) { $k = [string]$ev.Kind }
+        if (-not $t -or -not $k) { continue }
+        [void]$norm.Add([ordered]@{ t = $t; kind = $k.ToLowerInvariant() })
+    }
+    $evs = @($norm | Sort-Object { [string]$_.t }, { [string]$_.kind })
+    if ($evs.Count -eq 0) { return @() }
+    $cycles = New-Object System.Collections.Generic.List[object]
+
+    $upIdx = New-Object System.Collections.Generic.List[int]
+    for ($i = 0; $i -lt $evs.Count; $i++) {
+        if ([string]$evs[$i].kind -eq 'up') { [void]$upIdx.Add($i) }
+    }
+
+    $firstUp = if ($upIdx.Count -gt 0) { [int]$upIdx[0] } else { $evs.Count }
+    $leadShutdown = $null
+    $leadStopped = $null
+    for ($i = 0; $i -lt $firstUp; $i++) {
+        $k = [string]$evs[$i].kind
+        if ($k -eq 'shutdown' -and -not $leadShutdown) { $leadShutdown = $evs[$i] }
+        elseif ($k -eq 'stopped' -and -not $leadStopped) { $leadStopped = $evs[$i] }
+    }
+    if ($leadShutdown -or $leadStopped) {
+        $upStart = $WindowFirst
+        $shutdownT = if ($leadShutdown) { [string]$leadShutdown.t } else { $null }
+        $stoppedT = if ($leadStopped) { [string]$leadStopped.t } else { $null }
+        $nextUpT = if ($upIdx.Count -gt 0) { [string]$evs[$upIdx[0]].t } else { $null }
+        $uptimeSec = if ($upStart -and $shutdownT) { Get-LogTimestampDeltaSec -FromTs $upStart -ToTs $shutdownT } else { $null }
+        $stopSec = if ($shutdownT -and $stoppedT) { Get-LogTimestampDeltaSec -FromTs $shutdownT -ToTs $stoppedT } else { $null }
+        $downSec = $null
+        if ($stoppedT -and $nextUpT) {
+            $downSec = Get-LogTimestampDeltaSec -FromTs $stoppedT -ToTs $nextUpT
+        }
+        $stillDown = [bool]($stoppedT -and -not $nextUpT)
+        [void]$cycles.Add([ordered]@{
+                up           = $upStart
+                upImplied    = $true
+                shutdown     = $shutdownT
+                stopped      = $stoppedT
+                nextUp       = $nextUpT
+                uptimeSec    = $uptimeSec
+                uptime       = (Format-DurationLabel -Seconds $uptimeSec)
+                stopSec      = $stopSec
+                stopDuration = (Format-DurationLabel -Seconds $stopSec)
+                downtimeSec  = $downSec
+                downtime     = (Format-DurationLabel -Seconds $downSec)
+                stillUp      = $false
+                stillDown    = $stillDown
+            })
+    }
+
+    for ($u = 0; $u -lt $upIdx.Count; $u++) {
+        $ui = [int]$upIdx[$u]
+        $upT = [string]$evs[$ui].t
+        $end = if (($u + 1) -lt $upIdx.Count) { [int]$upIdx[$u + 1] } else { $evs.Count }
+        $shutdownT = $null
+        $stoppedT = $null
+        for ($j = $ui + 1; $j -lt $end; $j++) {
+            $k = [string]$evs[$j].kind
+            if ($k -eq 'shutdown' -and -not $shutdownT) { $shutdownT = [string]$evs[$j].t }
+            elseif ($k -eq 'stopped' -and -not $stoppedT) { $stoppedT = [string]$evs[$j].t }
+        }
+        $nextUpT = if (($u + 1) -lt $upIdx.Count) { [string]$evs[$upIdx[$u + 1]].t } else { $null }
+        $stillUp = -not $shutdownT
+        $uptimeSec = $null
+        if ($shutdownT) { $uptimeSec = Get-LogTimestampDeltaSec -FromTs $upT -ToTs $shutdownT }
+        elseif ($stillUp -and -not $nextUpT -and $WindowLast) {
+            $uptimeSec = Get-LogTimestampDeltaSec -FromTs $upT -ToTs $WindowLast
+        }
+        $stopSec = if ($shutdownT -and $stoppedT) { Get-LogTimestampDeltaSec -FromTs $shutdownT -ToTs $stoppedT } else { $null }
+        $downSec = $null
+        if ($stoppedT -and $nextUpT) {
+            $downSec = Get-LogTimestampDeltaSec -FromTs $stoppedT -ToTs $nextUpT
+        }
+        $stillDown = [bool]($stoppedT -and -not $nextUpT)
+        [void]$cycles.Add([ordered]@{
+                up           = $upT
+                upImplied    = $false
+                shutdown     = $shutdownT
+                stopped      = $stoppedT
+                nextUp       = $nextUpT
+                uptimeSec    = $uptimeSec
+                uptime       = (Format-DurationLabel -Seconds $uptimeSec)
+                stopSec      = $stopSec
+                stopDuration = (Format-DurationLabel -Seconds $stopSec)
+                downtimeSec  = $downSec
+                downtime     = (Format-DurationLabel -Seconds $downSec)
+                stillUp      = $stillUp
+                stillDown    = $stillDown
+            })
+    }
+
+    return @($cycles.ToArray())
 }
 
 function Convert-WindowBound {
@@ -358,8 +499,8 @@ function Read-PromptTimeBound {
 }
 
 function Get-LogTextEncoding {
-    # WinCC OA / GMS logs commonly use UTF-8 (facility markers like «MacroManager»).
-    # Encoding.Default (Windows-1252) turns UTF-8 C2 AB into mojibake Â«.
+    # WinCC OA / GMS logs commonly use UTF-8 (facility markers like Â«MacroManagerÂ»).
+    # Encoding.Default (Windows-1252) turns UTF-8 C2 AB into mojibake Ã‚Â«.
     return (New-Object System.Text.UTF8Encoding $false)
 }
 
@@ -386,7 +527,7 @@ function Convert-AnalysisReportToHtml {
         [string]$TextReport,
         [string]$LogFile,
         [string]$Generated,
-        [string]$Version = '1.2',
+        [string]$Version = '1.3',
         [string]$Author = 'Cisum'
     )
 
@@ -454,7 +595,7 @@ function Convert-AnalysisReportToHtml {
   --chrome-h: 4.75rem;
 }
 * { box-sizing: border-box; }
-/* Only one scroll offset — padding + margin were stacking and landing TOC jumps too low. */
+/* Only one scroll offset â€” padding + margin were stacking and landing TOC jumps too low. */
 html { scroll-padding-top: calc(var(--chrome-h) + 0.5rem); }
 body {
   margin: 0;
@@ -566,6 +707,28 @@ pre.block {
   padding: 0.65rem 0.75rem;
 }
 pre.block.preamble { margin-bottom: 0.65rem; }
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.82rem;
+  font-variant-numeric: tabular-nums;
+  margin: 0.35rem 0 0.5rem;
+}
+table.data th, table.data td {
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+table.data th {
+  color: var(--text-muted);
+  background: var(--bg-elevated);
+  font-weight: 600;
+}
+.kind-up { color: #90d090; }
+.kind-shutdown { color: #ffd0a0; }
+.kind-stopped { color: #ffb0b0; }
+.mono { font-family: var(--mono); font-size: 0.78rem; word-break: break-word; }
 .pattern-list {
   display: flex;
   flex-direction: column;
@@ -710,8 +873,52 @@ function Format-ReportSectionBodyHtml {
 
     $lines = $Body -split "`r?`n"
     $hasPatterns = $false
+    $hasPipeTable = $false
     foreach ($ln in $lines) {
         if ($ln -match '^\s*#\d+\s+count=') { $hasPatterns = $true; break }
+        if ($ln -match '^\s*\|\s*Up\s*\|') { $hasPipeTable = $true }
+    }
+    if ($hasPipeTable -and -not $hasPatterns) {
+        $preamble = New-Object System.Collections.Generic.List[string]
+        $rows = New-Object System.Collections.Generic.List[string[]]
+        $header = $null
+        foreach ($ln in $lines) {
+            if ($ln -match '^\s*\|(.+)\|\s*$') {
+                $cells = @($Matches[1].Split('|') | ForEach-Object { $_.Trim() })
+                if ($null -eq $header) { $header = $cells; continue }
+                [void]$rows.Add($cells)
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($ln)) {
+                [void]$preamble.Add($ln)
+            }
+        }
+        $out = New-Object System.Text.StringBuilder
+        if ($preamble.Count -gt 0) {
+            [void]$out.AppendLine(('<pre class="block preamble">{0}</pre>' -f (& $Encode ($preamble -join "`n"))))
+        }
+        if ($null -ne $header) {
+            [void]$out.AppendLine('<table class="data"><thead><tr>')
+            foreach ($h in $header) {
+                [void]$out.AppendLine(('<th>{0}</th>' -f (& $Encode $h)))
+            }
+            [void]$out.AppendLine('</tr></thead><tbody>')
+            foreach ($r in $rows) {
+                [void]$out.AppendLine('<tr>')
+                for ($ci = 0; $ci -lt $header.Count; $ci++) {
+                    $val = if ($ci -lt $r.Count) { $r[$ci] } else { '' }
+                    $cls = ''
+                    $hn = $header[$ci]
+                    if ($hn -eq 'Up') { $cls = ' class="mono kind-up"' }
+                    elseif ($hn -eq 'Shutdown') { $cls = ' class="mono kind-shutdown"' }
+                    elseif ($hn -eq 'Stopped') { $cls = ' class="mono kind-stopped"' }
+                    elseif ($hn -eq 'Note') { $cls = ' class="meta"' }
+                    [void]$out.AppendLine(('<td{0}>{1}</td>' -f $cls, (& $Encode $val)))
+                }
+                [void]$out.AppendLine('</tr>')
+            }
+            [void]$out.AppendLine('</tbody></table>')
+        }
+        return $out.ToString()
     }
     if (-not $hasPatterns) {
         return ('<pre class="block">{0}</pre>' -f (& $Encode $Body))
@@ -1869,6 +2076,97 @@ if ($includeModuleHeadlines) {
     W ''
 }
 
+if ($projectLifecycleEvents.Count -gt 0 -or $projectUp -gt 0 -or $projectStopped -gt 0 -or $projectShutdown -gt 0) {
+    W '--- Project restarts (pmon) ---'
+    W ' Each row is one cycle: up -> shutdown -> stopped -> next up. Uptime = up to shutdown; stop = shutdown to stopped; downtime = stopped to next up (blank when still down). START_MODE counted only (too frequent to list).'
+    $projCycles = @(Build-ProjectLifecycleCycles -Events @($projectLifecycleEvents) -WindowFirst ([string]$firstTs) -WindowLast ([string]$lastTs))
+    $capNote = if (($projectUp + $projectStopped + $projectShutdown) -gt $projectLifecycleEvents.Count) { ' (events capped at 200)' } else { '' }
+    W ('  up={0:N0}  stopped={1:N0}  shutdown={2:N0}  START_MODE={3:N0}  cycles={4:N0}{5}' -f `
+        $projectUp, $projectStopped, $projectShutdown, $projectStartMode, $projCycles.Count, $capNote)
+    if ($projCycles.Count -gt 0) {
+        W ' | Up | Shutdown | Uptime | Stopped | Stop | Downtime | Note |'
+        foreach ($c in $projCycles) {
+            $upLabel = [string]$c.up
+            if ($c.upImplied) { $upLabel = "$upLabel (window start)" }
+            $note = ''
+            if ($c.stillUp -and $c.nextUp) { $note = 'no shutdown before next up' }
+            elseif ($c.stillUp) { $note = 'still up' }
+            elseif ($c.stillDown) { $note = 'still down' }
+            elseif (-not $c.shutdown -and $c.stopped) { $note = 'no shutdown line' }
+            W (' | {0} | {1} | {2} | {3} | {4} | {5} | {6} |' -f `
+                $upLabel,
+                ([string]$c.shutdown),
+                ([string]$c.uptime),
+                ([string]$c.stopped),
+                ([string]$c.stopDuration),
+                ([string]$c.downtime),
+                $note)
+        }
+    }
+    elseif (($projectUp + $projectStopped + $projectShutdown) -gt 0) {
+        W '   Counts present but no cycle timestamps were retained.'
+    }
+    else {
+        W '   (none listed)'
+    }
+    W ''
+}
+
+if ($mgrStartProj -gt 0 -or $mgrStop -gt 0 -or $pmonMgrRestart -gt 0 -or $blockingDetected -gt 0) {
+    W '--- Manager health (pmon) ---'
+    W ' Start/stop = Manager Start PROJ / Manager Stop. Restarts = Detected stopped manager. Blocking = no heartbeat (busy/overloaded).'
+    W ('  Starts={0:N0}  Stops={1:N0}  Auto-restarts={2:N0}  Blocking={3:N0}  Unblocked={4:N0}  Driver-ready={5:N0}' -f `
+        $mgrStartProj, $mgrStop, $pmonMgrRestart, $blockingDetected, $blockingCleared, $driverReady)
+    if ($blockingSample) { W ("  Blocking example   : {0}" -f $blockingSample) }
+    if ($unblockingSample) { W ("  Unblocked example  : {0}" -f $unblockingSample) }
+    W '  Per-manager (top 25 by activity):'
+    W ('   {0,-40} {1,7} {2,7} {3,8} {4,9} {5,9}' -f 'Manager', 'Starts', 'Stops', 'Restart', 'Blocking', 'Unblock')
+    $lifeKeys = New-Object System.Collections.Generic.HashSet[string]
+    foreach ($map in @($mgrStartByComp, $mgrStopByComp, $pmonRestartByComp, $blockingByComp, $unblockingByComp)) {
+        foreach ($k in @($map.Keys)) { [void]$lifeKeys.Add($k) }
+    }
+    $lifeRows = @(
+        $lifeKeys | ForEach-Object {
+            $n = $_
+            $st = if ($mgrStartByComp.ContainsKey($n)) { [int]$mgrStartByComp[$n] } else { 0 }
+            $sp = if ($mgrStopByComp.ContainsKey($n)) { [int]$mgrStopByComp[$n] } else { 0 }
+            $rr = if ($pmonRestartByComp.ContainsKey($n)) { [int]$pmonRestartByComp[$n] } else { 0 }
+            $bl = if ($blockingByComp.ContainsKey($n)) { [int]$blockingByComp[$n] } else { 0 }
+            $ub = if ($unblockingByComp.ContainsKey($n)) { [int]$unblockingByComp[$n] } else { 0 }
+            [pscustomobject]@{ Name = $n; Starts = $st; Stops = $sp; Restarts = $rr; Blocking = $bl; Unblocked = $ub; Score = ($st + $sp + $rr + $bl + $ub) }
+        } | Sort-Object Score -Descending | Select-Object -First 25
+    )
+    $rank = 0
+    foreach ($r in $lifeRows) {
+        $rank++
+        W ('   {0,-40} {1,7:N0} {2,7:N0} {3,8:N0} {4,9:N0} {5,9:N0}' -f $r.Name, $r.Starts, $r.Stops, $r.Restarts, $r.Blocking, $r.Unblocked)
+    }
+    if ($rank -eq 0) { W '   (none)' }
+    W ''
+}
+
+if ($includeFullDefault -or $includeDriverDeepDive) {
+    W ('--- Top {0} components (managers) ---' -f $TopN)
+    foreach ($e in ($components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $TopN)) {
+        W (' {0,8:N0}  {1}' -f $e.Value, $e.Key)
+    }
+    W ''
+}
+
+if ($includeFullDefault) {
+    W '--- Performance-related keyword categories ---'
+    if ($perfCats.Count -eq 0) {
+        W ' (none matched)'
+    }
+    else {
+        foreach ($e in ($perfCats.GetEnumerator() | Sort-Object Value -Descending)) {
+            W (' {0,8:N0}  {1}' -f $e.Value, $e.Key)
+        }
+    }
+    W ''
+
+}
+
 # Module: BACnet
 if ($includeBacnetModule -and ($bacFailedEvents -gt 0 -or $bacOkEvents -gt 0 -or $bacObjectListEvents -gt 0 -or $bacCollectTrend -gt 0 -or $bacTimeSync -gt 0)) {
     W '--- BACnet module ---'
@@ -2037,7 +2335,7 @@ if ($includeApogeeModule -and ($apogeeEvents -gt 0 -or $apogeeDrvLines -gt 0 -or
     W ('  Driver lines        : {0:N0}' -f $apogeeDrvLines)
     W ('  Trend buffer overflow: {0:N0}  (unique devices: {1:N0}, unique trends: {2:N0})' -f `
         $apogeeTrendOverflow, $apogeeTrendByDevice.Count, $apogeeTrendByName.Count)
-    W ('  Sequence-gap lines  : {0:N0}  (Last sequence number… companion warnings)' -f $apogeeTrendSeq)
+    W ('  Sequence-gap lines  : {0:N0}  (Last sequence numberâ€¦ companion warnings)' -f $apogeeTrendSeq)
     W ('  AlertID issues      : {0:N0}' -f $apogeeAlertId)
     W ('  Query timeouts      : {0:N0}' -f $apogeeQueryTimeout)
     W ('  Get-data failures   : {0:N0}  (unique devices: {1:N0})' -f $apogeeGetDataFail, $apogeeGetDataByDevice.Count)
@@ -2072,73 +2370,7 @@ if ($includeApogeeModule -and ($apogeeEvents -gt 0 -or $apogeeDrvLines -gt 0 -or
     W ''
 }
 
-if ($projectLifecycleEvents.Count -gt 0 -or $projectUp -gt 0 -or $projectStopped -gt 0 -or $projectShutdown -gt 0) {
-    W '--- Project restarts (pmon) ---'
-    W ' Timeline of project up / shutdown / completely stopped (log timestamps). START_MODE counted only (too frequent to list).'
-    W ('  up={0:N0}  stopped={1:N0}  shutdown={2:N0}  START_MODE={3:N0}  listed={4:N0}{5}' -f `
-        $projectUp, $projectStopped, $projectShutdown, $projectStartMode, $projectLifecycleEvents.Count, `
-        $(if (($projectUp + $projectStopped + $projectShutdown) -gt $projectLifecycleEvents.Count) { ' (capped at 200)' } else { '' }))
-    W ('   {0,-12}  {1}' -f 'Kind', 'Time')
-    foreach ($ev in $projectLifecycleEvents) {
-        W ('   {0,-12}  {1}' -f $ev.Kind, $ev.Time)
-    }
-    if ($projectLifecycleEvents.Count -eq 0) { W '   (none listed)' }
-    W ''
-}
-
-if ($mgrStartProj -gt 0 -or $mgrStop -gt 0 -or $pmonMgrRestart -gt 0 -or $blockingDetected -gt 0) {
-    W '--- Manager health (pmon) ---'
-    W ' Start/stop = Manager Start PROJ / Manager Stop. Restarts = Detected stopped manager. Blocking = no heartbeat (busy/overloaded).'
-    W ('  Starts={0:N0}  Stops={1:N0}  Auto-restarts={2:N0}  Blocking={3:N0}  Unblocked={4:N0}  Driver-ready={5:N0}' -f `
-        $mgrStartProj, $mgrStop, $pmonMgrRestart, $blockingDetected, $blockingCleared, $driverReady)
-    if ($blockingSample) { W ("  Blocking example   : {0}" -f $blockingSample) }
-    if ($unblockingSample) { W ("  Unblocked example  : {0}" -f $unblockingSample) }
-    W '  Per-manager (top 25 by activity):'
-    W ('   {0,-40} {1,7} {2,7} {3,8} {4,9} {5,9}' -f 'Manager', 'Starts', 'Stops', 'Restart', 'Blocking', 'Unblock')
-    $lifeKeys = New-Object System.Collections.Generic.HashSet[string]
-    foreach ($map in @($mgrStartByComp, $mgrStopByComp, $pmonRestartByComp, $blockingByComp, $unblockingByComp)) {
-        foreach ($k in @($map.Keys)) { [void]$lifeKeys.Add($k) }
-    }
-    $lifeRows = @(
-        $lifeKeys | ForEach-Object {
-            $n = $_
-            $st = if ($mgrStartByComp.ContainsKey($n)) { [int]$mgrStartByComp[$n] } else { 0 }
-            $sp = if ($mgrStopByComp.ContainsKey($n)) { [int]$mgrStopByComp[$n] } else { 0 }
-            $rr = if ($pmonRestartByComp.ContainsKey($n)) { [int]$pmonRestartByComp[$n] } else { 0 }
-            $bl = if ($blockingByComp.ContainsKey($n)) { [int]$blockingByComp[$n] } else { 0 }
-            $ub = if ($unblockingByComp.ContainsKey($n)) { [int]$unblockingByComp[$n] } else { 0 }
-            [pscustomobject]@{ Name = $n; Starts = $st; Stops = $sp; Restarts = $rr; Blocking = $bl; Unblocked = $ub; Score = ($st + $sp + $rr + $bl + $ub) }
-        } | Sort-Object Score -Descending | Select-Object -First 25
-    )
-    $rank = 0
-    foreach ($r in $lifeRows) {
-        $rank++
-        W ('   {0,-40} {1,7:N0} {2,7:N0} {3,8:N0} {4,9:N0} {5,9:N0}' -f $r.Name, $r.Starts, $r.Stops, $r.Restarts, $r.Blocking, $r.Unblocked)
-    }
-    if ($rank -eq 0) { W '   (none)' }
-    W ''
-}
-
-if ($includeFullDefault -or $includeDriverDeepDive) {
-    W ('--- Top {0} components (managers) ---' -f $TopN)
-    foreach ($e in ($components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $TopN)) {
-        W (' {0,8:N0}  {1}' -f $e.Value, $e.Key)
-    }
-    W ''
-}
-
 if ($includeFullDefault) {
-    W '--- Performance-related keyword categories ---'
-    if ($perfCats.Count -eq 0) {
-        W ' (none matched)'
-    }
-    else {
-        foreach ($e in ($perfCats.GetEnumerator() | Sort-Object Value -Descending)) {
-            W (' {0,8:N0}  {1}' -f $e.Value, $e.Key)
-        }
-    }
-    W ''
-
     $allHourKeys = @($hourly.Keys | Sort-Object)
     $hourCount = $allHourKeys.Count
     if ($hourCount -le 25) {

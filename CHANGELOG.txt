@@ -5,14 +5,21 @@ Watch\OfflineAnalyze\VERSION.txt.
 
 
 ------------------------------------------------------------------------
-2.3 — 2026-09-06 (Watch)  ·  OfflineAnalyze unchanged at 1.2
+2.3 / 1.3 — 2026-09-07 (Watch 2.3 + OfflineAnalyze 1.3)
 ------------------------------------------------------------------------
 Author: Cisum
 
+Watch 2.3
 - Project restarts (Overview + snapshot): cycle rows with uptime / stop /
   downtime instead of a flat event list. Downtime is only stopped→next up
   (blank + “still down” when the window ends mid-stop). Window-start may
   show an implied up. START_MODE remains count-only.
+
+OfflineAnalyze 1.3
+- Project restarts section in text/HTML reports uses the same cycle view
+  (uptime / stop / downtime) as Watch.
+- Report section order: modules (BACnet / CNS / CoHo / Apogee) now follow
+  performance keyword categories and come before hourly volume.
 
 
 ------------------------------------------------------------------------

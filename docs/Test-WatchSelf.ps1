@@ -1,31 +1,33 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Self-tests for Watch phases 2A–2E (no browser).
+  Self-tests for Watch (no browser). Lives in docs\; package root is its parent.
 #>
 param(
-    [ValidateSet('2A', '2B', '2C', '2D', '2E', 'All')]
+    [ValidateSet('Assets', 'Api', 'Control', 'Modules', 'Snapshot', 'All')]
     [string]$Phase = 'All',
     [string]$LogPath = '',
     [int]$Port = 8799
 )
 
 $ErrorActionPreference = 'Stop'
-$Root = Split-Path -Parent $MyInvocation.MyCommand.Path
+$DocsRoot = Split-Path -Parent $MyInvocation.MyCommand.Path
+$Root = Split-Path -Parent $DocsRoot
 $WatchRoot = Join-Path $Root 'Watch'
+$ExamplesRoot = Join-Path $DocsRoot 'PVSS_II_Examples'
 $failed = 0
 function Ok($m) { Write-Host "  PASS  $m" -ForegroundColor Green }
 function Bad($m) { Write-Host "  FAIL  $m" -ForegroundColor Red; $script:failed++ }
 
 if (-not $LogPath) {
-    $cand = Join-Path $Root 'docs\PVSS_II_Examples\PVSS_II_C1P.log'
+    $cand = Join-Path $ExamplesRoot 'PVSS_II_C1P.log'
     if (Test-Path -LiteralPath $cand) { $LogPath = $cand }
 }
 
 Write-Host "=== Self-test phase $Phase ===" -ForegroundColor Cyan
 
-if ($Phase -eq '2A' -or $Phase -eq 'All') {
-    Write-Host "`n[2A] UI shell assets"
+if ($Phase -eq 'Assets' -or $Phase -eq 'All') {
+    Write-Host "`n[Assets] UI shell assets"
     if (-not (Test-Path -LiteralPath $WatchRoot)) { Bad 'Watch\ payload folder missing' }
     foreach ($f in @(
             'ui\index.html', 'ui\app.css', 'ui\app.js', 'ui\vendor\chart.umd.min.js'
@@ -51,13 +53,13 @@ if ($Phase -eq '2A' -or $Phase -eq 'All') {
     if (Test-Path -LiteralPath (Join-Path $Root 'Run-Watch.cmd')) { Ok 'Run-Watch.cmd at package root' } else { Bad 'Run-Watch.cmd missing at root' }
 }
 
-if ($Phase -eq '2A') {
-    if ($failed -gt 0) { throw "2A self-test failed ($failed)" }
-    Write-Host "`n2A OK" -ForegroundColor Green
+if ($Phase -eq 'Assets') {
+    if ($failed -gt 0) { throw "Assets self-test failed ($failed)" }
+    Write-Host "`nAssets OK" -ForegroundColor Green
     exit 0
 }
 
-# Start host for 2B–2E
+# Start host for Api / Control / Modules / Snapshot
 $watch = Join-Path $WatchRoot 'Watch-PvssLog.ps1'
 if (-not (Test-Path -LiteralPath $watch)) { throw 'Watch\Watch-PvssLog.ps1 missing' }
 
@@ -105,8 +107,8 @@ function Invoke-Api {
 $base = "http://127.0.0.1:$Port"
 $job = $null
 try {
-    if ($Phase -eq '2B' -or $Phase -eq 'All') {
-        Write-Host "`n[2B] Host + pulse/section"
+    if ($Phase -eq 'Api' -or $Phase -eq 'All') {
+        Write-Host "`n[Api] Host + pulse/section"
         $health = Invoke-Api "$base/api/health" | ConvertFrom-Json
         if ($health.ok -and $health.port -eq $Port) { Ok "health port=$($health.port)" } else { Bad 'health' }
 
@@ -142,8 +144,8 @@ try {
         }
     }
 
-    if ($Phase -eq '2C' -or $Phase -eq 'All') {
-        Write-Host "`n[2C] Control + tail resilience"
+    if ($Phase -eq 'Control' -or $Phase -eq 'All') {
+        Write-Host "`n[Control] Control + tail resilience"
         $p1 = Invoke-Api "$base/api/control" -Method POST -Body '{"action":"pause"}' | ConvertFrom-Json
         $h1 = Invoke-Api "$base/api/health" | ConvertFrom-Json
         if ($h1.paused) { Ok 'pause' } else { Bad 'pause' }
@@ -154,7 +156,7 @@ try {
 
         # append a line to a temp copy to test tail — use original if writable share
         # Prefer copy beside script for append test
-        $tmp = Join-Path $Root 'docs\PVSS_II_Examples\_watch_tail_test.log'
+        $tmp = Join-Path $ExamplesRoot '_watch_tail_test.log'
         if ($LogPath -and (Test-Path $LogPath)) {
             # small file: copy first 200KB then start on copy, append
             $fs = [System.IO.File]::OpenRead($LogPath)
@@ -207,9 +209,9 @@ try {
         catch { Ok 'missing path returns error' }
     }
 
-    if ($Phase -eq '2D' -or $Phase -eq 'All') {
-        Write-Host "`n[2D] Modules + manager drill-down + charts data"
-        if (-not $LogPath) { Bad 'no log for 2D' }
+    if ($Phase -eq 'Modules' -or $Phase -eq 'All') {
+        Write-Host "`n[Modules] Modules + manager drill-down + charts data"
+        if (-not $LogPath) { Bad 'no log for Modules' }
         else {
             $body = (@{ path = $LogPath; window = 'entire' } | ConvertTo-Json -Compress)
             # entire on 7MB C1P is OK; if huge, still try lastMinutes
@@ -223,7 +225,7 @@ try {
                 $pulse = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
                 if (-not $pulse.loading) { break }
             }
-            if ($pulse.loading) { Bad '2D catch-up still loading' }
+            if ($pulse.loading) { Bad 'Modules catch-up still loading' }
             elseif ($pulse.series.byMinute) {
                 $g = $pulse.series.granularity
                 Ok "series buckets=$($pulse.series.byMinute.Count) gran=$g"
@@ -272,10 +274,10 @@ try {
         }
     }
 
-    if ($Phase -eq '2E' -or $Phase -eq 'All') {
-        Write-Host "`n[2E] Snapshot download"
+    if ($Phase -eq 'Snapshot' -or $Phase -eq 'All') {
+        Write-Host "`n[Snapshot] Snapshot download"
         if (-not $LogPath -or -not (Test-Path -LiteralPath $LogPath)) {
-            Bad 'no log for 2E snapshot'
+            Bad 'no log for Snapshot phase'
         }
         else {
             $body = (@{ path = $LogPath; lastMinutes = 120 } | ConvertTo-Json -Compress)
@@ -289,10 +291,10 @@ try {
                 $pulse = Invoke-Api "$base/api/pulse?lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING" | ConvertFrom-Json
                 if (-not $pulse.loading) { break }
             }
-            if ($pulse.loading) { Bad '2E catch-up still loading' }
+            if ($pulse.loading) { Bad 'Snapshot catch-up still loading' }
             else {
-                $outHtml = Join-Path $Root 'docs\PVSS_II_Examples\_snapshot_selftest.html'
-                $outJson = Join-Path $Root 'docs\PVSS_II_Examples\_snapshot_selftest.json'
+                $outHtml = Join-Path $ExamplesRoot '_snapshot_selftest.html'
+                $outJson = Join-Path $ExamplesRoot '_snapshot_selftest.json'
                 try {
                     $snapUrl = "$base/api/snapshot?format=html&lastMinutes=120&severities=FATAL,SEVERE,ERROR,WARNING"
                     $resp = Invoke-WebRequest -Uri $snapUrl -UseBasicParsing -TimeoutSec 120
@@ -329,7 +331,7 @@ finally {
     if ($proc -and -not $proc.HasExited) {
         try { Stop-Process -Id $proc.Id -Force } catch {}
     }
-    $tmp = Join-Path $Root 'docs\PVSS_II_Examples\_watch_tail_test.log'
+    $tmp = Join-Path $ExamplesRoot '_watch_tail_test.log'
     if (Test-Path $tmp) { Remove-Item $tmp -Force -ErrorAction SilentlyContinue }
 }
 

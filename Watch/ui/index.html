@@ -19,7 +19,14 @@
       <button type="button" id="btnStart" class="primary">Start</button>
       <button type="button" id="btnPause" disabled>Pause</button>
       <button type="button" id="btnResume" disabled>Resume</button>
-      <button type="button" id="btnSnapshot" disabled title="Download HTML snapshot of the current analysis">Snapshot</button>
+      <span class="snap-slot">
+        <button type="button" id="btnSnapshot" disabled title="Download a snapshot of the current analysis">Snapshot</button>
+        <span class="seg snap-formats" id="snapFormats" role="group" aria-label="Snapshot format" hidden>
+          <button type="button" class="chip" data-format="html">HTML</button>
+          <button type="button" class="chip" data-format="text">Text</button>
+          <button type="button" class="chip" data-format="json">JSON</button>
+        </span>
+      </span>
       <button type="button" id="btnRestart" class="danger" disabled>Restart</button>
     </div>
     <div class="chrome-row filter-row" aria-label="Dashboard filters">
@@ -79,6 +86,7 @@
       <button type="button" data-view="cns">CNS</button>
       <button type="button" data-view="coho">CoHo</button>
       <button type="button" data-view="apogee">Apogee</button>
+      <button type="button" data-view="detections">Detections</button>
       <button type="button" data-view="more">More</button>
     </nav>
 
@@ -180,6 +188,12 @@
       <section id="view-apogee" class="view">
         <h1>Apogee module</h1>
         <div id="apogeeBody"></div>
+      </section>
+
+      <section id="view-detections" class="view">
+        <h1>Detections</h1>
+        <p class="meta">Rule-table detections. Add a row to <span class="mono">Watch\PvssRules.ps1</span> and it shows up here.</p>
+        <div id="detectionsBody"></div>
       </section>
 
       <section id="view-more" class="view">

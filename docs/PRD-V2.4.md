@@ -700,8 +700,10 @@ irreversible step is 4G, gated on 4F.
    work, hand-written and unmigrated.
 5. A rule in a curated group reports once, not twice.
 6. **Batch HTML and dashboard snapshot HTML on a static log with matched window and filters
-   differ only in `meta.generated` and the two `perf.health` fields — SVG charts included.**
-   Same for text and JSON.
+   differ only in `meta.generated`, the two `perf.health` fields, and the `gen N` session
+   counter — SVG charts included.** Same for text and JSON. (`gen` added to the allowlist
+   2026-09-08: it counts catch-ups in the emitting process, so a restarted dashboard runs
+   ahead of a fresh batch run. Same category as `perf.health`.)
 7. `Run-Report.cmd` produces an HTML report on a double-click with no browser and no port
    bind, and exits non-zero on failure.
 8. `Run-Report-Interactive.cmd` reproduces the full V1.3 prompt flow: time window, organize,
@@ -710,7 +712,12 @@ irreversible step is 4G, gated on 4F.
 10. All 16 V1.3 report sections are reproducible, gated correctly by all three organize modes.
 11. `-From` / `-To` / `-LastHours` / `-Entire` / `-LastMinutes` all scope the report.
 12. Log auto-discovery finds `PVSS_II.log`, then `.bak`, then newest `PVSS_II*`.
-13. Batch runtime ≤ V1.3 on a ~50 MB log.
+13. ~~Batch runtime ≤ V1.3 on a ~50 MB log.~~ **Amended 2026-09-08 → batch runtime is within
+    noise of a 2.3 dashboard entire-file load on the same machine.** The original wording
+    assumed the two tools do comparable per-line work; they do not, since Watch also builds
+    the per-minute series, the severity/component-by-area matrices, per-component pattern
+    maps and BACnet device tracking. Measured 2.2x V1.3 and not closable without a
+    `Process-LogLine` refactor, which is deferred to the backlog. See `PROGRESS-V2.4.md` 4F.
 14. A batch run does not modify `watch-config.txt`.
 15. The dashboard Snapshot control offers HTML / Text / JSON; behavior is otherwise unchanged.
 16. `Test-WatchSelf.ps1` runs green from its new `docs\` location.

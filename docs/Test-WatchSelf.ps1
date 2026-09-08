@@ -4,7 +4,7 @@
   Self-tests for Watch (no browser). Lives in docs\; package root is its parent.
 #>
 param(
-    [ValidateSet('Assets', 'Api', 'Control', 'Modules', 'Snapshot', 'All')]
+    [ValidateSet('Assets', 'Rules', 'Api', 'Control', 'Modules', 'Snapshot', 'Report', 'All')]
     [string]$Phase = 'All',
     [string]$LogPath = '',
     [int]$Port = 8799
@@ -56,6 +56,160 @@ if ($Phase -eq 'Assets' -or $Phase -eq 'All') {
 if ($Phase -eq 'Assets') {
     if ($failed -gt 0) { throw "Assets self-test failed ($failed)" }
     Write-Host "`nAssets OK" -ForegroundColor Green
+    exit 0
+}
+
+if ($Phase -eq 'Rules' -or $Phase -eq 'All') {
+    Write-Host "`n[Rules] Declarative rule engine (offline, no host)"
+
+    # Load Watch's function library without the listener: everything above "# --- main ---".
+    $watchSrc = Get-Content -LiteralPath (Join-Path $WatchRoot 'Watch-PvssLog.ps1') -Raw
+    $cut = $watchSrc.IndexOf('# --- main ---')
+    if ($cut -lt 0) { throw 'Watch-PvssLog.ps1: "# --- main ---" marker not found' }
+    $libPath = Join-Path $WatchRoot ('_selftest_lib_{0}.ps1' -f [guid]::NewGuid().ToString('N'))
+    Set-Content -LiteralPath $libPath -Value $watchSrc.Substring(0, $cut) -Encoding UTF8
+    # The library still carries Watch's own param() block, and dot-sourcing rebinds those
+    # parameters in this scope - silently resetting our identically named ones to Watch's
+    # defaults. Under -Phase All that left the later phases with no log and the wrong port.
+    $ownParams = @{}
+    foreach ($p in $MyInvocation.MyCommand.Parameters.Keys) {
+        $ownParams[$p] = (Get-Variable -Name $p -Scope Script -ErrorAction SilentlyContinue).Value
+    }
+    try {
+        . $libPath
+        foreach ($p in $ownParams.Keys) { Set-Variable -Name $p -Scope Script -Value $ownParams[$p] }
+
+        $ids = @($script:PvssRules | ForEach-Object { $_['Id'] })
+        $shapeBad = @($script:PvssRules | Where-Object { -not $_['Id'] -or -not $_['Group'] -or -not $_['Label'] -or -not ($_['Re'] -is [regex]) })
+        if ($shapeBad.Count -eq 0) { Ok "rule shape valid ($($ids.Count) rules)" }
+        else { Bad "$($shapeBad.Count) rule(s) missing Id/Group/Label/Re" }
+        if (($ids | Sort-Object -Unique).Count -eq $ids.Count) { Ok 'rule Ids unique' } else { Bad 'duplicate rule Id' }
+
+        function Test-Lines {
+            param([string[]]$Lines)
+            $d = New-EmptyState
+            foreach ($l in $Lines) { Process-LogLine -Line $l -Data $d }
+            return $d
+        }
+        $ts1 = '2026.01.01 10:00:00.000'
+        $ts2 = '2026.01.01 10:05:00.000'
+
+        # Scope gating: ApogeeDrv rules must not fire for other components.
+        $d = Test-Lines @(
+            "WCCOAui, $ts1, IMPL, WARNING, 1, Trend buffer overflow for trend T1 in device D1"
+        )
+        if ((Get-RuleCount -Data $d -Id 'apogeeDrv.trendOverflow') -eq 0) { Ok 'Scope gate blocks out-of-scope rule' }
+        else { Bad 'Scope gate leaked' }
+
+        # Counting, buckets, per-bucket TrimEnd, shared sample slot, first/last, severity mix.
+        $d = Test-Lines @(
+            "WCCOAApogeeDrv, $ts1, IMPL, WARNING, 1, Trend buffer overflow for trend T1 in device D1"
+            "WCCOAApogeeDrv, $ts1, IMPL, ERROR, 1, Trend buffer overflow for trend T2 in device D1.."
+            "WCCOAApogeeDrv, $ts2, IMPL, WARNING, 1, Last sequence number 7 is greater than saved"
+            "WCCOAApogeeDrv, $ts2, IMPL, ERROR, 1, Failed to get data for object OBJ1 on device D9"
+        )
+        if ((Get-RuleCount -Data $d -Id 'apogeeDrv.trendOverflow') -eq 2) { Ok 'rule count' } else { Bad 'rule count' }
+        $devs = Get-RuleBucketMap -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'device'
+        if ($devs.Count -eq 1 -and $devs['D1'] -eq 2) { Ok 'BucketBy + per-bucket TrimEnd collapses D1.. to D1' }
+        else { Bad "BucketBy/TrimEnd (got $($devs.Keys -join ','))" }
+        if ((Get-RuleBucketCount -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'trend') -eq 2) { Ok 'second bucket dimension' }
+        else { Bad 'trend bucket' }
+        $samp = Get-RuleSample -Data $d -Id 'apogeeDrv.trend'
+        if ($samp -match 'trend T1 in device D1') { Ok 'SampleSlot keeps first line across sharing rules' }
+        else { Bad 'shared SampleSlot' }
+        $t = $d.HitTime['apogeeDrv.trendOverflow']
+        if ($t.First -eq $ts1 -and $t.Last -eq $ts1) { Ok 'HitTime first/last' } else { Bad 'HitTime' }
+        $sev = $d.HitSevs['apogeeDrv.trendOverflow']
+        if ($sev['WARNING'] -eq 1 -and $sev['ERROR'] -eq 1) { Ok 'HitSevs severity mix' } else { Bad 'HitSevs' }
+
+        # Curated payloads still read the frozen keys off the engine.
+        $script:Sync['Data'] = $d
+        $ap = (Build-SectionObject -Name 'apogee' -SevFilter @() -TopN 10).apogee
+        if ($ap.trendOverflow -eq 2 -and $ap.trendSeq -eq 1 -and $ap.getDataFail -eq 1 -and
+            $ap.trendDevices -eq 1 -and $ap.trendNames -eq 2 -and $ap.getDataSample) {
+            Ok 'curated Apogee payload keys unchanged'
+        }
+        else { Bad 'Apogee payload' }
+
+        $d = Test-Lines @(
+            "WCCOAui, $ts1, IMPL, WARNING, 1, TryRenewSession failed, ResolveNodes pending"
+            "WCCOAui, $ts2, IMPL, WARNING, 1, ReducedFunction on ICns.get"
+        )
+        $script:Sync['Data'] = $d
+        $cns = (Build-SectionObject -Name 'cns' -SevFilter @() -TopN 10).cns
+        if ($cns.tryRenew -eq 1 -and $cns.resolveNodes -eq 1 -and $cns.reducedFunction -eq 1 -and $cns.icns -eq 1) {
+            Ok 'curated CNS payload keys unchanged'
+        }
+        else { Bad 'CNS payload' }
+        if ($cns.patterns.Count -ge 1) { Ok 'PatternGroup still feeds CNS pattern map' } else { Bad 'CNS patterns' }
+
+        # Header-token buckets and Measure aggregation (used by rules added in 2.4).
+        $script:PvssRules += @{
+            Id = 'selftest.measure'; Group = 'SelfTest'; Label = 'self-test'
+            Re = [regex]'Repetition \(\#=(\d+)\) of a former trace'
+            BucketBy = @{ manager = '$component'; area = '$area' }
+            Measure = @{ repeats = @{ Group = 1; Agg = 'Sum' }; worst = @{ Group = 1; Agg = 'Max' } }
+        }
+        $script:RuleSetCache = @{}
+        $d = Test-Lines @(
+            "WCCOAui, $ts1, IMPL, WARNING, 1, Repetition (#=5) of a former trace"
+            "WCCOAui, $ts2, CTRL, WARNING, 1, Repetition (#=12) of a former trace"
+        )
+        $mgr = Get-RuleBucketMap -Data $d -Id 'selftest.measure' -Name 'manager'
+        # Not $areas: dot-sourcing the library brings Watch's [string]$Areas parameter into
+        # this scope, and the type constraint would stringify the map.
+        $areaMap = Get-RuleBucketMap -Data $d -Id 'selftest.measure' -Name 'area'
+        if ($mgr['WCCOAui'] -eq 2 -and $areaMap['IMPL'] -eq 1 -and $areaMap['CTRL'] -eq 1) { Ok 'BucketBy header tokens' }
+        else { Bad 'header-token buckets' }
+        if ((Get-RuleMeasure -Data $d -Id 'selftest.measure' -Name 'repeats') -eq 17 -and
+            (Get-RuleMeasure -Data $d -Id 'selftest.measure' -Name 'worst') -eq 12) { Ok 'Measure Sum + Max' }
+        else { Bad 'Measure aggregation' }
+
+        # --- detections payload (PRD 6.2) ---
+        $det = Build-DetectionsObject -Data $d -TopN 10
+        $grp = @($det | Where-Object { $_.group -eq 'SelfTest' })
+        if ($grp.Count -eq 1 -and $grp[0].total -eq 2) { Ok 'detections groups by rule Group' }
+        else { Bad 'detections grouping' }
+        $row = $grp[0].rules[0]
+        if ($row.id -eq 'selftest.measure' -and $row.count -eq 2 -and
+            $row.measures.repeats -eq 17 -and $row.buckets.manager.distinct -eq 1 -and
+            $row.buckets.manager.top[0].value -eq 'WCCOAui') { Ok 'detections row shape' }
+        else { Bad 'detections row shape' }
+        if (-not $row.buckets.manager.capped) { Ok 'detections reports bucket cap state' } else { Bad 'capped flag' }
+
+        # Curated groups render in their own card, so they must not appear twice.
+        $d2 = Test-Lines @(
+            "WCCOAApogeeDrv, $ts1, IMPL, WARNING, 1, Trend buffer overflow for trend T1 in device D1"
+            "WCCOAui, $ts1, IMPL, WARNING, 1, TryRenewSession failed"
+        )
+        $det2 = Build-DetectionsObject -Data $d2 -TopN 10
+        $leaked = @($det2 | Where-Object { $script:CuratedGroups -contains $_.group })
+        if ($leaked.Count -eq 0) { Ok 'CuratedGroups excluded from detections' }
+        else { Bad "curated group leaked: $($leaked.group -join ',')" }
+
+        # Zero-hit rules are omitted, so an empty window produces an empty array.
+        $emptyDet = Build-DetectionsObject -Data (New-EmptyState) -TopN 10
+        if (@($emptyDet).Count -eq 0) { Ok 'zero-hit rules omitted' } else { Bad 'zero-hit rules present' }
+
+        # Ordering must be stable or the 10.1 byte-identical HTML check is meaningless.
+        $a1 = (Build-DetectionsObject -Data $d -TopN 10 | ConvertTo-Json -Depth 10)
+        $a2 = (Build-DetectionsObject -Data $d -TopN 10 | ConvertTo-Json -Depth 10)
+        if ($a1 -ceq $a2) { Ok 'detections output deterministic' } else { Bad 'detections ordering unstable' }
+
+        # FindingAt is opt-in; the migrated clusters must not have grown a duplicate headline.
+        $withThreshold = @($script:PvssRules | Where-Object { $_['FindingAt'] })
+        $curatedWithThreshold = @($withThreshold | Where-Object { $script:CuratedGroups -contains $_['Group'] })
+        if ($withThreshold.Count -gt 0 -and $curatedWithThreshold.Count -eq 0) { Ok 'FindingAt only on non-curated rules' }
+        else { Bad 'FindingAt on a curated rule would double-report' }
+    }
+    finally {
+        Remove-Item -LiteralPath $libPath -Force -ErrorAction SilentlyContinue
+    }
+}
+
+if ($Phase -eq 'Rules') {
+    if ($failed -gt 0) { throw "Rules self-test failed ($failed)" }
+    Write-Host "`nRules OK" -ForegroundColor Green
     exit 0
 }
 
@@ -323,6 +477,75 @@ try {
                 finally {
                     Remove-Item $outHtml, $outJson -Force -ErrorAction SilentlyContinue
                 }
+            }
+        }
+    }
+
+    if ($Phase -eq 'Report' -or $Phase -eq 'All') {
+        # PRD 10.1: batch mode and the dashboard call the same Build-SnapshotObject and the
+        # same renderers, so on a static log with matched filters the two files must agree
+        # byte for byte apart from the wall-clock "Generated" line.
+        Write-Host "`n[Report] Batch mode == dashboard snapshot"
+        $reportLog = Join-Path $ExamplesRoot 'PVSS_II_C1P.log'
+        if (-not (Test-Path -LiteralPath $reportLog)) { Bad "report log missing: $reportLog" }
+        else {
+            $filters = 'severities=FATAL,SEVERE,ERROR,WARNING&areas=SYS,IMPL,CTRL,PARAM,OTHER&entire=1'
+            [void](Invoke-Api "$base/api/logPath" -Method POST -Body (@{ path = $reportLog; window = 'entire' } | ConvertTo-Json -Compress))
+            $pulse = $null
+            for ($w = 0; $w -lt 3000; $w++) {
+                Start-Sleep -Milliseconds 200
+                $pulse = Invoke-Api "$base/api/pulse?$filters" | ConvertFrom-Json
+                if (-not $pulse.loading) { break }
+            }
+            if ($pulse.loading) { Bad 'Report catch-up still loading' }
+            else {
+                $stem = Join-Path $env:TEMP ('watchselftest_' + [guid]::NewGuid().ToString('N'))
+                $argv = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', (Join-Path $WatchRoot 'Watch-PvssLog.ps1'),
+                    '-Report', '-NoPause', '-Entire', '-Format', 'Both',
+                    '-LogPath', $reportLog, '-OutPath', $stem,
+                    '-Severities', 'FATAL,SEVERE,ERROR,WARNING',
+                    '-Areas', 'SYS,IMPL,CTRL,PARAM,OTHER')
+                $console = "$stem.console"
+                $bp = Start-Process powershell.exe -ArgumentList $argv -NoNewWindow -Wait -PassThru `
+                    -RedirectStandardOutput $console -RedirectStandardError "$console.err"
+                if ($bp.ExitCode -ne 0) { Bad "batch -Report exit $($bp.ExitCode)" }
+                else { Ok 'batch -Report exit 0' }
+
+                # Only per-process state may differ: the wall-clock stamp and the session
+                # generation counter, which counts catch-ups in the emitting process (a
+                # dashboard that has been restarted a few times is several ahead of a fresh
+                # batch run). Same category as the perf.health port/url carve-out in PRD 10.1.
+                $stripGenerated = {
+                    param([string]$Text)
+                    $t = [regex]::Replace($Text, '<p class="meta">Generated [^<]*</p>', '<p class="meta">Generated ~</p>')
+                    $t = [regex]::Replace($t, '(?m)^Generated : .*$', 'Generated : ~')
+                    return [regex]::Replace($t, '&middot;  gen \d+</p>', '&middot;  gen ~</p>')
+                }
+                foreach ($pair in @(
+                        @{ Name = 'html'; File = "$stem.html"; Url = "$base/api/snapshot?format=html&$filters" },
+                        @{ Name = 'text'; File = "$stem.txt"; Url = "$base/api/snapshot?format=text&$filters" }
+                    )) {
+                    if (-not (Test-Path -LiteralPath $pair.File)) { Bad "batch produced no $($pair.Name) file"; continue }
+                    $batch = & $stripGenerated ([System.IO.File]::ReadAllText($pair.File))
+                    $live = & $stripGenerated ((Invoke-WebRequest -Uri $pair.Url -UseBasicParsing -TimeoutSec 300).Content)
+                    if ($batch -ceq $live) { Ok ("batch {0} is byte-identical to the dashboard snapshot ({1:N0} chars)" -f $pair.Name, $batch.Length) }
+                    else {
+                        $bl = $batch -split "`r?`n"
+                        $ll = $live -split "`r?`n"
+                        $firstDiff = '(length only)'
+                        for ($i = 0; $i -lt [math]::Max($bl.Count, $ll.Count); $i++) {
+                            $a = if ($i -lt $bl.Count) { $bl[$i] } else { '<eof>' }
+                            $b = if ($i -lt $ll.Count) { $ll[$i] } else { '<eof>' }
+                            if ($a -cne $b) {
+                                $firstDiff = ("line {0}`n      batch: {1}`n      live : {2}" -f ($i + 1),
+                                    $a.Substring(0, [math]::Min(160, $a.Length)), $b.Substring(0, [math]::Min(160, $b.Length)))
+                                break
+                            }
+                        }
+                        Bad ("batch {0} differs from dashboard snapshot at {1}" -f $pair.Name, $firstDiff)
+                    }
+                }
+                Remove-Item "$stem.html", "$stem.txt", $console, "$console.err" -Force -ErrorAction SilentlyContinue
             }
         }
     }

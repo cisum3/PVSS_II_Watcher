@@ -13,13 +13,35 @@
 param(
     [string]$LogPath = '',
     [int]$Port = 8787,
+    [ValidateRange(1, 525600)]
     [int]$LastMinutes = 60,
+    [ValidateRange(1, 60)]
     [int]$RefreshSeconds = 3,
     [switch]$NoBrowser,
     [switch]$NoPause,
+    [ValidateRange(5, 100)]
     [int]$TopN = 10,
+    [ValidateRange(0, 5)]
     [int]$SamplePerPattern = 1,
-    [int]$SampleMaxChars = 500
+    [ValidateRange(100, 2000)]
+    [int]$SampleMaxChars = 500,
+
+    # --- batch report mode (2.4; -Port / -NoBrowser / -RefreshSeconds are ignored here) ---
+    [switch]$Report,
+    [string]$OutPath = '',
+    [ValidateSet('Text', 'Html', 'Both')]
+    [string]$Format = 'Both',
+    [ValidateSet('All', 'Severity', 'Driver')]
+    [string]$Organize = 'All',
+    [string]$Severities = '',
+    [string]$Areas = '',
+    [string]$Driver = '',
+    [switch]$Entire,
+    [string]$From = '',
+    [string]$To = '',
+    [ValidateRange(0, 8760)]
+    [int]$LastHours = 0,
+    [switch]$Interactive
 )
 
 Set-StrictMode -Version Latest
@@ -33,6 +55,12 @@ $script:Author = 'Cisum'
 foreach ($verLine in @(Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue)) {
     if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }
 }
+
+$script:RulesPath = Join-Path $script:Root 'PvssRules.ps1'
+if (-not (Test-Path -LiteralPath $script:RulesPath)) {
+    throw "Missing detection rules: $script:RulesPath. Re-copy the Watch folder."
+}
+. $script:RulesPath
 
 function script:ConvertTo-ConfigBool {
     param([string]$Text, [bool]$Default = $false)
@@ -316,6 +344,36 @@ function script:Set-WatchConfigLogPath {
 $script:CliOverrides = @{}
 foreach ($cliKey in $PSBoundParameters.Keys) { $script:CliOverrides["$cliKey"] = $true }
 
+# Shared by -Severities / -Areas and the interactive severity prompt. Accepts names or the
+# 1-based numbers the V1.3 menu printed ("1,2,3" == the critical pack).
+function script:Convert-ToSeverityList {
+    param([string]$Text)
+    $all = @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($part in (([string]$Text) -split '[,;\s]+')) {
+        $p = $part.Trim().ToUpperInvariant()
+        if (-not $p) { continue }
+        if ($p -eq 'WARN') { $p = 'WARNING' }
+        if ($p -match '^[1-5]$') { $p = $all[[int]$p - 1] }
+        if ($all -contains $p -and -not $out.Contains($p)) { [void]$out.Add($p) }
+    }
+    # Preserve canonical order regardless of how the operator typed it.
+    return @($all | Where-Object { $out.Contains($_) })
+}
+
+function script:Convert-ToAreaList {
+    param([string]$Text)
+    $all = @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')
+    $out = New-Object System.Collections.Generic.List[string]
+    foreach ($part in (([string]$Text) -split '[,;\s]+')) {
+        $p = $part.Trim().ToUpperInvariant()
+        if (-not $p) { continue }
+        if ($p -match '^[1-5]$') { $p = $all[[int]$p - 1] }
+        if ($all -contains $p -and -not $out.Contains($p)) { [void]$out.Add($p) }
+    }
+    return @($all | Where-Object { $out.Contains($_) })
+}
+
 function script:Apply-WatchConfig {
     # -Runtime re-reads watch-config.txt on a dashboard Restart. Port, MaxPortTries,
     # OpenBrowser and Browser are startup-only (the listener is already bound), so
@@ -352,9 +410,18 @@ function script:Apply-WatchConfig {
     if (-not $cli.ContainsKey('SamplePerPattern')) { $script:SamplePerPattern = [int]$script:Config.SamplePerPattern }
     if (-not $cli.ContainsKey('SampleMaxChars')) { $script:SampleMaxChars = [int]$script:Config.SampleMaxChars }
     $script:BacFlapMin = [int]$script:Config.BacFlapMin
-    $script:DefaultSeverities = @($script:Config.DefaultSeverities)
-    $script:DefaultAreas = @($script:Config.DefaultAreas)
-    $script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire
+    # -Severities / -Areas / -Entire shadow these three, so they need the same CLI guard as
+    # the numeric settings above or a dashboard Restart would silently undo the switch.
+    $cliSevs = @()
+    $cliAreas = @()
+    if ($cli.ContainsKey('Severities')) { $cliSevs = @(Convert-ToSeverityList -Text $Severities) }
+    if ($cli.ContainsKey('Areas')) { $cliAreas = @(Convert-ToAreaList -Text $Areas) }
+    if ($cliSevs.Count -gt 0) { $script:DefaultSeverities = $cliSevs }
+    else { $script:DefaultSeverities = @($script:Config.DefaultSeverities) }
+    if ($cliAreas.Count -gt 0) { $script:DefaultAreas = $cliAreas }
+    else { $script:DefaultAreas = @($script:Config.DefaultAreas) }
+    if ($cli.ContainsKey('Entire')) { $script:DefaultWindowEntire = [bool]$Entire }
+    else { $script:DefaultWindowEntire = [bool]$script:Config.DefaultWindowEntire }
     if ($script:SampleMaxChars -lt 100) { $script:SampleMaxChars = 100 }
     if ($script:SampleMaxChars -gt 2000) { $script:SampleMaxChars = 2000 }
     if ($script:RefreshSeconds -lt 1) { $script:RefreshSeconds = 1 }
@@ -426,10 +493,6 @@ $script:ReNormNum = [regex]'\b\d{5,}\b'
 $script:ReNormSpace = [regex]'\s+'
 $script:ReCohoLockCollapse = [regex]':\s*[\d, ]+'
 $script:ReInfoBacStatus = [regex]'Status is now (Failed|OK)'
-$script:ReCnsResolve = [regex]'ResolveNodes'
-$script:ReCnsReduced = [regex]'ReducedFunction'
-$script:ReCnsICns = [regex]'(?i)\bICns\b|ICns\.'
-$script:ReCnsRenew = [regex]'TryRenewSession'
 $script:ReCohoStuck = [regex]'(?i)got stuck|dropping it'
 $script:ReApogeeUpdate = [regex]'(?i)UpdatePoints'
 $script:ReApogeeRep = [regex]'(?i)Repetition'
@@ -518,6 +581,54 @@ function ConvertFrom-LogTimestamp {
     return $null
 }
 
+# Operator input, not log text. Log lines only ever reach ConvertFrom-LogTimestamp above,
+# whose single format is all $script:LineRe can produce; -From / -To and the [W] prompt are
+# free-form, which is what the wider list here is for (PRD 5.4).
+function script:ConvertFrom-UserTimestamp {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $t = $Text.Trim()
+    $formats = @(
+        'yyyy.MM.dd HH:mm:ss.fff', 'yyyy.MM.dd HH:mm:ss', 'yyyy.MM.dd HH:mm', 'yyyy.MM.dd',
+        'yyyy-MM-dd HH:mm:ss.fff', 'yyyy-MM-dd HH:mm:ss', 'yyyy-MM-dd HH:mm', 'yyyy-MM-dd'
+    )
+    foreach ($f in $formats) {
+        $dt = [datetime]::MinValue
+        if ([datetime]::TryParseExact($t, $f, [System.Globalization.CultureInfo]::InvariantCulture,
+                [System.Globalization.DateTimeStyles]::None, [ref]$dt)) {
+            return $dt
+        }
+    }
+    $dt2 = [datetime]::MinValue
+    if ([datetime]::TryParse($t, [System.Globalization.CultureInfo]::InvariantCulture,
+            [System.Globalization.DateTimeStyles]::AssumeLocal, [ref]$dt2)) {
+        return $dt2
+    }
+    return $null
+}
+
+function script:Convert-WindowBound {
+    param(
+        [string]$Text,
+        [ValidateSet('From', 'To')]
+        [string]$Kind
+    )
+    $dt = ConvertFrom-UserTimestamp -Text $Text
+    if ($null -eq $dt) {
+        throw "Invalid -$Kind value '$Text'. Use e.g. '2026.09.04 09:00' or '2026.09.04'."
+    }
+    # A date-only -To means through the end of that calendar day, not midnight.
+    if ($Kind -eq 'To' -and $Text -notmatch '\d{1,2}:\d{2}') {
+        $dt = $dt.Date.AddDays(1).AddMilliseconds(-1)
+    }
+    return $dt
+}
+
+function script:Format-LogDateTime {
+    param([datetime]$Value)
+    return $Value.ToString('yyyy.MM.dd HH:mm:ss')
+}
+
 function Get-MinuteKey {
     param([string]$Ts)
     if ($Ts.Length -ge 16) { return $Ts.Substring(0, 16) }
@@ -558,6 +669,12 @@ function New-EmptyState {
         CompPatternSamples = @{}
         CompPatternTimes  = @{}
         PerfCats          = @{}
+        Hits              = @{}  # ruleId -> count
+        HitBuckets        = @{}  # ruleId -> bucketName -> value -> count
+        HitMeasures       = @{}  # ruleId -> measureName -> aggregate
+        HitSevs           = @{}  # ruleId -> severity -> count
+        HitSample         = @{}  # sampleSlot -> first matching line
+        HitTime           = @{}  # ruleId -> @{ First; Last }
         ByMinute          = @{}  # minuteKey -> counts
         ByMinuteByArea    = @{}  # minuteKey -> area -> counts
         FirstTs           = $null
@@ -584,10 +701,6 @@ function New-EmptyState {
         BacTimeSyncByCode = @{}
         BacTimeSyncByProp = @{}
         BacTimeSyncSample = $null
-        CnsResolve        = 0
-        CnsReduced        = 0
-        CnsICns           = 0
-        CnsTryRenew       = 0
         CnsPatterns       = @{}
         CnsPatternSamples = @{}
         CnsPatternTimes   = @{}
@@ -601,18 +714,6 @@ function New-EmptyState {
         ApogeePpcl        = @{}
         ApogeeSample      = $null
         ApogeeDrvLines    = 0
-        ApogeeTrendOverflow = 0
-        ApogeeTrendSeq    = 0
-        ApogeeAlertId     = 0
-        ApogeeQueryTimeout = 0
-        ApogeeGetDataFail = 0
-        ApogeeTrendByDevice = @{}
-        ApogeeTrendByName = @{}
-        ApogeeGetDataByDevice = @{}
-        ApogeeAlertSample = $null
-        ApogeeTrendSample = $null
-        ApogeeTimeoutSample = $null
-        ApogeeGetDataSample = $null
         ProjectStartMode  = 0
         ProjectUp         = 0
         ProjectShutdown   = 0
@@ -645,11 +746,6 @@ $script:ReCohoDiscoveryLoc = [regex]'(?i)DiscoveryLoc:([^\s]+)\s+got stuck\b'
 $script:ReCohoDiscoveryCycle = [regex]'(?i)((?:Global|Observer)\s+Discovery Cycle\s+\[[^\]]+\])\s+got stuck\b'
 $script:ReApogeePpcl = [regex]'(?i)PPCL Program Name:\s*(\S+?)(?:System\.|$)'
 $script:ReApogeeComp = [regex]'(?i)(?:CoHo|Orch)\.Apogee'
-$script:ReApogeeTrendOverflow = [regex]'(?i)Trend buffer overflow for trend\s+(.+?)\s+in device\s+(.+?)\.?\s*$'
-$script:ReApogeeTrendSeq = [regex]'(?i)Last sequence number\s+\d+\s+is greater than saved'
-$script:ReApogeeAlertId = [regex]'AlertID\s+\S+'
-$script:ReApogeeQueryTimeout = [regex]'(?i)pending answer run into timeout'
-$script:ReApogeeGetData = [regex]'(?i)Failed to get data for object\s+(.+?)\s+on device\s+([^,]+)'
 $script:ReProjectUp = [regex]'The project is up and running'
 $script:ReProjectStopped = [regex]'Completely stopped the project'
 $script:ReProjectShutdown = [regex]'Got shutdown command'
@@ -677,6 +773,10 @@ $script:Sync = [hashtable]::Synchronized(@{
         LoadEnforce    = $false
         LoadCutoff     = [datetime]::MinValue
         LoadCutoffCompare = ''
+        LoadUpperCompare  = ''
+        WindowFrom     = $null
+        WindowTo       = $null
+        BatchMode      = $false
         CatchUpActive  = $false
         Paused         = $false
         TailRunning    = $false
@@ -768,6 +868,9 @@ function script:Clear-EntireCache {
 }
 
 function script:Save-EntireCache {
+    # The cache only pays off across dashboard window switches; batch mode exits right after
+    # the scan, so cloning the whole state would be pure cost.
+    if ([bool]$script:Sync['BatchMode']) { return }
     if (-not [bool]$script:Sync['WindowEntire']) { return }
     if ([bool]$script:Sync['CatchUpActive'] -or [bool]$script:Sync['Loading']) { return }
     if (-not [bool]$script:Sync['TailRunning']) { return }
@@ -876,7 +979,8 @@ function script:Process-LogLine {
         [string]$Line,
         [hashtable]$Data = $null,
         [bool]$EnforceCutoff = $false,
-        [string]$CutoffCompare = ''
+        [string]$CutoffCompare = '',
+        [string]$UpperCompare = ''
     )
     if ($null -eq $Data) { $Data = $script:Sync['Data'] }
     $m = $script:LineRe.Match($Line)
@@ -893,6 +997,11 @@ function script:Process-LogLine {
 
     # String compare is far cheaper than Get-Date (V1.1 skips timestamp parse on full-file scans).
     if ($EnforceCutoff -and $CutoffCompare -and $ts.Length -ge 19 -and $ts.Substring(0, 19) -lt $CutoffCompare) {
+        return
+    }
+    # Upper bound (-To, batch only). Timestamps are not strictly monotonic across managers,
+    # so this filters rather than stopping the read early.
+    if ($UpperCompare -and $ts.Length -ge 19 -and $ts.Substring(0, 19) -gt $UpperCompare) {
         return
     }
 
@@ -1044,11 +1153,16 @@ function script:Process-LogLine {
         if (-not $Data.BacTimeSyncSample) { $Data.BacTimeSyncSample = $Line }
     }
 
+    # Declarative detections (PvssRules.ps1). Loop is inlined on purpose - see the note there.
+    $ruleSet = $script:RuleSetCache[$comp]
+    if ($null -eq $ruleSet) { $ruleSet = Register-RuleSet -Comp $comp }
     $isCnsLine = $false
-    if ($script:ReCnsResolve.IsMatch($Line)) { $Data.CnsResolve++; $isCnsLine = $true }
-    if ($script:ReCnsReduced.IsMatch($Line)) { $Data.CnsReduced++; $isCnsLine = $true }
-    if ($script:ReCnsICns.IsMatch($Line)) { $Data.CnsICns++; $isCnsLine = $true }
-    if ($script:ReCnsRenew.IsMatch($Line)) { $Data.CnsTryRenew++; $isCnsLine = $true }
+    foreach ($rule in $ruleSet) {
+        $rm = $rule['Re'].Match($Line)
+        if (-not $rm.Success) { continue }
+        Add-RuleHit -Data $Data -Rule $rule -Match $rm -Line $Line -Comp $comp -Area $areaKey -Sev $sev -Timestamp $ts
+        if ($rule['PatternGroup'] -eq 'Cns') { $isCnsLine = $true }
+    }
     if ($isCnsLine) {
         $norm = Normalize-Message -Text $Line
         Add-Pattern -CountMap $Data.CnsPatterns -SampleMap $Data.CnsPatternSamples -TimeMap $Data.CnsPatternTimes `
@@ -1092,46 +1206,10 @@ function script:Process-LogLine {
         else { $Data.ApogeeOther++ }
     }
 
-    # WCCOAApogeeDrv (not ApogeeBACnet / CoHo.Apogee*)
+    # WCCOAApogeeDrv (not ApogeeBACnet / CoHo.Apogee*). Line count only - the driver's
+    # detections are rules in PvssRules.ps1 and were already applied above.
     if ($comp.IndexOf('ApogeeDrv', [StringComparison]::OrdinalIgnoreCase) -ge 0) {
         $Data.ApogeeDrvLines++
-        $mOv = $script:ReApogeeTrendOverflow.Match($Line)
-        if ($mOv.Success) {
-            $Data.ApogeeTrendOverflow++
-            $tName = $mOv.Groups[1].Value.Trim()
-            $tDev = $mOv.Groups[2].Value.Trim().TrimEnd('.')
-            if ($tName) {
-                if (-not $Data.ApogeeTrendByName.ContainsKey($tName)) { $Data.ApogeeTrendByName[$tName] = 0 }
-                $Data.ApogeeTrendByName[$tName]++
-            }
-            if ($tDev) {
-                if (-not $Data.ApogeeTrendByDevice.ContainsKey($tDev)) { $Data.ApogeeTrendByDevice[$tDev] = 0 }
-                $Data.ApogeeTrendByDevice[$tDev]++
-            }
-            if (-not $Data.ApogeeTrendSample) { $Data.ApogeeTrendSample = $Line }
-        }
-        elseif ($script:ReApogeeTrendSeq.IsMatch($Line)) {
-            $Data.ApogeeTrendSeq++
-            if (-not $Data.ApogeeTrendSample) { $Data.ApogeeTrendSample = $Line }
-        }
-        if ($script:ReApogeeAlertId.IsMatch($Line)) {
-            $Data.ApogeeAlertId++
-            if (-not $Data.ApogeeAlertSample) { $Data.ApogeeAlertSample = $Line }
-        }
-        if ($script:ReApogeeQueryTimeout.IsMatch($Line)) {
-            $Data.ApogeeQueryTimeout++
-            if (-not $Data.ApogeeTimeoutSample) { $Data.ApogeeTimeoutSample = $Line }
-        }
-        $mGd = $script:ReApogeeGetData.Match($Line)
-        if ($mGd.Success) {
-            $Data.ApogeeGetDataFail++
-            $gdDev = $mGd.Groups[2].Value.Trim()
-            if ($gdDev) {
-                if (-not $Data.ApogeeGetDataByDevice.ContainsKey($gdDev)) { $Data.ApogeeGetDataByDevice[$gdDev] = 0 }
-                $Data.ApogeeGetDataByDevice[$gdDev]++
-            }
-            if (-not $Data.ApogeeGetDataSample) { $Data.ApogeeGetDataSample = $Line }
-        }
     }
 
     # Project / manager lifecycle (pmon + Manager Start/Stop)
@@ -1269,6 +1347,49 @@ function script:Get-LogFileEndTimestamp {
     return $probe.Last
 }
 
+# One implementation of "is this a usable log file", shared by POST /api/logPath and batch
+# mode. Returns the resolved full path; throws the operator-facing message on failure.
+function script:Assert-LogPathUsable {
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { throw 'Path is required.' }
+    if (-not (Test-Path -LiteralPath $Path)) { throw "File not found: $Path" }
+    $item = Get-Item -LiteralPath $Path
+    if ($item.PSIsContainer) { throw 'Path must be a file, not a directory.' }
+    $test = [System.IO.File]::Open($Path, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
+    $test.Close()
+    return $item.FullName
+}
+
+# Batch mode may be launched by double-clicking a .cmd next to a log, so fall back to the
+# same discovery order OfflineAnalyze used.
+function script:Resolve-LogPath {
+    param([string]$Path)
+    if ($Path) { return (Assert-LogPathUsable -Path $Path) }
+
+    $searchDirs = @($script:Root, (Split-Path -Parent $script:Root), (Get-Location).Path) |
+        Where-Object { $_ } | Select-Object -Unique
+    foreach ($name in @('PVSS_II.log', 'PVSS_II.log.bak')) {
+        foreach ($dir in $searchDirs) {
+            $cand = Join-Path $dir $name
+            if (Test-Path -LiteralPath $cand -PathType Leaf) {
+                if ($name -ne 'PVSS_II.log') { Write-WatchLog ("Using backup log: {0}" -f $cand) Cyan }
+                return (Assert-LogPathUsable -Path $cand)
+            }
+        }
+    }
+    $found = foreach ($dir in $searchDirs) {
+        Get-ChildItem -LiteralPath $dir -Filter 'PVSS_II*.log' -File -ErrorAction SilentlyContinue
+        Get-ChildItem -LiteralPath $dir -Filter 'PVSS_II*.log.bak' -File -ErrorAction SilentlyContinue
+    }
+    $newest = @($found) | Sort-Object LastWriteTime -Descending | Select-Object -First 1
+    if ($newest) {
+        Write-WatchLog ("Using newest matching log: {0}" -f $newest.FullName) Cyan
+        return (Assert-LogPathUsable -Path $newest.FullName)
+    }
+    $hint = ($searchDirs | ForEach-Object { "  - $_" }) -join [Environment]::NewLine
+    throw ("Log file not found. Looked for PVSS_II.log, PVSS_II.log.bak, PVSS_II*.log and PVSS_II*.log.bak in:{0}{1}{0}Pass -LogPath explicitly." -f [Environment]::NewLine, $hint)
+}
+
 function script:Find-WindowStartPosition {
     param(
         [string]$Path,
@@ -1277,6 +1398,18 @@ function script:Find-WindowStartPosition {
     $fi = Get-Item -LiteralPath $Path
     $len = $fi.Length
     if ($len -le 0) { return 0L }
+
+    # Cheap boundary guards before probing (PRD 5.3.1): a cutoff at or before the first
+    # header means the whole file is in window, and one past the last header means none of it is.
+    $head = Get-ProbeTimestamps -Path $Path -SeekPos 0L -MaxBytes ([math]::Min($len, [int64]65536))
+    if ($head.First -and $head.First -ge $Cutoff) {
+        Write-WatchLog ("Window seek short-circuit: cutoff at/before first timestamp {0:yyyy.MM.dd HH:mm:ss}" -f $head.First)
+        return 0L
+    }
+    $tail = Get-LogFileEndTimestamp -Path $Path
+    if ($tail -and $tail -lt $Cutoff) {
+        throw ("Empty window: the log ends at {0:yyyy.MM.dd HH:mm:ss}, before the requested start {1:yyyy.MM.dd HH:mm:ss}." -f $tail, $Cutoff)
+    }
 
     # Expand backward from EOF until the earliest timestamp in the probe is at/before cutoff (or file start).
     $chunk = [int64]262144  # 256 KB
@@ -1355,17 +1488,39 @@ function script:Begin-CatchUp {
     $script:Sync['TailRunning'] = $false
     Bump-Generation
 
-    $entire = [bool]$script:Sync['WindowEntire']
-    $mode = if ($entire) { 'Entire file' } else { ("last {0} minutes" -f $script:Sync['LastMinutes']) }
+    # Absolute -From/-To (batch only) outranks both entire and last-N-minutes.
+    $absFrom = $script:Sync['WindowFrom']
+    $absTo = $script:Sync['WindowTo']
+    $absolute = ($null -ne $absFrom -or $null -ne $absTo)
+    $entire = (-not $absolute) -and [bool]$script:Sync['WindowEntire']
+    $mode = if ($absolute) {
+        ('absolute {0} -> {1}' -f $(if ($absFrom) { Format-LogDateTime -Value $absFrom } else { 'start' }),
+            $(if ($absTo) { Format-LogDateTime -Value $absTo } else { 'end' }))
+    }
+    elseif ($entire) { 'Entire file' }
+    else { ("last {0} minutes" -f $script:Sync['LastMinutes']) }
     Write-WatchLog ("Catch-up START  mode={0}  path={1}" -f $mode, $Path) Cyan
-    $script:Sync['LoadModeLabel'] = if ($entire) { 'Loading entire file' } else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
+    $script:Sync['LoadModeLabel'] = if ($absolute) { 'Loading absolute window' }
+    elseif ($entire) { 'Loading entire file' }
+    else { ("Loading last {0} minutes" -f $script:Sync['LastMinutes']) }
     $script:Sync['LoadMessage'] = ("{0}... 0%" -f $script:Sync['LoadModeLabel'])
 
     Reset-Analysis
     $cutoff = [datetime]::MinValue
     $enforce = $false
     $startPos = 0L
-    if (-not $entire) {
+    $upperCompare = ''
+    if ($absolute) {
+        if ($absTo) { $upperCompare = Format-LogDateTime -Value $absTo }
+        if ($absFrom) {
+            $cutoff = $absFrom
+            $enforce = $true
+            $script:Sync['Cutoff'] = $cutoff
+            $startPos = Find-WindowStartPosition -Path $Path -Cutoff $cutoff
+        }
+        else { $script:Sync['Cutoff'] = $null }
+    }
+    elseif (-not $entire) {
         # Anchor to newest timestamp in the file (not wall clock) so copied/old logs
         # and live tails both mean "last N minutes of this log."
         $anchor = Get-LogFileEndTimestamp -Path $Path
@@ -1402,6 +1557,7 @@ function script:Begin-CatchUp {
     $script:Sync['LoadEnforce'] = $enforce
     $script:Sync['LoadCutoff'] = $cutoff
     $script:Sync['LoadCutoffCompare'] = if ($enforce) { $cutoff.ToString('yyyy.MM.dd HH:mm:ss') } else { '' }
+    $script:Sync['LoadUpperCompare'] = $upperCompare
     $script:Sync['LoadSw'] = [System.Diagnostics.Stopwatch]::StartNew()
     $script:Sync['LoadLastLogPct'] = -1
     $script:Sync['LoadLastLogMs'] = 0L
@@ -1454,6 +1610,7 @@ function script:Step-CatchUp {
         $data = $script:Sync['Data']
         $enforce = [bool]$script:Sync['LoadEnforce']
         $cutoffCmp = [string]$script:Sync['LoadCutoffCompare']
+        $upperCmp = [string]$script:Sync['LoadUpperCompare']
         $n = 0
         $skipped = 0
         $slice = [System.Diagnostics.Stopwatch]::StartNew()
@@ -1467,7 +1624,7 @@ function script:Step-CatchUp {
                 return
             }
             $before = $data.ParsedLines
-            Process-LogLine -Line $line -Data $data -EnforceCutoff:$enforce -CutoffCompare $cutoffCmp
+            Process-LogLine -Line $line -Data $data -EnforceCutoff:$enforce -CutoffCompare $cutoffCmp -UpperCompare $upperCmp
             $n++
             if ($enforce -and $data.ParsedLines -eq $before) {
                 $m = $script:LineRe.Match($line)
@@ -1688,27 +1845,34 @@ function script:Build-Findings {
         [void]$findings.Add(("BACnetTimeSync failures: {0:N0} across {1:N0} properties{2}." -f `
             $d.BacTimeSync, $d.BacTimeSyncByProp.Count, $codeNote))
     }
-    if ($d.CnsResolve -ge 100 -or $d.CnsReduced -ge 100) {
-        [void]$findings.Add(("CNS volume: ResolveNodes={0:N0}, ReducedFunction={1:N0}, ICns={2:N0}." -f $d.CnsResolve, $d.CnsReduced, $d.CnsICns))
+    $cnsResolve = Get-RuleCount -Data $d -Id 'cns.resolveNodes'
+    $cnsReduced = Get-RuleCount -Data $d -Id 'cns.reducedFunction'
+    $cnsRenew = Get-RuleCount -Data $d -Id 'cns.tryRenew'
+    if ($cnsResolve -ge 100 -or $cnsReduced -ge 100) {
+        [void]$findings.Add(("CNS volume: ResolveNodes={0:N0}, ReducedFunction={1:N0}, ICns={2:N0}." -f $cnsResolve, $cnsReduced, (Get-RuleCount -Data $d -Id 'cns.icns')))
     }
-    if ($d.CnsTryRenew -ge 5) { [void]$findings.Add(("CNS/session: TryRenewSession hits={0:N0}." -f $d.CnsTryRenew)) }
+    if ($cnsRenew -ge 5) { [void]$findings.Add(("CNS/session: TryRenewSession hits={0:N0}." -f $cnsRenew)) }
     if ($d.CohoStuck -ge 10) { [void]$findings.Add(("CoHo stuck/drop messages: {0:N0}." -f $d.CohoStuck)) }
     if ($d.ApogeeUpdatePoints -ge 10) {
         [void]$findings.Add(("Apogee UpdatePoints failures: {0:N0} across {1:N0} PPCL programs." -f $d.ApogeeUpdatePoints, $d.ApogeePpcl.Count))
     }
-    if ($d.ApogeeTrendOverflow -ge 50) {
+    $apOverflow = Get-RuleCount -Data $d -Id 'apogeeDrv.trendOverflow'
+    $apAlert = Get-RuleCount -Data $d -Id 'apogeeDrv.alertId'
+    $apGetData = Get-RuleCount -Data $d -Id 'apogeeDrv.getDataFail'
+    $apTimeout = Get-RuleCount -Data $d -Id 'apogeeDrv.queryTimeout'
+    if ($apOverflow -ge 50) {
         [void]$findings.Add(("ApogeeDrv trend buffer overflows: {0:N0} across {1:N0} devices ({2:N0} sequence-gap lines)." -f `
-            $d.ApogeeTrendOverflow, $d.ApogeeTrendByDevice.Count, $d.ApogeeTrendSeq))
+                $apOverflow, (Get-RuleBucketCount -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'device'), (Get-RuleCount -Data $d -Id 'apogeeDrv.trendSeq')))
     }
-    if ($d.ApogeeAlertId -ge 50) {
-        [void]$findings.Add(("ApogeeDrv AlertID issues: {0:N0}." -f $d.ApogeeAlertId))
+    if ($apAlert -ge 50) {
+        [void]$findings.Add(("ApogeeDrv AlertID issues: {0:N0}." -f $apAlert))
     }
-    if ($d.ApogeeGetDataFail -ge 50) {
+    if ($apGetData -ge 50) {
         [void]$findings.Add(("ApogeeDrv get-data failures: {0:N0} across {1:N0} devices." -f `
-            $d.ApogeeGetDataFail, $d.ApogeeGetDataByDevice.Count))
+                $apGetData, (Get-RuleBucketCount -Data $d -Id 'apogeeDrv.getDataFail' -Name 'device')))
     }
-    if ($d.ApogeeQueryTimeout -ge 50) {
-        [void]$findings.Add(("ApogeeDrv query timeouts: {0:N0}." -f $d.ApogeeQueryTimeout))
+    if ($apTimeout -ge 50) {
+        [void]$findings.Add(("ApogeeDrv query timeouts: {0:N0}." -f $apTimeout))
     }
     if ($d.ProjectUp -ge 1 -or $d.ProjectStopped -ge 1) {
         $upPreview = @($d.ProjectRestartEvents | Where-Object { $_.kind -eq 'up' } | Select-Object -First 5 | ForEach-Object { $_.t }) -join ', '
@@ -1734,6 +1898,31 @@ function script:Build-Findings {
     if ($d.PerfCats.ContainsKey('Timeout') -and $d.PerfCats['Timeout'] -ge 5) {
         [void]$findings.Add("HIGH: Timeouts detected ($($d.PerfCats['Timeout'])).")
     }
+
+    # Rule-driven headlines. A rule opts in with FindingAt = <count>; the migrated CNS and
+    # Apogee clusters keep their hand-written composite findings above and set no threshold.
+    foreach ($rule in $script:PvssRules) {
+        $at = $rule['FindingAt']
+        if (-not $at) { continue }
+        $id = [string]$rule['Id']
+        $n = Get-RuleCount -Data $d -Id $id
+        if ($n -lt [int]$at) { continue }
+        $line = "{0} - {1}: {2:N0} line(s)." -f $rule['Group'], $rule['Label'], $n
+        $mm = $d.HitMeasures[$id]
+        if ($mm -and $mm.Count -gt 0) {
+            $parts = @(@($mm.Keys | Sort-Object) | ForEach-Object { "{0}={1:N0}" -f $_, $mm[$_] }) -join ', '
+            $line += " Totals: $parts."
+        }
+        $bb = $rule['BucketBy']
+        if ($bb -and $bb.Count -gt 0) {
+            $bname = @($bb.Keys | Sort-Object)[0]
+            $top = @(Get-RuleTopBucket -Data $d -Id $id -Name $bname -KeyName 'value' -N 3 |
+                    ForEach-Object { "{0} x{1:N0}" -f $_.value, $_.count }) -join ', '
+            if ($top) { $line += " Top $bname`: $top." }
+        }
+        [void]$findings.Add($line)
+    }
+
     if ($findings.Count -eq 0 -and $d.ParsedLines -gt 0) {
         [void]$findings.Add('No strong automated volume findings from current heuristics.')
     }
@@ -1906,6 +2095,75 @@ function script:Get-ChartGranularity {
     if ($MinuteBucketCount -gt 400) { return 'hour' }
     if ($MinuteBucketCount -gt 2000) { return 'day' }
     return 'minute'
+}
+
+# Hour rollup for the report's hourly-volume tables. Watch only keeps minute buckets, so
+# truncate the minute key to the hour exactly as Build-ChartSeries does.
+# V1.3 presentation rule preserved: full table at <=25 hours, otherwise the most recent 24
+# plus a busiest-10 table. Unlike V1.3 this honours the area filter, so the hourly numbers
+# agree with the rest of the snapshot.
+function script:Build-HourlyObject {
+    param($Data, $AreaFilter = $null)
+    if ($null -eq $AreaFilter) {
+        $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
+    }
+    $sevAll = @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')
+    $sevBad = @('FATAL', 'SEVERE', 'ERROR')
+    $acc = @{}
+    $useAreaSplit = -not (Test-AreaFilterAllOn -AreaFilter $AreaFilter)
+    $enabledAreas = @(Get-EnabledAreas -AreaFilter $AreaFilter)
+
+    if ($useAreaSplit -and $Data.ByMinuteByArea) {
+        foreach ($e in $Data.ByMinuteByArea.GetEnumerator()) {
+            $src = $e.Key
+            $key = if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src }
+            if (-not $acc.ContainsKey($key)) { $acc[$key] = @{ total = 0; severe = 0; warning = 0 } }
+            $dst = $acc[$key]
+            foreach ($a in $enabledAreas) {
+                if (-not $e.Value.ContainsKey($a)) { continue }
+                $v = $e.Value[$a]
+                foreach ($s in $sevAll) { $dst.total += [int]$v[$s] }
+                foreach ($s in $sevBad) { $dst.severe += [int]$v[$s] }
+                $dst.warning += [int]$v['WARNING']
+            }
+        }
+    }
+    else {
+        foreach ($e in $Data.ByMinute.GetEnumerator()) {
+            $src = $e.Key
+            $key = if ($src.Length -ge 13) { $src.Substring(0, 13) } else { $src }
+            if (-not $acc.ContainsKey($key)) { $acc[$key] = @{ total = 0; severe = 0; warning = 0 } }
+            $dst = $acc[$key]
+            $v = $e.Value
+            foreach ($s in $sevAll) { $dst.total += [int]$v[$s] }
+            foreach ($s in $sevBad) { $dst.severe += [int]$v[$s] }
+            $dst.warning += [int]$v['WARNING']
+        }
+    }
+
+    $keys = @($acc.Keys | Sort-Object)
+    $hourCount = $keys.Count
+    $truncated = ($hourCount -gt 25)
+    $shown = if ($truncated) { @($keys | Select-Object -Last 24) } else { $keys }
+    $rows = @(foreach ($k in $shown) {
+            [ordered]@{ hour = $k; total = [int]$acc[$k].total; severe = [int]$acc[$k].severe; warning = [int]$acc[$k].warning }
+        })
+    $busiest = @()
+    if ($truncated) {
+        # Tie-break on the hour key so the table is reproducible run to run (PRD 10.1).
+        $busiest = @(
+            $acc.GetEnumerator() | Sort-Object @{ E = { $_.Value.total }; Descending = $true }, @{ E = { $_.Key } } |
+                Select-Object -First 10 | ForEach-Object {
+                    [ordered]@{ hour = $_.Key; total = [int]$_.Value.total; severe = [int]$_.Value.severe; warning = [int]$_.Value.warning }
+                }
+        )
+    }
+    return [ordered]@{
+        hourCount = $hourCount
+        truncated = $truncated
+        rows      = $rows
+        busiest   = $busiest
+    }
 }
 
 function script:Build-ChartSeries {
@@ -2142,6 +2400,32 @@ function script:Build-ProjectLifecycleObject {
     }
 }
 
+# Curated CNS / Apogee headlines. Counters come from the rule engine (PvssRules.ps1);
+# the payload keys are frozen so the UI and reports are unaffected.
+function script:Build-CnsHeadline {
+    param($Data)
+    return [ordered]@{
+        resolveNodes    = (Get-RuleCount -Data $Data -Id 'cns.resolveNodes')
+        reducedFunction = (Get-RuleCount -Data $Data -Id 'cns.reducedFunction')
+        tryRenew        = (Get-RuleCount -Data $Data -Id 'cns.tryRenew')
+        icns            = (Get-RuleCount -Data $Data -Id 'cns.icns')
+    }
+}
+
+function script:Build-ApogeeHeadline {
+    param($Data)
+    return [ordered]@{
+        events        = $Data.ApogeeEvents
+        updatePoints  = $Data.ApogeeUpdatePoints
+        drvLines      = $Data.ApogeeDrvLines
+        trendOverflow = (Get-RuleCount -Data $Data -Id 'apogeeDrv.trendOverflow')
+        trendSeq      = (Get-RuleCount -Data $Data -Id 'apogeeDrv.trendSeq')
+        alertId       = (Get-RuleCount -Data $Data -Id 'apogeeDrv.alertId')
+        queryTimeout  = (Get-RuleCount -Data $Data -Id 'apogeeDrv.queryTimeout')
+        getDataFail   = (Get-RuleCount -Data $Data -Id 'apogeeDrv.getDataFail')
+    }
+}
+
 function script:Build-PulseObject {
     param($SevFilter, $AreaFilter = $null)
     if ($null -eq $AreaFilter) {
@@ -2181,13 +2465,9 @@ function script:Build-PulseObject {
                     collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
                     collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
                 }
-                cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
+                cns    = (Build-CnsHeadline -Data $d)
                 coho   = [ordered]@{ stuck = $d.CohoStuck }
-                apogee = [ordered]@{
-                    events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints
-                    drvLines = $d.ApogeeDrvLines; trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
-                    alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
-                }
+                apogee = (Build-ApogeeHeadline -Data $d)
             }
             topManagers     = @()
             series          = [ordered]@{ granularity = 'minute'; byMinute = @() }
@@ -2242,13 +2522,9 @@ function script:Build-PulseObject {
                 collectTrend = $d.BacCollectTrend; timeSync = $d.BacTimeSync
                 collectTrendProps = $d.BacCollectTrendByProp.Count; timeSyncProps = $d.BacTimeSyncByProp.Count
             }
-            cns    = [ordered]@{ resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; tryRenew = $d.CnsTryRenew; icns = $d.CnsICns }
+            cns    = (Build-CnsHeadline -Data $d)
             coho   = [ordered]@{ stuck = $d.CohoStuck }
-            apogee = [ordered]@{
-                events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints
-                drvLines = $d.ApogeeDrvLines; trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
-                alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
-            }
+            apogee = (Build-ApogeeHeadline -Data $d)
         }
         topManagers     = $topMgr
         series          = $series
@@ -2359,7 +2635,10 @@ function script:Build-SectionObject {
             return [ordered]@{
                 generation = $gen
                 cns        = [ordered]@{
-                    resolveNodes = $d.CnsResolve; reducedFunction = $d.CnsReduced; icns = $d.CnsICns; tryRenew = $d.CnsTryRenew
+                    resolveNodes = (Get-RuleCount -Data $d -Id 'cns.resolveNodes')
+                    reducedFunction = (Get-RuleCount -Data $d -Id 'cns.reducedFunction')
+                    icns = (Get-RuleCount -Data $d -Id 'cns.icns')
+                    tryRenew = (Get-RuleCount -Data $d -Id 'cns.tryRenew')
                     patterns = @(Get-TopPatterns -CountMap $d.CnsPatterns -SampleMap $d.CnsPatternSamples -TimeMap $d.CnsPatternTimes -N $TopN)
                     lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)ApplicationFramework|ICns')
                 }
@@ -2386,33 +2665,27 @@ function script:Build-SectionObject {
                     [ordered]@{ name = $_.Key; count = [int]$_.Value }
                 }
             )
-            $trendDev = @(
-                $d.ApogeeTrendByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
-                    [ordered]@{ device = $_.Key; count = [int]$_.Value }
-                }
-            )
-            $trendNames = @(
-                $d.ApogeeTrendByName.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
-                    [ordered]@{ trend = $_.Key; count = [int]$_.Value }
-                }
-            )
-            $getDev = @(
-                $d.ApogeeGetDataByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
-                    [ordered]@{ device = $_.Key; count = [int]$_.Value }
-                }
-            )
+            $trendDev = Get-RuleTopBucket -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'device' -KeyName 'device' -N 20
+            $trendNames = Get-RuleTopBucket -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'trend' -KeyName 'trend' -N 20
+            $getDev = Get-RuleTopBucket -Data $d -Id 'apogeeDrv.getDataFail' -Name 'device' -KeyName 'device' -N 20
             return [ordered]@{
                 generation = $gen
                 apogee     = [ordered]@{
                     events = $d.ApogeeEvents; updatePoints = $d.ApogeeUpdatePoints; repetition = $d.ApogeeRepetition
                     other = $d.ApogeeOther; uniquePpcl = $d.ApogeePpcl.Count; sample = $d.ApogeeSample; topPpcl = $ppcl
                     drvLines = $d.ApogeeDrvLines
-                    trendOverflow = $d.ApogeeTrendOverflow; trendSeq = $d.ApogeeTrendSeq
-                    alertId = $d.ApogeeAlertId; queryTimeout = $d.ApogeeQueryTimeout; getDataFail = $d.ApogeeGetDataFail
-                    trendDevices = $d.ApogeeTrendByDevice.Count; trendNames = $d.ApogeeTrendByName.Count
-                    getDataDevices = $d.ApogeeGetDataByDevice.Count
-                    trendSample = $d.ApogeeTrendSample; alertSample = $d.ApogeeAlertSample
-                    timeoutSample = $d.ApogeeTimeoutSample; getDataSample = $d.ApogeeGetDataSample
+                    trendOverflow = (Get-RuleCount -Data $d -Id 'apogeeDrv.trendOverflow')
+                    trendSeq = (Get-RuleCount -Data $d -Id 'apogeeDrv.trendSeq')
+                    alertId = (Get-RuleCount -Data $d -Id 'apogeeDrv.alertId')
+                    queryTimeout = (Get-RuleCount -Data $d -Id 'apogeeDrv.queryTimeout')
+                    getDataFail = (Get-RuleCount -Data $d -Id 'apogeeDrv.getDataFail')
+                    trendDevices = (Get-RuleBucketCount -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'device')
+                    trendNames = (Get-RuleBucketCount -Data $d -Id 'apogeeDrv.trendOverflow' -Name 'trend')
+                    getDataDevices = (Get-RuleBucketCount -Data $d -Id 'apogeeDrv.getDataFail' -Name 'device')
+                    trendSample = (Get-RuleSample -Data $d -Id 'apogeeDrv.trend')
+                    alertSample = (Get-RuleSample -Data $d -Id 'apogeeDrv.alertId')
+                    timeoutSample = (Get-RuleSample -Data $d -Id 'apogeeDrv.queryTimeout')
+                    getDataSample = (Get-RuleSample -Data $d -Id 'apogeeDrv.getDataFail')
                     topTrendDevices = $trendDev; topTrends = $trendNames; topGetDataDevices = $getDev
                     lifecycle = (Build-LifecycleRows -Data $d -MatchPattern '(?i)ApogeeDrv')
                 }
@@ -2432,10 +2705,18 @@ function script:Build-SectionObject {
                 parsedLines    = [int]$d.ParsedLines
                 health         = [pscustomobject]@{
                     version = [string]$script:Version
-                    port    = [int]$script:Sync['BoundPort']
-                    url     = [string]$script:Sync['ListeningUrl']
+                    # Meaningless with no listener; kept as empty strings so batch and
+                    # dashboard output differ by value, not by structure (PRD 5.1 / 10.1).
+                    port    = if ([bool]$script:Sync['BatchMode']) { '' } else { [int]$script:Sync['BoundPort'] }
+                    url     = if ([bool]$script:Sync['BatchMode']) { '' } else { [string]$script:Sync['ListeningUrl'] }
                     logPath = [string]$script:Sync['LogPath']
                 }
+            }
+        }
+        'detections' {
+            return [ordered]@{
+                generation = $gen
+                detections = @(Build-DetectionsObject -Data $d -TopN $TopN)
             }
         }
         default { return [ordered]@{ generation = $gen; error = "Unknown section: $Name" } }
@@ -2474,7 +2755,13 @@ function script:HtmlEncode {
 }
 
 function script:Build-SnapshotObject {
-    param($SevFilter, $AreaFilter = $null)
+    param(
+        $SevFilter,
+        $AreaFilter = $null,
+        [ValidateSet('All', 'Severity', 'Driver')][string]$Organize = 'All',
+        [string[]]$Drivers = @(),
+        [string]$Format = 'html'
+    )
     if ($null -eq $AreaFilter) {
         $AreaFilter = @{ SYS = $true; IMPL = $true; CTRL = $true; PARAM = $true; OTHER = $true }
     }
@@ -2502,6 +2789,15 @@ function script:Build-SnapshotObject {
     foreach ($ak in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
         if ($AreaFilter[$ak]) { $areaList += $ak }
     }
+    # Driver deep-dive is only carried when it will be rendered; Build-ManagerObject is not
+    # free, and All/Severity never show it.
+    $deepDive = @()
+    if ($Organize -eq 'Driver') {
+        foreach ($drv in @($Drivers)) {
+            if (-not $drv) { continue }
+            $deepDive += (Build-ManagerObject -MgrName $drv -SevFilter $SevFilter)
+        }
+    }
     return [ordered]@{
         meta = [ordered]@{
             tool        = 'PVSS Log Watch'
@@ -2513,6 +2809,17 @@ function script:Build-SnapshotObject {
             parsedLines = [int]$script:Sync['Data'].ParsedLines
             severities  = @($sevList)
             areas       = @($areaList)
+        }
+        options = [ordered]@{
+            organize         = $Organize
+            severities       = @($sevList)
+            areas            = @($areaList)
+            drivers          = @($Drivers)
+            topN             = [int]$script:TopN
+            samplePerPattern = [int]$script:SamplePerPattern
+            window           = $pulse.window.mode
+            lastMinutes      = [int]$pulse.window.lastMinutes
+            format           = $Format
         }
         window          = $pulse.window
         findings        = @($pulse.findings)
@@ -2535,6 +2842,9 @@ function script:Build-SnapshotObject {
         cns             = $cns.cns
         coho            = $coho.coho
         apogee          = $apogee.apogee
+        detections      = @(Build-DetectionsObject -Data $d -TopN $script:TopN)
+        hourly          = (Build-HourlyObject -Data $d -AreaFilter $AreaFilter)
+        driverDeepDive  = @($deepDive)
         perf            = $perf
     }
 }
@@ -2831,9 +3141,123 @@ function script:Add-SnapPatternTable {
     [void]$Sb.AppendLine('</tbody></table>')
 }
 
+# Generic renderer over the whole rule table - adding a rule needs no edit here.
+function script:Add-SnapDetectionsSection {
+    param([System.Text.StringBuilder]$Sb, $Encode, $Detections)
+    [void]$Sb.AppendLine('<section id="detections"><h2>Detections</h2><div class="card">')
+    $groups = @($Detections)
+    if ($groups.Count -eq 0) {
+        [void]$Sb.AppendLine('<p class="muted">No rule detections in this window.</p>')
+        [void]$Sb.AppendLine('</div></section>')
+        return
+    }
+    foreach ($g in $groups) {
+        [void]$Sb.AppendLine(('<h3>{0} <span class="meta">({1:N0} lines)</span></h3>' -f (& $Encode ([string]$g.group)), [int]$g.total))
+        foreach ($r in @($g.rules)) {
+            # A rule carrying a Measure leads with the aggregate: counting lines understates
+            # things like "We counted N COVs", where the payload is the number.
+            $head = ''
+            $ms = $r.measures
+            if ($ms) {
+                $parts = @()
+                foreach ($mk in @($ms.Keys)) { $parts += ('{0}: <strong>{1:N0}</strong>' -f (& $Encode ([string]$mk)), $ms[$mk]) }
+                if ($parts.Count -gt 0) { $head = ($parts -join ' &middot; ') + (' &middot; over {0:N0} line(s)' -f [int]$r.count) }
+            }
+            if (-not $head) { $head = '<strong>{0:N0}</strong> line(s)' -f [int]$r.count }
+
+            $sevTxt = ''
+            if ($r.severities) {
+                $sp = @()
+                foreach ($sk in @($r.severities.Keys)) { $sp += ('{0} {1:N0}' -f (& $Encode ([string]$sk)), [int]$r.severities[$sk]) }
+                if ($sp.Count -gt 0) { $sevTxt = ' &middot; ' + ($sp -join ', ') }
+            }
+            [void]$Sb.AppendLine(('<h4>{0}</h4>' -f (& $Encode ([string]$r.label))))
+            [void]$Sb.AppendLine(('<p>{0}{1}</p>' -f $head, $sevTxt))
+            if ($r.first) {
+                [void]$Sb.AppendLine(('<p class="meta">{0} &rarr; {1} &middot; rule <span class="mono">{2}</span></p>' -f `
+                    (& $Encode ([string]$r.first)), (& $Encode ([string]$r.last)), (& $Encode ([string]$r.id))))
+            }
+            if ($r.sample) { [void]$Sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $Encode ([string]$r.sample)))) }
+            if ($r.buckets) {
+                foreach ($bname in @($r.buckets.Keys)) {
+                    $b = $r.buckets[$bname]
+                    $rows = @($b.top)
+                    if ($rows.Count -eq 0) { continue }
+                    [void]$Sb.AppendLine(('<p class="meta">By {0} &mdash; {1:N0} distinct{2}</p>' -f `
+                        (& $Encode ([string]$bname)), [int]$b.distinct,
+                            $(if ($b.capped) { ' (capped)' } else { '' })))
+                    Add-SnapCountNameTable -Sb $Sb -Encode $Encode -Rows $rows -NameKey 'value' -NameHeader ([string]$bname)
+                }
+            }
+        }
+    }
+    [void]$Sb.AppendLine('</div></section>')
+}
+
+# Which sections an organize mode renders. Mirrors V1.3's eight inclusion flags (1718-1868)
+# so text and HTML agree, and so organize stays a render-time concern - the snapshot object
+# is identical in all three modes.
+function script:Get-ReportSections {
+    param($Snap)
+    $opt = $Snap.options
+    $organize = 'All'
+    if ($opt -and $opt.organize) { $organize = [string]$opt.organize }
+
+    $inc = @{
+        organize         = $organize
+        bacnet           = $true
+        cns              = $true
+        coho             = $true
+        apogee           = $true
+        moduleHeadlines  = $false
+        severityPatterns = $true
+        driverDeepDive   = $false
+        fullDefault      = $true
+    }
+    if ($organize -eq 'Severity') {
+        $inc.bacnet = $false; $inc.cns = $false; $inc.coho = $false; $inc.apogee = $false
+        $inc.moduleHeadlines = $true
+        $inc.fullDefault = $false
+    }
+    elseif ($organize -eq 'Driver') {
+        $inc.fullDefault = $false
+        $inc.severityPatterns = $false
+        $inc.driverDeepDive = $true
+        $inc.bacnet = $false; $inc.cns = $false; $inc.coho = $false; $inc.apogee = $false
+        # Re-enable the modules the chosen drivers actually touch (V1.3 1849-1856).
+        foreach ($drv in @($opt.drivers)) {
+            $name = [string]$drv
+            if ($name -match 'BACnet') { $inc.bacnet = $true }
+            if ($name -match 'ApplicationFramework|ICns') { $inc.cns = $true }
+            if ($name -match 'CoHo') { $inc.coho = $true; $inc.apogee = $true; $inc.bacnet = $true }
+            if ($name -match '(?i)Apogee') { $inc.apogee = $true }
+        }
+        $bac = $Snap.bacnet
+        if ($bac -and (([int]$bac.collectTrend + [int]$bac.timeSync) -gt 0)) { $inc.bacnet = $true }
+        $apo = $Snap.apogee
+        if ($apo -and (([int]$apo.drvLines + [int]$apo.trendOverflow) -gt 0)) { $inc.apogee = $true }
+    }
+    $inc.managers = ($inc.fullDefault -or $inc.driverDeepDive)
+    $inc.perf = $inc.fullDefault
+    $inc.hourly = $inc.fullDefault
+    $inc.detections = ($organize -ne 'Severity')
+    return $inc
+}
+
+function script:Add-SnapHourlyTable {
+    param([System.Text.StringBuilder]$Sb, $Encode, $Rows)
+    [void]$Sb.AppendLine('<table class="data"><thead><tr><th>Hour</th><th>All</th><th>SEVERE</th><th>WARNING</th></tr></thead><tbody>')
+    foreach ($r in @($Rows)) {
+        [void]$Sb.AppendLine(('<tr><td class="mono">{0}</td><td>{1:N0}</td><td>{2:N0}</td><td>{3:N0}</td></tr>' -f `
+            (& $Encode ([string]$r.hour)), [int]$r.total, [int]$r.severe, [int]$r.warning))
+    }
+    [void]$Sb.AppendLine('</tbody></table>')
+}
+
 function script:Convert-SnapshotToHtml {
     param($Snap)
     $e = { param($s) [System.Net.WebUtility]::HtmlEncode([string]$s) }
+    $inc = Get-ReportSections -Snap $Snap
     $sb = New-Object System.Text.StringBuilder
     $win = $Snap.window
     $winLabel = if ($win.mode -eq 'entire') {
@@ -2996,20 +3420,27 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     [void]$sb.AppendLine('<div class="brand">PVSS Log Watch</div>')
     [void]$sb.AppendLine(('<h1>Snapshot report <span class="meta">v{0}</span></h1>' -f (& $e $Snap.meta.version)))
     [void]$sb.AppendLine('<nav class="jump" aria-label="Report sections">')
-    foreach ($link in @(
-            @{ H = '#findings'; L = 'Findings' },
-            @{ H = '#severity'; L = 'Severity' },
-            @{ H = '#charts'; L = 'Charts' },
-            @{ H = '#project'; L = 'Project restarts' },
-            @{ H = '#mgr-health'; L = 'Manager health' },
-            @{ H = '#managers'; L = 'Top managers' },
-            @{ H = '#patterns'; L = 'Patterns' },
-            @{ H = '#bacnet'; L = 'BACnet' },
-            @{ H = '#cns'; L = 'CNS' },
-            @{ H = '#coho'; L = 'CoHo' },
-            @{ H = '#apogee'; L = 'Apogee' },
-            @{ H = '#perf'; L = 'Perf' }
-        )) {
+    $navLinks = @(
+        @{ H = '#options'; L = 'Options'; On = $true },
+        @{ H = '#findings'; L = 'Findings'; On = $true },
+        @{ H = '#severity'; L = 'Severity'; On = $true },
+        @{ H = '#charts'; L = 'Charts'; On = $true },
+        @{ H = '#hourly'; L = 'Hourly'; On = $inc.hourly },
+        @{ H = '#project'; L = 'Project restarts'; On = $true },
+        @{ H = '#mgr-health'; L = 'Manager health'; On = $true },
+        @{ H = '#managers'; L = 'Top managers'; On = $inc.managers },
+        @{ H = '#patterns'; L = 'Patterns'; On = $inc.severityPatterns },
+        @{ H = '#deep-dive'; L = 'Driver deep-dive'; On = $inc.driverDeepDive },
+        @{ H = '#headlines'; L = 'Module headlines'; On = $inc.moduleHeadlines },
+        @{ H = '#bacnet'; L = 'BACnet'; On = $inc.bacnet },
+        @{ H = '#cns'; L = 'CNS'; On = $inc.cns },
+        @{ H = '#coho'; L = 'CoHo'; On = $inc.coho },
+        @{ H = '#apogee'; L = 'Apogee'; On = $inc.apogee },
+        @{ H = '#detections'; L = 'Detections'; On = $inc.detections },
+        @{ H = '#perf'; L = 'Perf'; On = $inc.perf }
+    )
+    foreach ($link in $navLinks) {
+        if (-not $link.On) { continue }
         [void]$sb.AppendLine(('<a href="{0}">{1}</a>' -f $link.H, $link.L))
     }
     [void]$sb.AppendLine('</nav></header>')
@@ -3023,6 +3454,28 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
     [void]$sb.AppendLine(('<p class="meta">Module pages (BACnet/CNS/…) show all areas; area filter applies to charts, patterns, managers, and severity KPIs.</p>'))
     [void]$sb.AppendLine('</div><main>')
+
+    $opt = $Snap.options
+    [void]$sb.AppendLine('<section id="options"><h2>Options used</h2><div class="card">')
+    if ($opt) {
+        [void]$sb.AppendLine('<table class="data"><thead><tr><th>Option</th><th>Value</th></tr></thead><tbody>')
+        $winTxt = if ([string]$opt.window -eq 'entire') { 'entire file' } else { ('last {0:N0} minutes' -f [int]$opt.lastMinutes) }
+        foreach ($row in @(
+                @{ K = 'Organize'; V = [string]$opt.organize },
+                @{ K = 'Severities'; V = (@($opt.severities) -join ', ') },
+                @{ K = 'Areas'; V = (@($opt.areas) -join ', ') },
+                @{ K = 'Drivers'; V = $(if (@($opt.drivers).Count -gt 0) { (@($opt.drivers) -join ', ') } else { '(none)' }) },
+                @{ K = 'TopN'; V = ('{0}' -f [int]$opt.topN) },
+                @{ K = 'Sample/pattern'; V = ('{0}' -f [int]$opt.samplePerPattern) },
+                @{ K = 'Time window'; V = $winTxt },
+                @{ K = 'Format'; V = [string]$opt.format }
+            )) {
+            [void]$sb.AppendLine(('<tr><td>{0}</td><td class="mono">{1}</td></tr>' -f (& $e $row.K), (& $e $row.V)))
+        }
+        [void]$sb.AppendLine('</tbody></table>')
+    }
+    else { [void]$sb.AppendLine('<p class="muted">No options recorded.</p>') }
+    [void]$sb.AppendLine('</div></section>')
 
     [void]$sb.AppendLine('<section id="findings"><h2>Findings</h2><ul class="findings">')
     if (-not $Snap.findings -or @($Snap.findings).Count -eq 0) {
@@ -3076,6 +3529,25 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         [void]$sb.AppendLine('</div>')
     }
     [void]$sb.AppendLine('</section>')
+
+    if ($inc.hourly) {
+        $hr = $Snap.hourly
+        [void]$sb.AppendLine('<section id="hourly"><h2>Hourly volume</h2><div class="card">')
+        if ($hr -and [int]$hr.hourCount -gt 0) {
+            if ($hr.truncated) {
+                [void]$sb.AppendLine(('<p class="meta">Hours in analyzed window: {0:N0} (showing most recent 24 + top 10 busiest)</p>' -f [int]$hr.hourCount))
+                Add-SnapHourlyTable -Sb $sb -Encode $e -Rows $hr.rows
+                [void]$sb.AppendLine('<h3>Busiest hours (top 10 by total lines)</h3>')
+                Add-SnapHourlyTable -Sb $sb -Encode $e -Rows $hr.busiest
+            }
+            else {
+                [void]$sb.AppendLine(('<p class="meta">Hours in analyzed window: {0:N0}</p>' -f [int]$hr.hourCount))
+                Add-SnapHourlyTable -Sb $sb -Encode $e -Rows $hr.rows
+            }
+        }
+        else { [void]$sb.AppendLine('<p class="muted">No hourly data.</p>') }
+        [void]$sb.AppendLine('</div></section>')
+    }
 
     # Project restart cycles
     $pl = $Snap.projectLifecycle
@@ -3151,6 +3623,7 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     [void]$sb.AppendLine('</section>')
 
+    if ($inc.managers) {
     [void]$sb.AppendLine('<section id="managers"><h2>Top managers</h2>')
     $mgrs = @($Snap.topManagers)
     if ($mgrs.Count -eq 0) {
@@ -3178,26 +3651,73 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         [void]$sb.AppendLine('</tbody></table>')
     }
     [void]$sb.AppendLine('</section>')
-
-    [void]$sb.AppendLine('<section id="patterns"><h2>Patterns by severity</h2>')
-    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
-        $color = switch ($s) {
-            'FATAL' { 'var(--sev-fatal)' }
-            'SEVERE' { 'var(--sev-severe)' }
-            'ERROR' { 'var(--sev-error)' }
-            default { 'var(--sev-warning)' }
-        }
-        $list = @()
-        if ($Snap.patternsBySeverity -and $Snap.patternsBySeverity.$s) { $list = @($Snap.patternsBySeverity.$s) }
-        [void]$sb.AppendLine(('<h3 style="color:{0}">{1} <span class="meta">({2})</span></h3>' -f $color, $s, $list.Count))
-        if ($list.Count -eq 0) {
-            [void]$sb.AppendLine('<p class="muted">No patterns (filtered out or none in window).</p>')
-            continue
-        }
-        Add-SnapPatternTable -Sb $sb -Encode $e -Rows $list
     }
-    [void]$sb.AppendLine('</section>')
 
+    if ($inc.severityPatterns) {
+        [void]$sb.AppendLine('<section id="patterns"><h2>Patterns by severity</h2>')
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
+            $color = switch ($s) {
+                'FATAL' { 'var(--sev-fatal)' }
+                'SEVERE' { 'var(--sev-severe)' }
+                'ERROR' { 'var(--sev-error)' }
+                default { 'var(--sev-warning)' }
+            }
+            $list = @()
+            if ($Snap.patternsBySeverity -and $Snap.patternsBySeverity.$s) { $list = @($Snap.patternsBySeverity.$s) }
+            [void]$sb.AppendLine(('<h3 style="color:{0}">{1} <span class="meta">({2})</span></h3>' -f $color, $s, $list.Count))
+            if ($list.Count -eq 0) {
+                [void]$sb.AppendLine('<p class="muted">No patterns (filtered out or none in window).</p>')
+                continue
+            }
+            Add-SnapPatternTable -Sb $sb -Encode $e -Rows $list
+        }
+        [void]$sb.AppendLine('</section>')
+    }
+
+    if ($inc.driverDeepDive) {
+        [void]$sb.AppendLine('<section id="deep-dive"><h2>Driver deep-dive</h2>')
+        $dds = @($Snap.driverDeepDive)
+        if ($dds.Count -eq 0) { [void]$sb.AppendLine('<p class="muted">No drivers selected.</p>') }
+        foreach ($dd in $dds) {
+            [void]$sb.AppendLine('<div class="card">')
+            [void]$sb.AppendLine(('<h3>{0}</h3>' -f (& $e ([string]$dd.name))))
+            [void]$sb.AppendLine(('<p>Total lines: <strong>{0:N0}</strong></p>' -f [int]$dd.count))
+            if ($dd.severities) {
+                $sp = @()
+                foreach ($sk in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+                    $sp += ('{0} {1:N0}' -f $sk, [int]$dd.severities.$sk)
+                }
+                [void]$sb.AppendLine(('<p class="meta">{0}</p>' -f ($sp -join ' &middot; ')))
+            }
+            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
+                $list = @()
+                if ($dd.patternsBySeverity -and $dd.patternsBySeverity.$s) { $list = @($dd.patternsBySeverity.$s) }
+                [void]$sb.AppendLine(('<h4>Patterns &mdash; {0} <span class="meta">({1})</span></h4>' -f $s, $list.Count))
+                if ($list.Count -eq 0) { [void]$sb.AppendLine('<p class="muted">(none)</p>'); continue }
+                Add-SnapPatternTable -Sb $sb -Encode $e -Rows $list
+            }
+            [void]$sb.AppendLine('</div>')
+        }
+        [void]$sb.AppendLine('</section>')
+    }
+
+    if ($inc.moduleHeadlines) {
+        $mh = $Snap.moduleHeadlines
+        [void]$sb.AppendLine('<section id="headlines"><h2>Module headlines</h2><div class="card">')
+        if ($mh) {
+            [void]$sb.AppendLine(('<p>BACnet &mdash; Failed: <strong>{0:N0}</strong> &middot; OK: <strong>{1:N0}</strong> &middot; object list: <strong>{2:N0}</strong> &middot; CollectTrend: <strong>{3:N0}</strong> &middot; TimeSync: <strong>{4:N0}</strong></p>' -f `
+                [int]$mh.bacnet.failed, [int]$mh.bacnet.ok, [int]$mh.bacnet.objectList, [int]$mh.bacnet.collectTrend, [int]$mh.bacnet.timeSync))
+            [void]$sb.AppendLine(('<p>CNS &mdash; ResolveNodes: <strong>{0:N0}</strong> &middot; ReducedFunction: <strong>{1:N0}</strong> &middot; TryRenewSession: <strong>{2:N0}</strong> &middot; ICns: <strong>{3:N0}</strong></p>' -f `
+                [int]$mh.cns.resolveNodes, [int]$mh.cns.reducedFunction, [int]$mh.cns.tryRenew, [int]$mh.cns.icns))
+            [void]$sb.AppendLine(('<p>CoHo &mdash; stuck/drop: <strong>{0:N0}</strong></p>' -f [int]$mh.coho.stuck))
+            [void]$sb.AppendLine(('<p>Apogee &mdash; events: <strong>{0:N0}</strong> &middot; UpdatePoints: <strong>{1:N0}</strong> &middot; driver lines: <strong>{2:N0}</strong> &middot; trend overflow: <strong>{3:N0}</strong> &middot; get-data fail: <strong>{4:N0}</strong></p>' -f `
+                [int]$mh.apogee.events, [int]$mh.apogee.updatePoints, [int]$mh.apogee.drvLines, [int]$mh.apogee.trendOverflow, [int]$mh.apogee.getDataFail))
+        }
+        else { [void]$sb.AppendLine('<p class="muted">No module headlines.</p>') }
+        [void]$sb.AppendLine('</div></section>')
+    }
+
+    if ($inc.bacnet) {
     $bac = $Snap.bacnet
     [void]$sb.AppendLine('<section id="bacnet"><h2>BACnet</h2><div class="card">')
     if ($bac) {
@@ -3275,8 +3795,10 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         [void]$sb.AppendLine('<p class="muted">No BACnet data.</p>')
     }
     [void]$sb.AppendLine('</div></section>')
+    }
 
     $cns = $Snap.cns
+    if ($inc.cns) {
     [void]$sb.AppendLine('<section id="cns"><h2>CNS</h2><div class="card">')
     if ($cns) {
         [void]$sb.AppendLine(('<p>ResolveNodes: <strong>{0:N0}</strong> &middot; ReducedFunction: <strong>{1:N0}</strong> &middot; ICns: <strong>{2:N0}</strong> &middot; TryRenewSession: <strong>{3:N0}</strong></p>' -f `
@@ -3296,8 +3818,10 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     else { [void]$sb.AppendLine('<p class="muted">No CNS data.</p>') }
     [void]$sb.AppendLine('</div></section>')
+    }
 
     $coho = $Snap.coho
+    if ($inc.coho) {
     [void]$sb.AppendLine('<section id="coho"><h2>CoHo</h2><div class="card">')
     if ($coho) {
         [void]$sb.AppendLine(('<p>Stuck/drop: <strong>{0:N0}</strong></p>' -f [int]$coho.stuck))
@@ -3317,8 +3841,10 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     else { [void]$sb.AppendLine('<p class="muted">No CoHo data.</p>') }
     [void]$sb.AppendLine('</div></section>')
+    }
 
     $apo = $Snap.apogee
+    if ($inc.apogee) {
     [void]$sb.AppendLine('<section id="apogee"><h2>Apogee</h2><div class="card">')
     if ($apo -and (([int]$apo.events + [int]$apo.drvLines + [int]$apo.trendOverflow + [int]$apo.alertId + [int]$apo.getDataFail) -gt 0)) {
         [void]$sb.AppendLine('<h3>CoHo / Orch Apogee</h3>')
@@ -3363,7 +3889,13 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     }
     else { [void]$sb.AppendLine('<p class="muted">No Apogee data.</p>') }
     [void]$sb.AppendLine('</div></section>')
+    }
 
+    if ($inc.detections) {
+        Add-SnapDetectionsSection -Sb $sb -Encode $e -Detections $Snap.detections
+    }
+
+    if ($inc.perf) {
     [void]$sb.AppendLine('<section id="perf"><h2>Perf / parse notes</h2><div class="card">')
     if ($Snap.perf -and $Snap.perf.perfCategories) {
         [void]$sb.AppendLine('<table class="data"><thead><tr><th>Count</th><th>Category</th></tr></thead><tbody>')
@@ -3376,11 +3908,398 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         [void]$sb.AppendLine(('<p class="meta">Unparsed / skipped lines: {0:N0}</p>' -f [int]$Snap.perf.unparsedLines))
     }
     [void]$sb.AppendLine('</div></section>')
+    }
 
     [void]$sb.AppendLine(('<footer>Snapshot from live Watch state (no re-scan). Watch v{0} &middot; tool by {1}.</footer>' -f `
         (& $e $Snap.meta.version), (& $e $script:Author)))
     [void]$sb.AppendLine('</main></body></html>')
     return $sb.ToString()
+}
+
+# Second renderer over the same Build-SnapshotObject result - never text-scraped from HTML.
+# Section headers, column widths and wording follow OfflineAnalyze 1.3 so an operator moving
+# from the old tool reads the same report.
+function script:Convert-SnapshotToText {
+    param($Snap)
+    $inc = Get-ReportSections -Snap $Snap
+    $sb = New-Object System.Text.StringBuilder
+    $W = {
+        param($Text = '')
+        [void]$sb.AppendLine([string]$Text)
+    }
+
+    $meta = $Snap.meta
+    $win = $Snap.window
+    & $W '================================================================================'
+    & $W ' PVSS / WinCC OA Log Analysis Report'
+    & $W '================================================================================'
+    & $W ("Tool      : {0} v{1} by {2}" -f $meta.tool, $meta.version, $script:Author)
+    & $W ("Generated : {0}" -f $meta.generated)
+    & $W ("Log file  : {0}" -f $meta.logPath)
+    & $W ("Size      : {0:N2} MB" -f ([double]$meta.fileLength / 1MB))
+    & $W ("Lines     : {0:N0} analyzed (WinCC OA header, in window)" -f [int]$meta.parsedLines)
+    & $W ("Time span : {0}  -->  {1}" -f $win.first, $win.last)
+    & $W ''
+
+    $opt = $Snap.options
+    & $W '--- Options used ---'
+    if ($opt) {
+        & $W (" Organize      : {0}" -f $opt.organize)
+        & $W (" Severities    : {0}" -f ((@($opt.severities)) -join ', '))
+        & $W (" Areas         : {0}" -f ((@($opt.areas)) -join ', '))
+        if (@($opt.drivers).Count -gt 0) { & $W (" Drivers       : {0}" -f ((@($opt.drivers)) -join ', ')) }
+        & $W (" TopN          : {0}" -f [int]$opt.topN)
+        & $W (" Sample/patt   : {0}" -f [int]$opt.samplePerPattern)
+        & $W (" Time mode     : {0}" -f $(if ([string]$opt.window -eq 'entire') { 'entire file' } else { ('last {0:N0} minutes' -f [int]$opt.lastMinutes) }))
+        & $W (" Format        : {0}" -f $opt.format)
+    }
+    & $W ''
+
+    & $W '--- Findings ---'
+    foreach ($f in @($Snap.findings)) { & $W (" * {0}" -f $f) }
+    & $W ''
+
+    & $W '--- Severity counts ---'
+    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+        $n = 0
+        if ($Snap.severityCounts -and $null -ne $Snap.severityCounts.$s) { $n = [int]$Snap.severityCounts.$s }
+        & $W (' {0,8:N0}  {1}' -f $n, $s)
+    }
+    & $W ''
+
+    & $W '--- Area counts ---'
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) {
+        $n = 0
+        if ($Snap.areaCounts -and $null -ne $Snap.areaCounts.$a) { $n = [int]$Snap.areaCounts.$a }
+        & $W (' {0,8:N0}  {1}' -f $n, $a)
+    }
+    & $W ''
+
+    if ($inc.moduleHeadlines) {
+        $mh = $Snap.moduleHeadlines
+        & $W '--- Module headlines ---'
+        & $W (' BACnet : Failed={0:N0} OK={1:N0} endedFailed={2:N0} endedOK={3:N0} flappers={4:N0} objectList={5:N0} CollectTrend={6:N0} ({7:N0} props) TimeSync={8:N0} ({9:N0} props)' -f `
+            [int]$mh.bacnet.failed, [int]$mh.bacnet.ok, [int]$mh.bacnet.endedFailed, [int]$mh.bacnet.endedOk,
+                [int]$mh.bacnet.flappers, [int]$mh.bacnet.objectList, [int]$mh.bacnet.collectTrend,
+                [int]$mh.bacnet.collectTrendProps, [int]$mh.bacnet.timeSync, [int]$mh.bacnet.timeSyncProps)
+        & $W (' CNS    : ResolveNodes={0:N0} ReducedFunction={1:N0} TryRenewSession={2:N0}' -f `
+            [int]$mh.cns.resolveNodes, [int]$mh.cns.reducedFunction, [int]$mh.cns.tryRenew)
+        & $W (' CoHo   : stuck/drop={0:N0}' -f [int]$mh.coho.stuck)
+        & $W (' Apogee : events={0:N0} UpdatePoints={1:N0} | Drv overflow={2:N0} seq={3:N0} AlertID={4:N0} getData={5:N0}' -f `
+            [int]$mh.apogee.events, [int]$mh.apogee.updatePoints, [int]$mh.apogee.trendOverflow,
+                [int]$mh.apogee.trendSeq, [int]$mh.apogee.alertId, [int]$mh.apogee.getDataFail)
+        & $W ''
+    }
+
+    $pl = $Snap.projectLifecycle
+    & $W '--- Project restarts (pmon) ---'
+    & $W ' Each row is one cycle: up -> shutdown -> stopped -> next up. Uptime = up to shutdown; stop = shutdown to stopped; downtime = stopped to next up (blank when still down). START_MODE counted only (too frequent to list).'
+    if ($pl) {
+        $cycles = @($pl.cycles)
+        & $W ('  up={0:N0}  stopped={1:N0}  shutdown={2:N0}  START_MODE={3:N0}  cycles={4:N0}{5}' -f `
+            [int]$pl.up, [int]$pl.stopped, [int]$pl.shutdown, [int]$pl.startMode, $cycles.Count,
+                $(if ($pl.capped) { '  (events capped at 200)' } else { '' }))
+        if ($cycles.Count -gt 0) {
+            & $W ' | Up | Shutdown | Uptime | Stopped | Stop | Downtime | Note |'
+            foreach ($c in $cycles) {
+                $note = @()
+                if ($c.upImplied) { $note += 'up implied (window start)' }
+                if ($c.stillUp) { $note += 'still up' }
+                if ($c.stillDown) { $note += 'still down' }
+                & $W (' | {0} | {1} | {2} | {3} | {4} | {5} | {6} |' -f `
+                    $c.up, $c.shutdown, $c.uptime, $c.stopped, $c.stopDuration, $c.downtime, ($note -join '; '))
+            }
+        }
+        else { & $W '   (none listed)' }
+    }
+    & $W ''
+
+    $mhz = $Snap.managerHealth
+    & $W '--- Manager health (pmon) ---'
+    & $W ' Start/stop = Manager Start PROJ / Manager Stop. Restarts = Detected stopped manager. Blocking = no heartbeat (busy/overloaded).'
+    if ($mhz -and $mhz.totals) {
+        $t = $mhz.totals
+        & $W ('  Starts={0:N0}  Stops={1:N0}  Auto-restarts={2:N0}  Blocking={3:N0}  Unblocked={4:N0}  Driver-ready={5:N0}' -f `
+            [int]$t.starts, [int]$t.stops, [int]$t.restarts, [int]$t.blocking, [int]$t.unblocked, [int]$mhz.driverReady)
+        & $W '  Per-manager (top 25 by activity):'
+        & $W ('   {0,-40} {1,7} {2,7} {3,8} {4,9} {5,9}' -f 'Manager', 'Starts', 'Stops', 'Restart', 'Blocking', 'Unblock')
+        foreach ($r in @($mhz.managers)) {
+            & $W ('   {0,-40} {1,7:N0} {2,7:N0} {3,8:N0} {4,9:N0} {5,9:N0}' -f `
+                $r.name, [int]$r.starts, [int]$r.stops, [int]$r.restarts, [int]$r.blocking, [int]$r.unblocked)
+        }
+    }
+    & $W ''
+
+    if ($inc.managers) {
+        # Watch ranks 20 managers for the dashboard regardless of TopN, so the heading
+        # reports the list length rather than promising TopN like V1.3 did.
+        $mgrs = @($Snap.topManagers)
+        & $W ('--- Top {0} components (managers) ---' -f $mgrs.Count)
+        foreach ($m in $mgrs) { & $W (' {0,8:N0}  {1}' -f [int]$m.count, $m.name) }
+        & $W ''
+    }
+
+    if ($inc.perf) {
+        & $W '--- Performance-related keyword categories ---'
+        $pc = @($Snap.perf.perfCategories)
+        if ($pc.Count -eq 0) { & $W ' (none matched)' }
+        else { foreach ($row in $pc) { & $W (' {0,8:N0}  {1}' -f [int]$row.count, $row.name) } }
+        & $W ''
+    }
+
+    if ($inc.hourly) {
+        $hr = $Snap.hourly
+        if ($hr.truncated) {
+            & $W '--- Hourly volume (most recent 24 hours) ---'
+            & $W (' Hours in analyzed window: {0:N0} (showing most recent 24 + top 10 busiest)' -f [int]$hr.hourCount)
+        }
+        else {
+            & $W '--- Hourly volume (all parsed / SEVERE / WARNING) ---'
+            & $W (' Hours in analyzed window: {0:N0}' -f [int]$hr.hourCount)
+        }
+        & $W (' {0,-16} {1,10} {2,10} {3,10}' -f 'Hour', 'All', 'SEVERE', 'WARNING')
+        foreach ($r in @($hr.rows)) {
+            & $W (' {0,-16} {1,10:N0} {2,10:N0} {3,10:N0}' -f $r.hour, [int]$r.total, [int]$r.severe, [int]$r.warning)
+        }
+        if ($hr.truncated) {
+            & $W ''
+            & $W '--- Busiest hours (top 10 by total lines) ---'
+            & $W (' {0,-16} {1,10} {2,10} {3,10}' -f 'Hour', 'All', 'SEVERE', 'WARNING')
+            foreach ($r in @($hr.busiest)) {
+                & $W (' {0,-16} {1,10:N0} {2,10:N0} {3,10:N0}' -f $r.hour, [int]$r.total, [int]$r.severe, [int]$r.warning)
+            }
+        }
+        & $W ''
+    }
+
+    if ($inc.bacnet) {
+        $bac = $Snap.bacnet
+        & $W '--- BACnet module ---'
+        if ($bac) {
+            & $W ' Device status (INFO)'
+            & $W ('  Failed transitions : {0:N0}  (unique devices: {1:N0})' -f [int]$bac.failed, [int]$bac.failedDevices)
+            & $W ('  OK transitions     : {0:N0}  (unique devices: {1:N0})' -f [int]$bac.ok, [int]$bac.okDevices)
+            & $W ('  Last-known status  : ended Failed={0:N0}  ended OK={1:N0}  (devices seen in window)' -f [int]$bac.endedFailed, [int]$bac.endedOk)
+            & $W ('  Flapping (>= {0} Failed/OK changes): {1:N0} devices' -f [int]$script:BacFlapMin, [int]$bac.flappers)
+            $act = @($bac.activity)
+            if ($act.Count -gt 0) {
+                & $W ''
+                & $W '  Device status activity (top 20 by Failed transitions):'
+                & $W '   rank   Failed     OK  flips  device'
+                $rank = 0
+                foreach ($r in $act) {
+                    $rank++
+                    & $W ('   {0,4}  {1,6:N0}  {2,6:N0}  {3,5:N0}  {4}' -f $rank, [int]$r.failed, [int]$r.ok, [int]$r.flips, $r.device)
+                }
+            }
+            $ended = @($bac.endedFailedList)
+            & $W ''
+            & $W '  Devices that ended Failed (last-known in window, top 20):'
+            if ($ended.Count -eq 0) { & $W '   (none)' }
+            else {
+                & $W '   rank   Failed     OK  flips  device'
+                $rank = 0
+                foreach ($r in $ended) {
+                    $rank++
+                    & $W ('   {0,4}  {1,6:N0}  {2,6:N0}  {3,5:N0}  {4}' -f $rank, [int]$r.failed, [int]$r.ok, [int]$r.flips, $r.device)
+                }
+            }
+            & $W ''
+            & $W ' Object list (WARNING)'
+            & $W ('  Events            : {0:N0}  (unique devices: {1:N0})' -f [int]$bac.objectList, [int]$bac.objectListDevices)
+            $objTop = @($bac.objectListTop)
+            if ($objTop.Count -gt 0) {
+                & $W '  Top devices by object-list warnings:'
+                $rank = 0
+                foreach ($r in $objTop) { $rank++; & $W ('   {0,2}. {1,8:N0}  device {2}' -f $rank, [int]$r.count, $r.device) }
+            }
+            foreach ($cmd in @(
+                    @{ Label = ' BACnetCollectTrend (driver trend-collection command failures; often CoHo / Log_Enable)'
+                        N = [int]$bac.collectTrend; Props = [int]$bac.collectTrendProps
+                        Codes = @($bac.collectTrendCodes); Top = @($bac.collectTrendTop)
+                    },
+                    @{ Label = ' BACnetTimeSync (driver time-sync command failures; often CoHo / Local_Time)'
+                        N = [int]$bac.timeSync; Props = [int]$bac.timeSyncProps
+                        Codes = @($bac.timeSyncCodes); Top = @($bac.timeSyncTop)
+                    }
+                )) {
+                & $W ''
+                & $W $cmd.Label
+                & $W ('  Events             : {0:N0}  (unique properties: {1:N0})' -f $cmd.N, $cmd.Props)
+                if (@($cmd.Codes).Count -gt 0) {
+                    & $W '  Error codes:'
+                    foreach ($c in @($cmd.Codes)) { & $W ('    {0,8}  {1:N0}' -f $c.code, [int]$c.count) }
+                }
+                if (@($cmd.Top).Count -gt 0) {
+                    & $W '  Top properties:'
+                    $rank = 0
+                    foreach ($c in @($cmd.Top)) { $rank++; & $W ('   {0,4}  {1,6:N0}  {2}' -f $rank, [int]$c.count, $c.property) }
+                }
+            }
+        }
+        else { & $W ' (no BACnet data)' }
+        & $W ''
+    }
+
+    if ($inc.cns) {
+        $cns = $Snap.cns
+        & $W '--- CNS module (thin) ---'
+        & $W ('  ResolveNodes     : {0:N0}' -f [int]$cns.resolveNodes)
+        & $W ('  ReducedFunction  : {0:N0}' -f [int]$cns.reducedFunction)
+        & $W ('  ICns             : {0:N0}' -f [int]$cns.icns)
+        & $W ('  TryRenewSession  : {0:N0}' -f [int]$cns.tryRenew)
+        & $W ('  Top CNS-related patterns (top {0}):' -f [int]$opt.topN)
+        Add-TextPatternBlock -Writer $W -Rows @($cns.patterns) -Indent '  '
+        if (@($cns.patterns).Count -eq 0) { & $W '  (none)' }
+        & $W ''
+    }
+
+    if ($inc.coho) {
+        $coho = $Snap.coho
+        & $W '--- CoHo module (thin) ---'
+        & $W ('  Stuck/drop messages : {0:N0}' -f [int]$coho.stuck)
+        if ($coho.sample) { & $W ("  Example             : {0}" -f $coho.sample) }
+        & $W '  Top stuck names:'
+        $rank = 0
+        foreach ($n in @($coho.topNames)) { $rank++; & $W ('   {0,2}. {1,8:N0}  {2}' -f $rank, [int]$n.count, $n.name) }
+        if ($rank -eq 0) { & $W '   (none parsed)' }
+        & $W ''
+    }
+
+    if ($inc.apogee) {
+        $apo = $Snap.apogee
+        & $W '--- Apogee module ---'
+        & $W ' CoHo.Apogee* / Orch.Apogee* (orchestration / ApogeeBACnet path)'
+        & $W ('  Events              : {0:N0}' -f [int]$apo.events)
+        & $W ('  UpdatePoints        : {0:N0}' -f [int]$apo.updatePoints)
+        & $W ('  Trace repetitions   : {0:N0}' -f [int]$apo.repetition)
+        if ([int]$apo.other -gt 0) { & $W ('  Other               : {0:N0}' -f [int]$apo.other) }
+        & $W ('  Unique PPCL programs: {0:N0}' -f [int]$apo.uniquePpcl)
+        if ($apo.sample) { & $W ("  Example             : {0}" -f $apo.sample) }
+        & $W '  Top PPCL programs by UpdatePoints:'
+        $rank = 0
+        foreach ($p in @($apo.topPpcl)) { $rank++; & $W ('   {0,2}. {1,8:N0}  {2}' -f $rank, [int]$p.count, $p.name) }
+        if ($rank -eq 0) { & $W '   (none parsed)' }
+        & $W ''
+        & $W ' WCCOAApogeeDrv (native Apogee driver)'
+        & $W ('  Driver lines        : {0:N0}' -f [int]$apo.drvLines)
+        & $W ('  Trend buffer overflow: {0:N0}  (unique devices: {1:N0}, unique trends: {2:N0})' -f `
+            [int]$apo.trendOverflow, [int]$apo.trendDevices, [int]$apo.trendNames)
+        & $W ('  Sequence-gap lines  : {0:N0}  (Last sequence number... companion warnings)' -f [int]$apo.trendSeq)
+        & $W ('  AlertID issues      : {0:N0}' -f [int]$apo.alertId)
+        & $W ('  Query timeouts      : {0:N0}' -f [int]$apo.queryTimeout)
+        & $W ('  Get-data failures   : {0:N0}  (unique devices: {1:N0})' -f [int]$apo.getDataFail, [int]$apo.getDataDevices)
+        if ($apo.trendSample) { & $W ("  Trend example       : {0}" -f $apo.trendSample) }
+        if ($apo.alertSample) { & $W ("  AlertID example     : {0}" -f $apo.alertSample) }
+        if ($apo.timeoutSample) { & $W ("  Timeout example     : {0}" -f $apo.timeoutSample) }
+        if ($apo.getDataSample) { & $W ("  Get-data example    : {0}" -f $apo.getDataSample) }
+        foreach ($blk in @(
+                @{ H = '  Top devices by trend overflow:'; Rows = @($apo.topTrendDevices); K = 'device' },
+                @{ H = '  Top trends by overflow:'; Rows = @($apo.topTrends); K = 'trend' },
+                @{ H = '  Top devices by get-data failure:'; Rows = @($apo.topGetDataDevices); K = 'device' }
+            )) {
+            if (@($blk.Rows).Count -eq 0) { continue }
+            & $W $blk.H
+            $rank = 0
+            foreach ($r in @($blk.Rows)) { $rank++; & $W ('   {0,4}  {1,6:N0}  {2}' -f $rank, [int]$r.count, $r.($blk.K)) }
+        }
+        & $W ''
+    }
+
+    if ($inc.detections) {
+        foreach ($g in @($Snap.detections)) {
+            & $W ('--- Detections: {0} ---' -f $g.group)
+            & $W (' {0:N0} line(s) across {1:N0} rule(s)' -f [int]$g.total, @($g.rules).Count)
+            foreach ($r in @($g.rules)) {
+                & $W ''
+                & $W (' === {0} ===' -f $r.label)
+                $ms = $r.measures
+                if ($ms -and @($ms.Keys).Count -gt 0) {
+                    foreach ($mk in @($ms.Keys)) { & $W ('   {0,-14}: {1:N0}' -f $mk, $ms[$mk]) }
+                    & $W ('   {0,-14}: {1:N0}' -f 'lines', [int]$r.count)
+                }
+                else { & $W ('   {0,-14}: {1:N0}' -f 'lines', [int]$r.count) }
+                if ($r.severities -and @($r.severities.Keys).Count -gt 0) {
+                    $sp = @(); foreach ($sk in @($r.severities.Keys)) { $sp += ('{0}={1:N0}' -f $sk, [int]$r.severities[$sk]) }
+                    & $W ('   {0,-14}: {1}' -f 'severities', ($sp -join ' '))
+                }
+                & $W ('   {0,-14}: {1}  -->  {2}' -f 'window', $r.first, $r.last)
+                & $W ('   {0,-14}: {1}' -f 'rule', $r.id)
+                if ($r.sample) { & $W ('   {0,-14}: {1}' -f 'example', $r.sample) }
+                if ($r.buckets) {
+                    foreach ($bn in @($r.buckets.Keys)) {
+                        $b = $r.buckets[$bn]
+                        $rows = @($b.top)
+                        if ($rows.Count -eq 0) { continue }
+                        & $W ('   By {0} ({1:N0} distinct{2}):' -f $bn, [int]$b.distinct, $(if ($b.capped) { ', capped' } else { '' }))
+                        $rank = 0
+                        foreach ($x in $rows) { $rank++; & $W ('    {0,3}. {1,8:N0}  {2}' -f $rank, [int]$x.count, $x.value) }
+                    }
+                }
+            }
+            & $W ''
+        }
+    }
+
+    if ($inc.driverDeepDive) {
+        & $W '--- Driver deep-dive ---'
+        foreach ($dd in @($Snap.driverDeepDive)) {
+            & $W ''
+            & $W ("=== {0} ===" -f $dd.name)
+            & $W (' Total lines: {0:N0}' -f [int]$dd.count)
+            & $W ' Severity mix:'
+            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) {
+                & $W ('  {0,8:N0}  {1}' -f [int]$dd.severities.$s, $s)
+            }
+            foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
+                & $W (" Patterns - {0} (top {1}):" -f $s, [int]$opt.topN)
+                $list = @()
+                if ($dd.patternsBySeverity -and $dd.patternsBySeverity.$s) { $list = @($dd.patternsBySeverity.$s) }
+                if ($list.Count -eq 0) { & $W '  (none)'; continue }
+                Add-TextPatternBlock -Writer $W -Rows $list -Heading $null -Indent '  '
+            }
+        }
+        & $W ''
+    }
+
+    if ($inc.severityPatterns) {
+        & $W '--- Top patterns by severity ---'
+        foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING')) {
+            $list = @()
+            if ($Snap.patternsBySeverity -and $Snap.patternsBySeverity.$s) { $list = @($Snap.patternsBySeverity.$s) }
+            & $W ''
+            & $W (" {0} (top {1}):" -f $s, [int]$opt.topN)
+            if ($list.Count -eq 0) { & $W '   (none)'; continue }
+            Add-TextPatternBlock -Writer $W -Rows $list -Heading $null -Indent '  '
+        }
+        & $W ''
+    }
+
+    & $W '--- Notes ---'
+    & $W ' Project restart events are capped at 200; manager health lists the top 25 managers.'
+    & $W (' Parsed lines: {0:N0}   Unparsed / skipped: {1:N0}' -f [int]$meta.parsedLines, [int]$Snap.perf.unparsedLines)
+    & $W ''
+    & $W ("Report from live Watch state (no re-scan). Watch v{0} - tool by {1}." -f $meta.version, $script:Author)
+    return $sb.ToString()
+}
+
+function script:Add-TextPatternBlock {
+    param($Writer, $Rows, [string]$Heading = $null, [string]$Indent = ' ')
+    $list = @($Rows)
+    if ($list.Count -eq 0) { return }
+    if ($Heading) { & $Writer $Heading }
+    $rank = 0
+    foreach ($row in $list) {
+        $rank++
+        & $Writer ''
+        & $Writer ('{0} #{1}  count={2:N0}' -f $Indent, $rank, [int]$row.count)
+        & $Writer ('{0}     pattern: {1}' -f $Indent, $row.pattern)
+        if ($row.first) { & $Writer ('{0}     first  : {1}' -f $Indent, $row.first) }
+        if ($row.last) { & $Writer ('{0}     last   : {1}' -f $Indent, $row.last) }
+        foreach ($ex in @($row.samples)) {
+            if ($ex) { & $Writer ('{0}     example: {1}' -f $Indent, $ex) }
+        }
+    }
 }
 
 function script:Write-DownloadResponse {
@@ -3497,13 +4416,8 @@ function script:Handle-Api {
             $raw = Read-RequestBody -Request $req
             $body = $raw | ConvertFrom-Json
             $p = [string]$body.path
-            if ([string]::IsNullOrWhiteSpace($p)) { throw 'Path is required.' }
-            if (-not (Test-Path -LiteralPath $p)) { throw "File not found: $p" }
-            $item = Get-Item -LiteralPath $p
-            if ($item.PSIsContainer) { throw 'Path must be a file, not a directory.' }
             Write-WatchLog ("Start accepted  -  validating path: {0}" -f $p) Cyan
-            $test = [System.IO.File]::Open($p, [System.IO.FileMode]::Open, [System.IO.FileAccess]::Read, [System.IO.FileShare]::ReadWrite)
-            $test.Close()
+            [void](Assert-LogPathUsable -Path $p)
             Clear-EntireCache -Reason 'path change'
             $script:Sync['LogPath'] = $p
             Set-WatchConfigLogPath -Path $p
@@ -3653,7 +4567,13 @@ function script:Handle-Api {
             $areas = Parse-QueryAreas -Q $req.QueryString
             $fmt = ([string]$req.QueryString['format']).ToLowerInvariant()
             if ([string]::IsNullOrWhiteSpace($fmt)) { $fmt = 'html' }
-            $snap = Build-SnapshotObject -SevFilter $sev -AreaFilter $areas
+            $org = [string]$req.QueryString['organize']
+            if ($org -notin @('All', 'Severity', 'Driver')) { $org = 'All' }
+            $drv = @()
+            if ($req.QueryString['drivers']) {
+                $drv = @(([string]$req.QueryString['drivers']) -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })
+            }
+            $snap = Build-SnapshotObject -SevFilter $sev -AreaFilter $areas -Organize $org -Drivers $drv -Format $fmt
             $stamp = (Get-Date).ToString('yyyyMMdd_HHmmss')
             if ($fmt -eq 'json') {
                 $json = $snap | ConvertTo-Json -Depth 10 -Compress
@@ -3665,8 +4585,13 @@ function script:Handle-Api {
                 $bytes = [System.Text.Encoding]::UTF8.GetBytes($html)
                 Write-DownloadResponse -Context $Context -Bytes $bytes -ContentType 'text/html; charset=utf-8' -FileName ("PVSS_Log_Watch_Snapshot_{0}.html" -f $stamp)
             }
+            elseif ($fmt -eq 'text') {
+                $text = Convert-SnapshotToText -Snap $snap
+                $bytes = [System.Text.Encoding]::UTF8.GetBytes($text)
+                Write-DownloadResponse -Context $Context -Bytes $bytes -ContentType 'text/plain; charset=utf-8' -FileName ("PVSS_Log_Watch_Snapshot_{0}.txt" -f $stamp)
+            }
             else {
-                Write-StatusResponse -Context $Context -Code 400 -Message 'format must be html or json'
+                Write-StatusResponse -Context $Context -Code 400 -Message 'format must be html, text or json'
             }
         }
         catch {
@@ -3766,7 +4691,308 @@ function script:Open-WatchBrowser {
     Start-Process $Url | Out-Null
 }
 
+# --- batch report mode (PRD 5 / 7) ------------------------------------------------
+# Same Build-SnapshotObject and renderers as the dashboard; the only difference is that
+# nothing binds a port and the catch-up loop runs to completion synchronously.
+
+function script:Read-PromptDefault {
+    param([string]$PromptText, [string]$DefaultValue)
+    Write-Host ($PromptText + " [default: $DefaultValue]") -ForegroundColor Yellow
+    $ans = Read-Host
+    if ([string]::IsNullOrWhiteSpace($ans)) { return $DefaultValue }
+    return $ans.Trim()
+}
+
+function script:Read-PromptTimeBound {
+    param(
+        [string]$PromptText,
+        [string]$DefaultLabel,
+        [ValidateSet('From', 'To')][string]$Kind
+    )
+    while ($true) {
+        Write-Host ($PromptText + " [default: $DefaultLabel]") -ForegroundColor Yellow
+        $ans = Read-Host
+        if ([string]::IsNullOrWhiteSpace($ans)) { return '' }
+        $ans = $ans.Trim()
+        try {
+            [void](Convert-WindowBound -Text $ans -Kind $Kind)
+            return $ans
+        }
+        catch {
+            Write-Host ("  {0}" -f $_.Exception.Message) -ForegroundColor Red
+            Write-Host '  Examples: 2026.09.04 09:00   or   2026.09.04' -ForegroundColor DarkYellow
+        }
+    }
+}
+
+function script:Get-ReportOutPaths {
+    param([string]$LogFile, [string]$Requested, [string]$Fmt)
+    $wantText = ($Fmt -eq 'Text' -or $Fmt -eq 'Both')
+    $wantHtml = ($Fmt -eq 'Html' -or $Fmt -eq 'Both')
+    $stem = if ([string]::IsNullOrWhiteSpace($Requested)) {
+        $LogFile + '.analysis'
+    }
+    else {
+        [regex]::Replace($Requested, '(?i)\.(txt|html?)$', '')
+    }
+    return [ordered]@{
+        Text = if ($wantText) { $stem + '.txt' } else { $null }
+        Html = if ($wantHtml) { $stem + '.html' } else { $null }
+    }
+}
+
+function script:Invoke-ReportMode {
+    $script:Sync['BatchMode'] = $true
+    $bound = $script:CliOverrides
+    $log = Resolve-LogPath -Path $LogPath
+    $fi = Get-Item -LiteralPath $log
+
+    $fmt = $Format
+    $organize = $Organize
+    $topN = [int]$script:TopN
+    $fromText = $From
+    $toText = $To
+    $hours = [int]$LastHours
+    $sevNames = @($script:DefaultSeverities)
+    $areaNames = @($script:DefaultAreas)
+    $drivers = @()
+
+    Write-Host ''
+    Write-Host ("PVSS Log Watch {0} by {1}  -  report mode" -f $script:Version, $script:Author) -ForegroundColor Cyan
+    Write-Host ("Log : {0}" -f $log) -ForegroundColor Cyan
+    Write-Host ("Size: {0:N2} MB" -f ($fi.Length / 1MB))
+
+    # --- prompt 1: time window (must precede the scan; it sets the seek offset) ---
+    $peekFirst = (Get-ProbeTimestamps -Path $log -SeekPos 0L -MaxBytes 65536L).First
+    $peekLast = Get-LogFileEndTimestamp -Path $log
+    if ($peekFirst -or $peekLast) {
+        Write-Host ("Span: {0}  -->  {1}" -f `
+            $(if ($peekFirst) { Format-LogDateTime -Value $peekFirst } else { '?' }),
+            $(if ($peekLast) { Format-LogDateTime -Value $peekLast } else { '?' })) -ForegroundColor Cyan
+    }
+    $windowAsked = ($bound.ContainsKey('From') -or $bound.ContainsKey('To') -or
+        $bound.ContainsKey('LastHours') -or $bound.ContainsKey('LastMinutes') -or $bound.ContainsKey('Entire'))
+    if ($Interactive -and -not $windowAsked) {
+        Write-Host ''
+        $mode = Read-PromptDefault -PromptText 'Time filter: [E] Entire file  [H] Last N hours  [W] Absolute From/To' -DefaultValue 'E'
+        switch -Regex ($mode) {
+            '^[Hh]' {
+                if (-not $peekLast) { throw 'Cannot use last-N-hours: no timestamp found near the end of the log.' }
+                $h = 0
+                while ($h -le 0) {
+                    $hAns = Read-PromptDefault -PromptText 'How many hours back from end of log?' -DefaultValue '6'
+                    $parsed = 0
+                    if ([int]::TryParse($hAns, [ref]$parsed) -and $parsed -ge 1 -and $parsed -le 8760) { $h = $parsed }
+                    else { Write-Host '  Enter a whole number of hours between 1 and 8760.' -ForegroundColor Red }
+                }
+                $hours = $h
+            }
+            '^[Ww]' {
+                $fromText = Read-PromptTimeBound -PromptText 'From time (e.g. 2026.09.04 09:00)' -DefaultLabel 'start of file' -Kind From
+                $toText = Read-PromptTimeBound -PromptText 'To time   (e.g. 2026.09.04 12:00)' -DefaultLabel 'end of file' -Kind To
+            }
+            default { $fromText = ''; $toText = '' }
+        }
+    }
+
+    # LastHours wins over From/To, as in V1.3.
+    if ($hours -gt 0) {
+        if (-not $peekLast) { throw 'Cannot use -LastHours: no timestamp found near the end of the log.' }
+        $fromDt = $peekLast.AddHours(-1 * $hours)
+        $toDt = $peekLast
+        $fromText = Format-LogDateTime -Value $fromDt
+        $toText = Format-LogDateTime -Value $toDt
+        Write-Host ("Time filter: last {0} hour(s) ending {1}" -f $hours, (Format-LogDateTime -Value $peekLast)) -ForegroundColor Cyan
+    }
+    else {
+        $fromDt = if ($fromText) { Convert-WindowBound -Text $fromText -Kind From } else { $null }
+        $toDt = if ($toText) { Convert-WindowBound -Text $toText -Kind To } else { $null }
+    }
+    if ($fromDt -and $toDt -and $fromDt -gt $toDt) {
+        throw ("-From ({0}) is after -To ({1})." -f $fromText, $toText)
+    }
+
+    # --- seed the globals the Build-*Object family reads (PRD 5.1) ---
+    $script:Sync['LogPath'] = $log
+    $script:Sync['PrefillPath'] = $log
+    $script:Sync['FileLength'] = [int64]$fi.Length
+    $script:Sync['WindowFrom'] = $fromDt
+    $script:Sync['WindowTo'] = $toDt
+    if ($fromDt -or $toDt) { $script:Sync['WindowEntire'] = $false }
+    elseif ($bound.ContainsKey('LastMinutes')) {
+        $script:Sync['WindowEntire'] = $false
+        $script:Sync['LastMinutes'] = [int]$LastMinutes
+    }
+    else {
+        # Batch default is the whole file (OfflineAnalyze's default, not Watch's 60m).
+        $script:Sync['WindowEntire'] = $true
+    }
+
+    Begin-CatchUp -Path $log
+    while ([bool]$script:Sync['CatchUpActive']) {
+        Step-CatchUp -MaxLines 100000 -MaxMilliseconds 1000
+    }
+    Close-LogStream
+    if ($script:Sync['LastError']) { throw ("Scan failed: {0}" -f $script:Sync['LastError']) }
+    $d = $script:Sync['Data']
+    if ([int]$d.ParsedLines -eq 0) {
+        Write-Host 'No log lines matched the WinCC OA header inside the selected window.' -ForegroundColor Yellow
+    }
+
+    # --- prompt 2: organize (post-scan) ---
+    if ($Interactive -and -not $bound.ContainsKey('Organize')) {
+        Write-Host ''
+        $ans = Read-PromptDefault -PromptText 'Organize report: [A] All  [S] Severity  [D] Driver  [Q] Quit' -DefaultValue 'A'
+        switch -Regex ($ans) {
+            '^[Ss]' { $organize = 'Severity' }
+            '^[Dd]' { $organize = 'Driver' }
+            '^[Qq]' { $organize = 'Quit' }
+            default { $organize = 'All' }
+        }
+    }
+    if ($organize -eq 'Quit') {
+        Write-Host 'Quit selected - no report written.' -ForegroundColor Yellow
+        Write-ReportSummary -Data $d
+        return 0
+    }
+
+    # --- prompt 3a: severities + TopN (Severity mode only) ---
+    if ($organize -eq 'Severity' -and $Interactive -and -not $bound.ContainsKey('Severities')) {
+        Write-Host ''
+        Write-Host 'Severities: 1=FATAL 2=SEVERE 3=ERROR 4=WARNING 5=INFO  (critical pack = 1,2,3)'
+        $sevAns = Read-PromptDefault -PromptText 'Select severities (e.g. 1,2,3 or FATAL,SEVERE)' -DefaultValue '1,2,3'
+        $picked = @(Convert-ToSeverityList -Text $sevAns)
+        if ($picked.Count -gt 0) { $sevNames = $picked }
+        $topAns = Read-PromptDefault -PromptText 'Top N per severity' -DefaultValue "$topN"
+        if ($topAns -match '^\d+$' -and [int]$topAns -ge 5 -and [int]$topAns -le 100) { $topN = [int]$topAns }
+    }
+    $script:TopN = $topN
+
+    # --- prompt 3b: driver picker (Driver mode only) ---
+    if ($organize -eq 'Driver') {
+        $sevAll = @{ FATAL = $true; SEVERE = $true; ERROR = $true; WARNING = $true; INFO = $true }
+        $ranked = @((Build-SectionObject -Name 'managers' -SevFilter $sevAll).managers)
+        if ($Driver) {
+            foreach ($part in ($Driver -split ',')) {
+                $token = $part.Trim()
+                if (-not $token) { continue }
+                $n = 0
+                if ([int]::TryParse($token, [ref]$n) -and $n -ge 1 -and $n -le $ranked.Count) {
+                    $drivers += [string]$ranked[$n - 1].name
+                }
+                else {
+                    foreach ($m in $ranked) {
+                        if ([string]$m.name -like "*$token*") { $drivers += [string]$m.name }
+                    }
+                }
+            }
+            $drivers = @($drivers | Select-Object -Unique)
+            if ($drivers.Count -eq 0) { throw "No manager matched -Driver '$Driver'." }
+        }
+        elseif ($Interactive) {
+            $drivers = @(Select-DriversInteractive -Ranked $ranked)
+        }
+        elseif ($ranked.Count -gt 0) {
+            $drivers = @([string]$ranked[0].name)
+            Write-Host ("Organize=Driver with no -Driver: using the busiest manager, {0}." -f $drivers[0]) -ForegroundColor Yellow
+        }
+    }
+
+    # --- prompt 4: format ---
+    if ($Interactive -and -not $bound.ContainsKey('Format')) {
+        Write-Host ''
+        $ans = Read-PromptDefault -PromptText 'Report format: [T] Text  [H] HTML  [B] Both' -DefaultValue 'B'
+        switch -Regex ($ans) {
+            '^[Hh]' { $fmt = 'Html' }
+            '^[Tt]' { $fmt = 'Text' }
+            default { $fmt = 'Both' }
+        }
+    }
+
+    $sevFilter = @{}
+    foreach ($s in @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')) { $sevFilter[$s] = ($sevNames -contains $s) }
+    $areaFilter = @{}
+    foreach ($a in @('SYS', 'IMPL', 'CTRL', 'PARAM', 'OTHER')) { $areaFilter[$a] = ($areaNames -contains $a) }
+
+    $snap = Build-SnapshotObject -SevFilter $sevFilter -AreaFilter $areaFilter `
+        -Organize $organize -Drivers $drivers -Format 'html'
+
+    $out = Get-ReportOutPaths -LogFile $log -Requested $OutPath -Fmt $fmt
+    $enc = New-Object System.Text.UTF8Encoding $false
+    Write-Host ''
+    # options.format names the file being written, not the -Format switch, so a Both run
+    # produces exactly what two single-format runs would (and matches the dashboard).
+    if ($out.Text) {
+        $snap.options.format = 'text'
+        [System.IO.File]::WriteAllText($out.Text, (Convert-SnapshotToText -Snap $snap), $enc)
+        Write-Host ("Text report written to: {0}" -f $out.Text) -ForegroundColor Green
+    }
+    if ($out.Html) {
+        $snap.options.format = 'html'
+        [System.IO.File]::WriteAllText($out.Html, (Convert-SnapshotToHtml -Snap $snap), $enc)
+        Write-Host ("HTML report written to: {0}" -f $out.Html) -ForegroundColor Green
+    }
+    Write-ReportSummary -Data $d
+    return 0
+}
+
+function script:Select-DriversInteractive {
+    param($Ranked)
+    $ranked = @($Ranked)
+    if ($ranked.Count -eq 0) { return @() }
+    $picked = @()
+    $page = 0
+    $pageSize = 10
+    while ($picked.Count -eq 0) {
+        $start = $page * $pageSize
+        if ($start -ge $ranked.Count) { $page = 0; $start = 0 }
+        $slice = @($ranked | Select-Object -Skip $start -First $pageSize)
+        Write-Host ''
+        Write-Host ("Drivers/managers (page {0} of {1}, by volume):" -f ($page + 1),
+            [math]::Ceiling($ranked.Count / [double]$pageSize)) -ForegroundColor Cyan
+        for ($i = 0; $i -lt $slice.Count; $i++) {
+            Write-Host ('  {0,2}. {1,8:N0}  {2}' -f ($i + 1), [int]$slice[$i].count, $slice[$i].name)
+        }
+        $pick = Read-PromptDefault -PromptText '[1-10] or comma-list  [N]ext  [P]rev  Enter=#1' -DefaultValue '1'
+        if ($pick -match '^[Nn]') { $page++; continue }
+        if ($pick -match '^[Pp]') { if ($page -gt 0) { $page-- } ; continue }
+        foreach ($part in ($pick -split ',')) {
+            $n = 0
+            if ([int]::TryParse($part.Trim(), [ref]$n) -and $n -ge 1 -and $n -le $slice.Count) {
+                $picked += [string]$slice[$n - 1].name
+            }
+        }
+        if ($picked.Count -eq 0 -and $slice.Count -gt 0) { $picked = @([string]$slice[0].name) }
+    }
+    return @($picked | Select-Object -Unique)
+}
+
+function script:Write-ReportSummary {
+    param([hashtable]$Data)
+    $sw = $script:Sync['LoadSw']
+    $secs = if ($sw) { [math]::Round($sw.Elapsed.TotalSeconds, 1) } else { 0 }
+    Write-Host ''
+    Write-Host ("Parsed {0:N0} lines ({1:N0} unparsed / skipped) in {2}s." -f `
+        [int]$Data.ParsedLines, [int]$Data.UnparsedLines, $secs) -ForegroundColor DarkGray
+}
+
 # --- main ---
+if ($Report) {
+    $code = 1
+    try { $code = [int](Invoke-ReportMode) }
+    catch {
+        Write-Host ''
+        Write-Host ("Report failed: {0}" -f $_.Exception.Message) -ForegroundColor Red
+        $code = 1
+    }
+    finally { Close-LogStream }
+    if (-not $NoPause) {
+        Write-Host 'Press Enter to close.'
+        [void][Console]::ReadLine()
+    }
+    exit $code
+}
+
 if (-not (Test-Path -LiteralPath $script:UiRoot)) {
     throw "UI folder missing: $script:UiRoot"
 }

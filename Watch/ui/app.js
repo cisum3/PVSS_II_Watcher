@@ -197,6 +197,25 @@
         }
       };
     }
+    if (name === 'detections') {
+      return {
+        generation: 1,
+        detections: [{
+          group: 'Framework', total: 19037,
+          rules: [{
+            id: 'afw.traceRepetition', label: 'Repeated trace', count: 19037,
+            first: '2026.09.04 12:37:26.855', last: '2026.09.04 18:02:11.100',
+            sample: '^4:Repetition (#=1) of a former trace (see creation time …)',
+            severities: { SEVERE: 19037 },
+            measures: { repeats: 10484490, worstRun: 1709 },
+            buckets: {
+              manager: { distinct: 13, capped: false, top: [{ value: 'WCCOACComMgr (99)', count: 4828 }] },
+              subArea: { distinct: 12, capped: false, top: [{ value: 'Orch.Alarm', count: 7276 }] }
+            }
+          }]
+        }]
+      };
+    }
     if (name === 'perf') {
       return {
         generation: 1,
@@ -290,6 +309,7 @@
     $('btnRestart').disabled = (!state.running && !state.pulse && !state.starting);
     var snapOk = !!state.pulse && !state.starting && !(state.pulse && state.pulse.loading);
     $('btnSnapshot').disabled = !snapOk;
+    if (!snapOk && $('snapFormats') && !$('snapFormats').hidden) closeSnapFormats();
     $('logPath').readOnly = (state.running || state.starting) && !state.useMock;
   }
 
@@ -304,32 +324,66 @@
     setTimeout(function () { URL.revokeObjectURL(url); }, 1500);
   }
 
-  function downloadSnapshot() {
+  var SNAP_FORMATS = {
+    html: { ext: 'html', mime: 'text/html', accept: 'text/html' },
+    text: { ext: 'txt', mime: 'text/plain', accept: 'text/plain' },
+    json: { ext: 'json', mime: 'application/json', accept: 'application/json' }
+  };
+
+  function openSnapFormats() {
+    if ($('btnSnapshot').disabled) return;
+    $('btnSnapshot').hidden = true;
+    $('snapFormats').hidden = false;
+    var first = $('snapFormats').querySelector('.chip');
+    if (first) first.focus();
+  }
+
+  function closeSnapFormats() {
+    $('snapFormats').hidden = true;
+    $('btnSnapshot').hidden = false;
+  }
+
+  function downloadSnapshot(format) {
+    var fmt = SNAP_FORMATS[format] ? format : 'html';
     var stamp = (function () {
       var d = new Date();
       function p(n) { return (n < 10 ? '0' : '') + n; }
       return '' + d.getFullYear() + p(d.getMonth() + 1) + p(d.getDate()) + '_' +
         p(d.getHours()) + p(d.getMinutes()) + p(d.getSeconds());
     })();
-    var fileName = 'PVSS_Log_Watch_Snapshot_' + stamp + '.html';
+    var fileName = 'PVSS_Log_Watch_Snapshot_' + stamp + '.' + SNAP_FORMATS[fmt].ext;
 
     if (state.useMock) {
-      var html = [
-        '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>PVSS Log Watch Snapshot (mock)</title>',
-        '<style>body{font-family:Segoe UI,sans-serif;background:#0f1923;color:#fff;padding:1.25rem}',
-        'h1{color:#009999} .meta{color:#aaaa96}</style></head><body>',
-        '<h1>PVSS Log Watch — mock snapshot</h1>',
-        '<p class="meta">Open via Run-Watch.cmd for a full styled snapshot from live analysis.</p>',
-        '<pre>' + JSON.stringify(mockPulse(), null, 2).replace(/</g, '&lt;') + '</pre>',
-        '</body></html>'
-      ].join('');
-      triggerDownload(new Blob([html], { type: 'text/html;charset=utf-8' }), fileName);
+      var body;
+      if (fmt === 'json') {
+        body = JSON.stringify(mockPulse(), null, 2);
+      } else if (fmt === 'text') {
+        body = [
+          '================================================================================',
+          ' PVSS / WinCC OA Log Analysis Report (mock)',
+          '================================================================================',
+          'Open via Run-Watch.cmd for a full report from live analysis.',
+          '',
+          JSON.stringify(mockPulse(), null, 2)
+        ].join('\r\n');
+      } else {
+        body = [
+          '<!DOCTYPE html><html><head><meta charset="utf-8" /><title>PVSS Log Watch Snapshot (mock)</title>',
+          '<style>body{font-family:Segoe UI,sans-serif;background:#0f1923;color:#fff;padding:1.25rem}',
+          'h1{color:#009999} .meta{color:#aaaa96}</style></head><body>',
+          '<h1>PVSS Log Watch — mock snapshot</h1>',
+          '<p class="meta">Open via Run-Watch.cmd for a full styled snapshot from live analysis.</p>',
+          '<pre>' + JSON.stringify(mockPulse(), null, 2).replace(/</g, '&lt;') + '</pre>',
+          '</body></html>'
+        ].join('');
+      }
+      triggerDownload(new Blob([body], { type: SNAP_FORMATS[fmt].mime + ';charset=utf-8' }), fileName);
       return;
     }
 
     setBanner('bannerError', '');
-    var url = '/api/snapshot?format=html&' + qsPulse();
-    fetch(url, { headers: { Accept: 'text/html' } }).then(function (r) {
+    var url = '/api/snapshot?format=' + fmt + '&' + qsPulse();
+    fetch(url, { headers: { Accept: SNAP_FORMATS[fmt].accept } }).then(function (r) {
       if (!r.ok) {
         return r.json().then(function (j) {
           throw new Error((j && j.error) || ('HTTP ' + r.status));
@@ -1085,6 +1139,61 @@
     el.innerHTML = html;
   }
 
+  // Generic: walks whatever the rule table produced. Adding a rule needs no edit here.
+  function renderDetections(groups) {
+    var el = $('detectionsBody');
+    groups = groups || [];
+    if (!groups.length) {
+      el.innerHTML = '<p class="meta">No rule detections in the current window.</p>';
+      return;
+    }
+    var html = '';
+    groups.forEach(function (g) {
+      html += '<h2>' + escapeHtml(g.group) + ' <span class="meta">(' +
+        Number(g.total || 0).toLocaleString() + ' lines)</span></h2>';
+      (g.rules || []).forEach(function (r) {
+        html += '<h3>' + escapeHtml(r.label) + '</h3>';
+        // Where a rule carries a Measure the aggregate is the story, not the line count.
+        var mk = Object.keys(r.measures || {});
+        var head = '';
+        if (mk.length) {
+          head = mk.map(function (k) {
+            return escapeHtml(k) + ': <strong>' + Number(r.measures[k]).toLocaleString() + '</strong>';
+          }).join(' · ') + ' · over ' + Number(r.count || 0).toLocaleString() + ' line(s)';
+        } else {
+          head = '<strong>' + Number(r.count || 0).toLocaleString() + '</strong> line(s)';
+        }
+        var sk = Object.keys(r.severities || {});
+        if (sk.length) {
+          head += ' · ' + sk.map(function (k) {
+            return escapeHtml(k) + ' ' + Number(r.severities[k]).toLocaleString();
+          }).join(', ');
+        }
+        html += '<p>' + head + '</p>';
+        if (r.first) {
+          html += '<p class="meta">' + escapeHtml(r.first) + ' → ' + escapeHtml(r.last) +
+            ' · rule <span class="mono">' + escapeHtml(r.id) + '</span></p>';
+        }
+        if (r.sample) html += '<p class="meta mono">' + escapeHtml(r.sample) + '</p>';
+        Object.keys(r.buckets || {}).forEach(function (bn) {
+          var b = r.buckets[bn];
+          var rows = (b && b.top) || [];
+          if (!rows.length) return;
+          html += '<p class="meta">By ' + escapeHtml(bn) + ' — ' +
+            Number(b.distinct || 0).toLocaleString() + ' distinct' + (b.capped ? ' (capped)' : '') + '</p>';
+          html += '<table class="data"><thead><tr><th>Count</th><th>' + escapeHtml(bn) +
+            '</th></tr></thead><tbody>';
+          rows.forEach(function (x) {
+            html += '<tr><td>' + Number(x.count).toLocaleString() + '</td><td class="mono">' +
+              escapeHtml(x.value) + '</td></tr>';
+          });
+          html += '</tbody></table>';
+        });
+      });
+    });
+    el.innerHTML = html;
+  }
+
   function loadSection(name) {
     var q = qsPulse() + '&name=' + encodeURIComponent(name === 'more' ? 'perf' : name);
     return apiGet('/api/section?' + q).then(function (res) {
@@ -1097,6 +1206,7 @@
       if (name === 'cns') renderCns(j.cns);
       if (name === 'coho') renderCoho(j.coho);
       if (name === 'apogee') renderApogee(j.apogee);
+      if (name === 'detections') renderDetections(j.detections);
       if (name === 'more') renderMore(j);
     }).catch(function (e) {
       setBanner('bannerError', String(e.message || e));
@@ -1412,7 +1522,21 @@
     $('btnResume').addEventListener('click', function () {
       apiPost('/api/control', { action: 'resume' }).then(pollPulse);
     });
-    $('btnSnapshot').addEventListener('click', downloadSnapshot);
+    $('btnSnapshot').addEventListener('click', openSnapFormats);
+    $('snapFormats').addEventListener('click', function (ev) {
+      var btn = ev.target.closest ? ev.target.closest('.chip') : null;
+      if (!btn) return;
+      closeSnapFormats();
+      downloadSnapshot(btn.getAttribute('data-format'));
+    });
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape' && !$('snapFormats').hidden) closeSnapFormats();
+    });
+    document.addEventListener('click', function (ev) {
+      if ($('snapFormats').hidden) return;
+      if (ev.target.closest && ev.target.closest('.snap-slot')) return;
+      closeSnapFormats();
+    });
     $('btnRestart').addEventListener('click', function () {
       stopPolling();
       state.starting = false;

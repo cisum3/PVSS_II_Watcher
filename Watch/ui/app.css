@@ -231,6 +231,21 @@ input:focus, button:focus {
 .chip.active[data-sev="WARNING"] { background: rgba(224, 112, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-warning); }
 .chip.active[data-sev="INFO"] { background: rgba(0, 128, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-info); }
 
+/* Snapshot format picker: the chips take over the button's slot, so the chrome row
+   keeps its layout while the choice is open. */
+.snap-slot {
+  display: inline-flex;
+  align-items: center;
+}
+
+/* .seg sets display:inline-flex, which outranks the hidden attribute's UA display:none. */
+.snap-formats[hidden] { display: none !important; }
+
+.snap-formats .chip {
+  border-color: var(--siemens-petrol, #009999);
+  color: var(--text, #e8eef2);
+}
+
 .chip-sev:not(.active) {
   opacity: 0.78;
 }

@@ -51,6 +51,22 @@ if ($Phase -eq 'Assets' -or $Phase -eq 'All') {
     }
     else { Bad 'app.js incomplete' }
     if (Test-Path -LiteralPath (Join-Path $Root 'Run-Watch.cmd')) { Ok 'Run-Watch.cmd at package root' } else { Bad 'Run-Watch.cmd missing at root' }
+
+    # The .ps1 files carry no BOM, so PS 5.1 decodes them as Windows-1252. A literal non-ASCII
+    # character therefore reaches the HTML report as mojibake ('...' rendered as 'a,-|'). Keep the
+    # sources ASCII-only and spell such characters as HTML entities instead.
+    $nonAscii = @()
+    foreach ($f in @('Watch-PvssLog.ps1', 'PvssRules.ps1')) {
+        $p = Join-Path $WatchRoot $f
+        if (-not (Test-Path -LiteralPath $p)) { continue }
+        $n = 0
+        foreach ($line in [System.IO.File]::ReadAllLines($p, [System.Text.Encoding]::UTF8)) {
+            $n++
+            if ($line -match '[^\x00-\x7F]') { $nonAscii += ('{0}:{1}' -f $f, $n) }
+        }
+    }
+    if ($nonAscii.Count -eq 0) { Ok 'PowerShell sources are ASCII-only' }
+    else { Bad ('non-ASCII in PowerShell source: ' + ($nonAscii -join ', ')) }
 }
 
 if ($Phase -eq 'Assets') {
@@ -195,6 +211,57 @@ if ($Phase -eq 'Rules' -or $Phase -eq 'All') {
         $a1 = (Build-DetectionsObject -Data $d -TopN 10 | ConvertTo-Json -Depth 10)
         $a2 = (Build-DetectionsObject -Data $d -TopN 10 | ConvertTo-Json -Depth 10)
         if ($a1 -ceq $a2) { Ok 'detections output deterministic' } else { Bad 'detections ordering unstable' }
+
+        # A rule with no FindingAt still renders; it just carries no threshold badge.
+        if ($row.findingAt -eq 0 -and $row.over -eq 0) { Ok 'no-threshold rule reports findingAt 0' }
+        else { Bad "unthresholded rule: findingAt=$($row.findingAt) over=$($row.over)" }
+
+        # --- ranking: intensity, not volume ---
+        # The lower-volume burst must outrank the higher-volume trickle. Sorting by count would
+        # invert this, which is exactly the corpus failure (a 4h driver outage buried under
+        # three weeks of trace chatter).
+        $script:PvssRules += @{ Id = 'selftest.burst'; Group = 'SelfTestRank'; Label = 'burst'
+            FindingAt = 2; Re = [regex]'SELFTEST-BURST' }
+        $script:PvssRules += @{ Id = 'selftest.trickle'; Group = 'SelfTestRank'; Label = 'trickle'
+            FindingAt = 250; Re = [regex]'SELFTEST-TRICKLE' }
+        $script:PvssRules += @{ Id = 'selftest.quiet'; Group = 'SelfTestQuiet'; Label = 'quiet'
+            FindingAt = 10; Re = [regex]'SELFTEST-QUIET' }
+        $script:RuleSetCache = @{}
+        $dr = Test-Lines @(
+            'WCCOAui, 2026.09.04 10:00:00.000, IMPL, SEVERE, 1, SELFTEST-BURST'
+            'WCCOAui, 2026.09.04 10:00:05.000, IMPL, SEVERE, 1, SELFTEST-BURST'
+            'WCCOAui, 2026.09.04 10:00:10.000, IMPL, SEVERE, 1, SELFTEST-BURST'
+            'WCCOAui, 2026.09.04 10:00:00.000, IMPL, SEVERE, 1, SELFTEST-TRICKLE'
+            'WCCOAui, 2026.09.04 12:00:00.000, IMPL, SEVERE, 1, SELFTEST-TRICKLE'
+            'WCCOAui, 2026.09.04 14:00:00.000, IMPL, SEVERE, 1, SELFTEST-TRICKLE'
+            'WCCOAui, 2026.09.04 16:00:00.000, IMPL, SEVERE, 1, SELFTEST-TRICKLE'
+            'WCCOAui, 2026.09.04 18:00:00.000, IMPL, SEVERE, 1, SELFTEST-TRICKLE'
+            'WCCOAui, 2026.09.04 10:00:00.000, IMPL, INFO, 1, SELFTEST-QUIET'
+            'WCCOAui, 2026.09.04 18:00:00.000, IMPL, INFO, 1, SELFTEST-QUIET'
+        )
+        $allDet = @(Build-DetectionsObject -Data $dr -TopN 10)
+        $rank = @($allDet | Where-Object { $_.group -eq 'SelfTestRank' })[0]
+        $burst = @($rank.rules | Where-Object { $_.id -eq 'selftest.burst' })[0]
+        $trickle = @($rank.rules | Where-Object { $_.id -eq 'selftest.trickle' })[0]
+        if ($burst.count -lt $trickle.count -and $rank.rules[0].id -eq 'selftest.burst') {
+            Ok 'detections rank by rate, not volume'
+        }
+        else { Bad ('rank order: ' + (@($rank.rules | ForEach-Object { $_.id }) -join ',')) }
+
+        # Sub-minute spans are floored so two hits a second apart cannot top the list.
+        if ($burst.spanSec -eq 60 -and $trickle.spanSec -eq 28800) { Ok 'span floor + real span' }
+        else { Bad "spanSec burst=$($burst.spanSec) trickle=$($trickle.spanSec)" }
+
+        if ($burst.over -eq 1.5 -and $trickle.over -eq 0.02) { Ok 'over = count / FindingAt' }
+        else { Bad "over burst=$($burst.over) trickle=$($trickle.over)" }
+
+        # Groups follow their own worst rule, so the noisy group leads.
+        $gi = @($allDet | ForEach-Object { [string]$_.group })
+        $gs = @($allDet | ForEach-Object { [double]$_.score })
+        $desc = $true
+        for ($i = 1; $i -lt $gs.Count; $i++) { if ($gs[$i] -gt $gs[$i - 1]) { $desc = $false } }
+        if ($desc -and $gi[0] -eq 'SelfTestRank') { Ok 'groups ordered by worst rule' }
+        else { Bad ('group order: ' + ($gi -join ',')) }
 
         # FindingAt is opt-in; the migrated clusters must not have grown a duplicate headline.
         $withThreshold = @($script:PvssRules | Where-Object { $_['FindingAt'] })

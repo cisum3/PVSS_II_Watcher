@@ -1,19 +1,25 @@
 PVSS / WinCC OA Log Analyzer
 ============================
-Version: 2.3 (live Watch)  |  OfflineAnalyze: 1.3
+Version: 2.4
 Author: Cisum
 
 What this is
 ------------
 A Windows-only triage toolkit for large PVSS_II.log files (WinCC OA / GMS).
 
-  Watch (2.3)            Live localhost dashboard: open a growing log read-only,
-                         catch up a time window, tail new lines, filter by
-                         severity, browse modules/patterns, download a snapshot.
+One tool, two modes:
 
-  OfflineAnalyze (1.3)   One-shot offline scan of a log copy; writes an HTML
-                         (and/or text) report with findings, patterns, and
-                         BACnet / CNS / CoHo / Apogee modules.
+  Dashboard mode   Live localhost dashboard: open a growing log read-only,
+                   catch up a time window, tail new lines, filter by
+                   severity, browse modules/patterns, download a snapshot.
+                   Start it with Run-Watch.cmd.
+
+  Report mode      One-shot scan that writes an HTML and/or text report and
+                   exits. No dashboard, no browser, no network port.
+                   Start it with Run-Report.cmd.
+
+Both modes read the same log the same way and produce the same analysis --
+a report is simply a snapshot taken without opening the dashboard first.
 
 No Python or other installs. PowerShell 5.1+ only.
 
@@ -23,7 +29,7 @@ Requirements
   - Windows
   - PowerShell 5.1 or later (included with modern Windows)
   - A PVSS_II.log (or .log.bak) to analyze
-  - A browser on the same PC for the live dashboard
+  - A browser on the same PC for the live dashboard (not needed for reports)
 
 
 Package layout
@@ -31,23 +37,20 @@ Package layout
 Keep this folder outside the WinCC OA project log directory.
 
   Run-Watch.cmd              Double-click to start the live dashboard
+  Run-Report.cmd             Double-click to write an HTML report and exit
+  Run-Report-Interactive.cmd Same, but asks about window / shape / format
   readMe.txt                 This file
   CHANGELOG.txt              What changed per version (newest first)
   Watch\                     Runtime payload
-    Watch-PvssLog.ps1        Localhost host + APIs
-    VERSION.txt              Watch version (2.3)
+    Watch-PvssLog.ps1        Host, analyzer, and report writer
+    PvssRules.ps1            Detection rules (see "Detections" below)
+    VERSION.txt              Version (2.4)
     watch-config.txt         Defaults / preferences (edit this)
     ui\                      Dashboard (Siemens dark theme + Chart.js)
-    OfflineAnalyze\          Offline report tool (1.3)
-      Run-Analyze.cmd
-      Run-Analyze-Interactive.cmd
-      Analyze-PvssLog.ps1
-      readMe.txt             Offline options and parameters
-      VERSION.txt            OfflineAnalyze version
 
 
-Quick start — live Watch
-------------------------
+Quick start -- live dashboard
+-----------------------------
 1. Double-click Run-Watch.cmd
    (or: powershell -NoProfile -ExecutionPolicy Bypass -File .\Watch\Watch-PvssLog.ps1)
 
@@ -72,17 +75,80 @@ Quick start — live Watch
    selection; the file re-seeds them when you reload the page.
    Change severity chips and time window anytime (reloads the window).
    Area chips (SYS / IMPL / CTRL / PARAM / OTHER) filter charts, patterns,
-   and managers the same way — ingest always keeps every area, including
+   and managers the same way -- ingest always keeps every area, including
    unknown areas under OTHER. Module pages still show all areas.
    While loading, the UI polls about every 0.5s for % progress; afterward
    it uses RefreshSeconds from watch-config.txt.
 
-6. Snapshot downloads an HTML report of the current in-memory analysis
-   (sticky section jumps, project restart cycles with uptime/downtime,
-   manager health, charts). Browser download only; same look as the
-   dashboard. Overview shows the same restart cycles.
+6. Snapshot downloads a report of the current in-memory analysis (sticky
+   section jumps, project restart cycles with uptime/downtime, manager
+   health, charts). Click Snapshot and pick HTML, Text, or JSON. Browser
+   download only; same look as the dashboard.
 
 7. Ctrl+C in the host console stops the server.
+
+
+Quick start -- one-shot report
+------------------------------
+Use this when you just want a file to read or send on, with no dashboard.
+
+1. Copy PVSS_II.log (or .bak) next to Run-Report.cmd, or pass -LogPath.
+
+2. Double-click Run-Report.cmd
+   -> writes PVSS_II.log.analysis.html next to the log, then exits.
+
+   Or Run-Report-Interactive.cmd to be asked for the time window, how to
+   organize the report, and the output format. Every question has a
+   default -- press Enter to accept it.
+
+3. Both launchers forward any extra switches, e.g.:
+     Run-Report.cmd -LogPath "D:\logs\PVSS_II.log" -LastHours 6
+
+If no -LogPath is given, the tool looks beside itself for PVSS_II.log,
+then PVSS_II.log.bak, then the newest PVSS_II*.log / .bak it can find.
+
+Report mode never binds a network port, never opens a browser, and never
+changes your saved dashboard log path in watch-config.txt.
+
+Common switches (PowerShell, or appended to either .cmd):
+
+  -LogPath "C:\...\PVSS_II.log"   Log to read (default: auto-discover)
+  -OutPath "C:\...\report.html"   Where to write (default: next to the log)
+  -Format Text | Html | Both      Default Both; Run-Report.cmd uses Html
+  -Organize All | Severity | Driver
+                                  All      = every section (default)
+                                  Severity = top patterns per severity
+                                  Driver   = deep-dive on chosen managers
+  -Severities FATAL,SEVERE,ERROR  Default FATAL,SEVERE,ERROR,WARNING
+  -Areas SYS,IMPL,CTRL,PARAM,OTHER
+                                  Default all five
+  -Driver "BACnet"                Manager name or list position; Driver mode
+  -TopN 25                        Rows per pattern table (5-100)
+  -Entire                         Whole file (default in report mode)
+  -LastHours 6                    Last N hours, ending at the log's last line
+  -LastMinutes 90                 Same, in minutes
+  -From "2026.09.04 09:00"        Absolute start; date-only is allowed
+  -To   "2026.09.04 12:00"        Absolute end; a date-only -To covers the
+                                  whole of that day
+  -Interactive                    Ask instead of assuming
+  -NoPause                        Do not wait for a keypress on exit
+
+Time formats accepted by -From / -To: "2026.09.04 14:30:00",
+"2026.09.04 14:30", "2026.09.04", and the 2026-09-04 equivalents.
+-LastHours / -LastMinutes win over -From / -To if both are given.
+
+
+Detections
+----------
+Beyond the severity and pattern tables, the tool flags known problem
+signatures -- trend buffer loss, driver error codes, offline drivers,
+unknown AlertIDs, COV bursts, repeated traces, and more. These appear in
+the Detections view on the dashboard and in a Detections section of the
+report, grouped by area of the system.
+
+The signatures live in Watch\PvssRules.ps1 as a plain list. If your site
+sees a recurring message that is not being picked up, that file is where a
+new one is added -- send the log line along with a bug report.
 
 
 Watch config (Watch\watch-config.txt)
@@ -107,29 +173,15 @@ Browser, which need Run-Watch.cmd again. Host is always localhost
   LogPath                        Prefill path; updated automatically on Start
 
 
-Quick start — OfflineAnalyze
-----------------------------
-For a full offline report from a log copy (not required to watch live):
-
-1. Copy PVSS_II.log (or .bak) into Watch\OfflineAnalyze\
-   (or pass -LogPath to a file elsewhere).
-
-2. Double-click Watch\OfflineAnalyze\Run-Analyze.cmd
-   → writes PVSS_II.log.analysis.html next to the log.
-
-   Or Run-Analyze-Interactive.cmd to shape the report by severity /
-   driver after the scan.
-
-3. See Watch\OfflineAnalyze\readMe.txt for From/To windows, formats,
-   and PowerShell examples.
-
-
 Important notes
 ---------------
   - The live log is opened FileAccess.Read only (WinCC may keep appending).
-  - Watch binds to 127.0.0.1 only (same Windows session / browser).
+  - The dashboard binds to 127.0.0.1 only (same Windows session / browser).
+    Report mode binds nothing at all.
   - Do not install or run these scripts inside the project log folder.
-  - Preferences live in Watch\watch-config.txt (LogPath updated on Start).
+  - Preferences live in Watch\watch-config.txt (LogPath updated on Start by
+    the dashboard; report mode leaves it alone).
+  - Large logs take a while. A 50 MB log is several minutes on a typical
+    laptop; the console prints progress while it scans.
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-  - Current versions: Watch 2.3 / OfflineAnalyze 1.3. See CHANGELOG.txt for
-    what changed in each release.
+  - Current version: 2.4. See CHANGELOG.txt for what changed in each release.

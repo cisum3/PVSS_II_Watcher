@@ -24,7 +24,8 @@ Tracks work against locked [`PRD-V2.4.md`](PRD-V2.4.md).
 | **4D** | `Convert-SnapshotToText` + `format=text` + snapshot format buttons | yes | | |
 | **4E** | Batch mode `-Report` + absolute window + prompts + launchers | yes | | Prompts driven end to end by `_batch2.ps1`; human pass cosmetic only |
 | **4F** | Verification (§10) | yes | | Full suite 40/40. Acceptance 13 amended (PRD §12.13); perf work deferred to backlog |
-| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 2.4 | | | **Irreversible** |
+| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 2.4 | part | | Docs + VERSION done; deletion and zip held by Cisum |
+
 
 4A-4D are additive to the dashboard and shippable-safe at any point.
 
@@ -127,8 +128,43 @@ Two caveats on the table. The empty-rule build is not a clean control — with n
 `$isCnsLine` never goes true, so it also skips the CNS pattern accumulation that 2.3 and 2.4
 both do, which flatters it. And run-to-run variance on this box is large (the shipping build
 moved 136 s → 158 s between identical rounds), so treat the percentages as a direction, not a
-figure. Cheapest available lever if this matters: add `Scope` to the rules that only ever fire
-for one component.
+figure.
+
+**Scoping pass 2026-09-08 — 44 % fewer rule evaluations, no detections lost.**
+`docs\_scopes.ps1` mapped every unscoped rule to the components it actually fires on across
+all 12 example logs (2,148,799 parsed lines, 104 distinct components). Seven rules turned out
+to be emitted by exactly one manager binary and were gated:
+
+| Rule | Scope | Why it is safe |
+|---|---|---|
+| `trend.dataLoss` | `GmsBACnet` | "trend log object" is BACnet's own term |
+| `alarm.getSummaryFail` | `GmsBACnet` | GetAlarmSummary is a BACnet service |
+| `device.cptFailed` | `GmsBACnet` | CPT = BACnet ConfirmedPrivateTransfer |
+| `device.aesDecrypt` | `GmsBACnet` | BACnet device credential |
+| `driver.offline` | `CoHo` | command handler reporting on its own dispatch |
+| `driver.readFile` | `CoHo` | as above |
+| `afw.serverSideException` | `CComMgr` | the comm manager marshals the server call |
+
+Scopes are **binary-name substrings, never instance numbers** (`GmsBACnet`, not
+`WCCOAGmsBACnet(1)`), so a site with different instance numbering still matches.
+
+`docs\_scopecheck.ps1` is the safety net: for all 23 rules it counts corpus matches with the
+gate applied and with it ignored, and fails if any rule loses a hit. **All seven new scopes
+are hit-neutral** on 2.1 M lines. Rule evaluations 49,422,377 → 27,667,235 (44 % fewer;
+~29 % of that is this pass, the rest was the existing ApogeeDrv gating). Rules scoped: 12/23.
+`-Phase Rules` 21/21 and the §10.1 byte-identical check both still pass.
+
+Three left deliberately unscoped despite looking scopeable:
+
+- `driver.errorCode` — 184,640 hits in CoHo but **21 in `Siemens.Gms.ApplicationFramework(1)`**.
+  A `CoHo` scope would save 40 % of lines and silently drop those 21. Not worth trading
+  coverage for speed.
+- `trend.seqLess`, `alarm.alertIdUnknown` — each fires for two drivers, and `Scope` is a
+  single substring. Backlogged as multi-scope.
+
+The check also surfaced a **coverage gap that predates this pass**: the four narrowing
+`apogeeDrv.*` scopes hide 38,000+ `WCCOAGmsBACnet` hits. That is correct 2.3 behaviour and 4A
+froze it, so it is not touched here — written up in `BACKLOG.md` → Detection / parsing.
 
 ---
 
@@ -432,12 +468,131 @@ perf decision above turns into work.
 
 | Item | Built | Confirmed |
 |------|:-----:|:---------:|
-| `Watch\OfflineAnalyze\` deleted | | |
-| Root `readMe.txt` rewritten — one tool, two modes; no OfflineAnalyze mention | | |
-| `CHANGELOG.txt` updated (operator-focused) | | |
-| `Watch\VERSION.txt` → `2.4` | | |
-| `BACKLOG.md` + `docs\README.txt` updated | | |
-| Field zip built and smoke-tested | | |
+| Root `readMe.txt` rewritten — one tool, two modes; no OfflineAnalyze mention | yes | |
+| `CHANGELOG.txt` updated (operator-focused) | yes | |
+| `Watch\VERSION.txt` → `2.4` | yes | |
+| `BACKLOG.md` + `docs\README.txt` updated | yes | |
+| `Watch\OfflineAnalyze\` deleted | | **held by Cisum** |
+| Field zip built and smoke-tested | | **held by Cisum** |
+
+**Docs pass 2026-09-08.** Cisum asked for the documentation half of 4G only — the folder
+deletion and the zip are deliberately not done, so the package is in a mixed state right now:
+the docs describe 2.4 (one tool, two modes) while `Watch\OfflineAnalyze\` is still on disk.
+That is intended and temporary; nothing else needs redoing when it goes.
+
+`readMe.txt` is a rewrite rather than an edit. It now leads with "one tool, two modes",
+documents both launchers, and carries a switch table for report mode (`-From`/`-To` formats,
+`-Organize`, `-Severities`, auto-discovery order) that the old file had pushed into the
+OfflineAnalyze sub-readme. Two additions worth noting: a short **Detections** section that
+tells an operator `PvssRules.ps1` is where a missed signature gets added — which is the whole
+point of 2.4 and would otherwise be invisible to the field — and a plain warning that a 50 MB
+log takes several minutes, so nobody thinks it has hung.
+
+`CHANGELOG.txt` leads with the OfflineAnalyze absorption and ends with an **Upgrading** note,
+since anyone unzipping over an existing install keeps a stale `OfflineAnalyze\` folder and
+two launchers that no longer have a partner. The header's reference to
+`Watch\OfflineAnalyze\VERSION.txt` is gone.
+
+Two things deliberately **not** claimed in the user-facing docs: the rule count (it changes
+every release) and any performance figure (see 4F — the numbers are machine-dependent).
+
+**Left to do in 4G:** delete `Watch\OfflineAnalyze\`, tag frozen 1.3 first (§10.2 step 1),
+then build and smoke-test the field zip.
+
+---
+
+## Pre-ship fixes (2026-09-08)
+
+Three of the five bugs logged during 2.4 testing were cheap enough to fix before the zip.
+The other two (snapshot lockup, entire-window caching) stay in `BACKLOG.md` — the first has
+no reproduction, and the second is an investigation with a likely architectural outcome.
+
+**Time-window desync.** The window presets, custom value, unit chips and Apply are now
+disabled whenever `starting` / `awaitingLoad` / `pulse.loading` is set — the same signals
+that already gate the Snapshot button, so it cannot latch on. The subtlety: the chips render
+*from* `state.windowEntire` / `state.lastMinutes`, so a handler that mutates state and then
+declines to send the request **is** the desync. The guard therefore runs before any mutation
+(`windowLocked()` at the top of the chip handler and `applyCustomWindow`), with the disabled
+attribute as the visible half. `showLoading()` calls `updateChromeButtons()` directly so the
+lock lands immediately rather than a poll interval later.
+
+**`â€¦` encoding.** Both literals removed — the ellipsis became `&hellip;`, and a `→` in a
+comment became `->`. Adding a BOM was rejected as the fix: it would be silently lost if an
+editor re-saved the file. Instead the `Assets` self-test phase now fails on any non-ASCII
+byte in `Watch\*.ps1`, so the class of bug cannot return unnoticed.
+
+**Detections readability — mechanical half only.** Three objective noise fixes, applied to
+both renderers plus the text report:
+
+| Fix | Before | After |
+|-----|--------|-------|
+| Single-value buckets | `By manager — 1 distinct` + a one-row table | `All from manager WCCOAGmsCoHoMngr(7)` |
+| Redundant severity echo | `783 line(s) · SEVERE 783` | `783 SEVERE line(s)` |
+| Count column | 50/50 split stranded the count from its value | `table.data.kv`, count column shrinks to content |
+
+The severity fold only applies when there is exactly one severity *and* its count equals the
+line count; a mixed rule such as `state.unexpected` keeps its full `SEVERE 5, WARNING 133,
+INFO 1` breakdown. The `kv` class is a modifier rather than a change to `table.data`, to keep
+the blast radius off the BACnet/CNS/Perf tables this late in the release.
+
+Verified: `Assets`, `Rules` and `Report` phases all pass, and batch output is still
+byte-identical to the dashboard snapshot — the HTML dropped 55,153 → 54,890 chars on C1P,
+which is the collapsed one-row tables. The dashboard view was checked separately in mock
+mode (`?mock=1`) since no automated check covers `renderDetections`; the mock payload was
+extended to exercise the folded-severity, collapsed-bucket and multi-severity branches.
+
+---
+
+## Detections ranking (2026-09-09)
+
+The remaining half of the detections work: the section had no notion of priority, so it led
+with whatever the rule table happened to list first.
+
+**The finding that shaped it.** The obvious candidate — scale `FindingAt` by the window and
+rank on `count / effectiveThreshold` — does nothing. A window-derived factor is the same
+divisor for every rule in a report, so it cancels out of the ordering and leaves you sorting
+by `count / FindingAt`. Both that and raw count put the highest-volume rule first, which on
+C3P is "Repeated trace" (45,066 hits of logging chatter) ahead of a driver that was offline
+for four hours. Dynamic scaling changes *which Findings fire*; it cannot order Detections.
+
+What does separate them is rate over each rule's **own** first-to-last span, which is already
+in the payload:
+
+| C3P, top 3 | by count (2.4.0) | by count/FindingAt | by rate over own span |
+|---|---|---|---|
+| 1 | Repeated trace (45,066) | Repeated trace (90x) | **driver offline (1,038/hr)** |
+| 2 | driver offline (4,563) | driver offline (18x) | Repeated trace (82/hr) |
+| 3 | Unexpected state (2,145) | seq lower (6x) | Unexpected state (4/hr) |
+
+Same on C2P, where `device.aesDecrypt` scores 20x on the threshold ratio but 0.7 hits/hour —
+2,016 hits dribbled over four months across 1,008 devices. The ratio calls it urgent; the
+rate correctly calls it background.
+
+**Why the badge shows something else.** The rate is unusable as a displayed number: C2P's
+driver-offline burst is 4,506 hits in seven seconds, which reads as 270,360/hr. So rate
+orders the section and `count / FindingAt` is what gets rendered — "18x threshold" is a
+number a person can hold. Sub-minute spans are floored at 60 s (`$script:RuleMinSpanSec`),
+or two hits a second apart would top the list.
+
+**Severity weighting** (`$script:RuleSevWeight`, FATAL 4 → INFO 0.25) is applied to the sort
+score. It changed the order on neither corpus log, so it is currently earning nothing; it is
+in because an INFO-heavy rule outranking a SEVERE one is a failure worth pre-empting.
+
+**Payload additions** (per rule): `findingAt`, `over`, `spanSec`, `rate`, `score`; groups also
+carry `score`. Rules sort by score within a group, groups by their own worst rule, both with
+an id/name tiebreak so 10.1 stays byte-comparable. Renderers stay generic — a new rule row
+still needs no renderer edit.
+
+**Rendered:** a threshold badge beside each rule title (emphasised over 1x, muted under) and
+the span duration in the meta line, in all three renderers. Duration is what makes the order
+legible — 4,563 hits over 4 h is an outage, the same count over three weeks is background.
+
+Verified: 26 Rules assertions pass (5 new), Report phase still byte-identical on HTML and
+text, dashboard checked in mock mode. `docs\_detdata.ps1` and `docs\_rank.ps1` are the
+throwaway harnesses behind the tables above.
+
+**Still open:** dynamic scaling of the Findings thresholds themselves — see `BACKLOG.md`.
+It is independent of this work, and needs triage calls on ~19 comparisons first.
 
 ---
 

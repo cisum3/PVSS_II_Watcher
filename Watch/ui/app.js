@@ -200,11 +200,43 @@
     if (name === 'detections') {
       return {
         generation: 1,
+        // Groups and rules arrive worst-first by score, so this mirrors that order. Between
+        // them these rules cover every render branch: measures vs plain count, a folded single
+        // severity vs a breakdown, collapsed vs tabulated buckets, and over vs under threshold.
         detections: [{
-          group: 'Framework', total: 19037,
+          group: 'Driver', total: 922, score: 140940,
+          rules: [{
+            id: 'driver.errorCode', label: 'Driver returned error code', count: 783,
+            first: '2026.09.04 16:00:17.995', last: '2026.09.04 16:00:47.243',
+            findingAt: 250, over: 3.13, spanSec: 60, rate: 46980, score: 140940,
+            sample: 'IStyle.IndValues: The Driver returned Error Code 70442 for Property "System4:GmsDevice_1_513.Log_Enable"',
+            severities: { SEVERE: 783 },
+            buckets: {
+              code: { distinct: 1, capped: false, top: [{ value: '70442', count: 783 }] },
+              manager: { distinct: 1, capped: false, top: [{ value: 'WCCOAGmsCoHoMngr(7)', count: 783 }] }
+            }
+          }, {
+            id: 'state.unexpected', label: 'Unexpected state', count: 139,
+            first: '2026.09.04 12:34:20.716', last: '2026.09.04 16:42:39.612',
+            findingAt: 500, over: 0.28, spanSec: 14899, rate: 33.6, score: 35.8,
+            sample: 'Unexpected state, DrvManager, gotAlertConfigAnswer, AlertConfig missing for PeriphAddr 7261.33561693',
+            severities: { SEVERE: 5, WARNING: 133, INFO: 1 },
+            buckets: {
+              method: {
+                distinct: 7, capped: false, top: [
+                  { value: 'gotAlertConfigAnswer', count: 52 },
+                  { value: 'SendAnswer', count: 49 },
+                  { value: 'setAlert', count: 24 }
+                ]
+              }
+            }
+          }]
+        }, {
+          group: 'Framework', total: 19037, score: 10551,
           rules: [{
             id: 'afw.traceRepetition', label: 'Repeated trace', count: 19037,
             first: '2026.09.04 12:37:26.855', last: '2026.09.04 18:02:11.100',
+            findingAt: 500, over: 38.07, spanSec: 19485, rate: 3517, score: 10551,
             sample: '^4:Repetition (#=1) of a former trace (see creation time …)',
             severities: { SEVERE: 19037 },
             measures: { repeats: 10484490, worstRun: 1709 },
@@ -302,6 +334,31 @@
     el.textContent = text;
   }
 
+  // The host is mid-scan: a Start is in flight, we are waiting for the first loading pulse,
+  // or the host says it is still catching up.
+  function isCatchingUp() {
+    return !!(state.starting || state.awaitingLoad || (state.pulse && state.pulse.loading));
+  }
+
+  // Reseeding the window during a catch-up left the UI describing one window while the host
+  // finished loading another, so lock those controls until the scan settles.
+  // Guard as well as disable: the controls are re-enabled from pulse, so a keypress can land
+  // in the gap before updateChromeButtons() next runs. Mock mode has no host to desync from.
+  function windowLocked() {
+    return isCatchingUp() && !state.useMock;
+  }
+
+  function setWindowControlsEnabled(on) {
+    var off = !on;
+    document.querySelectorAll('#windowPresets .chip, #customWindowUnit .unit-chip').forEach(function (b) {
+      b.disabled = off;
+    });
+    var v = $('customWindowValue'); if (v) v.disabled = off;
+    var a = $('btnApplyWindow'); if (a) a.disabled = off;
+    var w = $('windowPresets');
+    if (w) w.title = off ? 'Locked while the host is loading a window' : '';
+  }
+
   function updateChromeButtons() {
     $('btnStart').disabled = state.running || state.starting;
     $('btnPause').disabled = !state.running || state.paused || state.starting;
@@ -311,6 +368,7 @@
     $('btnSnapshot').disabled = !snapOk;
     if (!snapOk && $('snapFormats') && !$('snapFormats').hidden) closeSnapFormats();
     $('logPath').readOnly = (state.running || state.starting) && !state.useMock;
+    setWindowControlsEnabled(!isCatchingUp());
   }
 
   function triggerDownload(blob, fileName) {
@@ -1139,6 +1197,31 @@
     el.innerHTML = html;
   }
 
+  // Mirror of Format-DurationLabel in Watch-PvssLog.ps1 - the dashboard and the report must
+  // describe the same span the same way.
+  function durationLabel(sec) {
+    var s = Math.round(Number(sec) || 0);
+    if (s < 0) return '';
+    if (s < 60) return s + 's';
+    var m = Math.floor(s / 60), r = s % 60;
+    if (m < 60) return r === 0 ? (m + 'm') : (m + 'm ' + r + 's');
+    var h = Math.floor(m / 60), m2 = m % 60;
+    if (h < 48) return m2 === 0 ? (h + 'h') : (h + 'h ' + m2 + 'm');
+    var d = Math.floor(h / 24), h2 = h % 24;
+    return h2 === 0 ? (d + 'd') : (d + 'd ' + h2 + 'h');
+  }
+
+  // "18x threshold" - volume against the rule's own FindingAt bar. Shown instead of the rate
+  // that drives the ordering, because a seven-second burst rates at 270,000/hr.
+  function ruleBadge(r) {
+    var at = Number(r.findingAt) || 0;
+    if (at <= 0) return '';
+    var o = Number(r.over) || 0;
+    var n = o >= 10 ? Math.round(o).toLocaleString() : o.toFixed(1);
+    return ' <span class="badge' + (o >= 1 ? ' over' : '') +
+      '" title="Raises a finding at ' + at.toLocaleString() + ' line(s)">' + n + '\u00d7 threshold</span>';
+  }
+
   // Generic: walks whatever the rule table produced. Adding a rule needs no edit here.
   function renderDetections(groups) {
     var el = $('detectionsBody');
@@ -1152,26 +1235,34 @@
       html += '<h2>' + escapeHtml(g.group) + ' <span class="meta">(' +
         Number(g.total || 0).toLocaleString() + ' lines)</span></h2>';
       (g.rules || []).forEach(function (r) {
-        html += '<h3>' + escapeHtml(r.label) + '</h3>';
+        html += '<h3>' + escapeHtml(r.label) + ruleBadge(r) + '</h3>';
+        // One severity covering every line just restates the count, so name it in the
+        // headline ("161,964 SEVERE line(s)") rather than echoing the number twice.
+        var sk = Object.keys(r.severities || {});
+        var sevWord = '', sevTxt = '';
+        if (sk.length === 1 && Number(r.severities[sk[0]]) === Number(r.count)) {
+          sevWord = escapeHtml(sk[0]) + ' ';
+        } else if (sk.length) {
+          sevTxt = ' · ' + sk.map(function (k) {
+            return escapeHtml(k) + ' ' + Number(r.severities[k]).toLocaleString();
+          }).join(', ');
+        }
         // Where a rule carries a Measure the aggregate is the story, not the line count.
         var mk = Object.keys(r.measures || {});
         var head = '';
         if (mk.length) {
           head = mk.map(function (k) {
             return escapeHtml(k) + ': <strong>' + Number(r.measures[k]).toLocaleString() + '</strong>';
-          }).join(' · ') + ' · over ' + Number(r.count || 0).toLocaleString() + ' line(s)';
+          }).join(' · ') + ' · over ' + Number(r.count || 0).toLocaleString() + ' ' + sevWord + 'line(s)';
         } else {
-          head = '<strong>' + Number(r.count || 0).toLocaleString() + '</strong> line(s)';
+          head = '<strong>' + Number(r.count || 0).toLocaleString() + '</strong> ' + sevWord + 'line(s)';
         }
-        var sk = Object.keys(r.severities || {});
-        if (sk.length) {
-          head += ' · ' + sk.map(function (k) {
-            return escapeHtml(k) + ' ' + Number(r.severities[k]).toLocaleString();
-          }).join(', ');
-        }
-        html += '<p>' + head + '</p>';
+        html += '<p>' + head + sevTxt + '</p>';
         if (r.first) {
+          // Duration is what makes the ordering legible: 4,563 hits over 4h is an outage,
+          // the same count over three weeks is background.
           html += '<p class="meta">' + escapeHtml(r.first) + ' → ' + escapeHtml(r.last) +
+            ' · ' + escapeHtml(durationLabel(r.spanSec)) +
             ' · rule <span class="mono">' + escapeHtml(r.id) + '</span></p>';
         }
         if (r.sample) html += '<p class="meta mono">' + escapeHtml(r.sample) + '</p>';
@@ -1179,9 +1270,15 @@
           var b = r.buckets[bn];
           var rows = (b && b.top) || [];
           if (!rows.length) return;
+          // A single distinct value does not need a table around it - say it in words.
+          if (Number(b.distinct) === 1 && rows.length === 1) {
+            html += '<p class="meta">All from ' + escapeHtml(bn) +
+              ' <span class="mono">' + escapeHtml(rows[0].value) + '</span></p>';
+            return;
+          }
           html += '<p class="meta">By ' + escapeHtml(bn) + ' — ' +
             Number(b.distinct || 0).toLocaleString() + ' distinct' + (b.capped ? ' (capped)' : '') + '</p>';
-          html += '<table class="data"><thead><tr><th>Count</th><th>' + escapeHtml(bn) +
+          html += '<table class="data kv"><thead><tr><th>Count</th><th>' + escapeHtml(bn) +
             '</th></tr></thead><tbody>';
           rows.forEach(function (x) {
             html += '<tr><td>' + Number(x.count).toLocaleString() + '</td><td class="mono">' +
@@ -1334,6 +1431,8 @@
     state.loadRequestDone = false;
     setBanner('bannerLoading', msg || 'Loading window…');
     setStatus('<span class="warn">loading</span> · waiting for host…');
+    // Lock now rather than waiting up to a poll interval for the next pulse to do it.
+    updateChromeButtons();
   }
 
   function requestWindowChange() {
@@ -1413,6 +1512,9 @@
 
     document.querySelectorAll('#windowPresets .chip').forEach(function (b) {
       b.addEventListener('click', function () {
+        // Must bail before touching state: the chips reflect state.windowEntire /
+        // state.lastMinutes, so mutating and then refusing to send is the desync itself.
+        if (windowLocked()) return;
         if (b.getAttribute('data-entire') === '1') {
           state.windowEntire = true;
         } else {
@@ -1444,6 +1546,7 @@
     }
 
     function applyCustomWindow() {
+      if (windowLocked()) return;
       var n = parseInt($('customWindowValue').value, 10);
       if (!n || n < 1) return;
       var unit = getCustomWindowUnit();

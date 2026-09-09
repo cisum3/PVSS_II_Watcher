@@ -2309,7 +2309,7 @@ function script:Build-ProjectLifecycleCycles {
         $nextUpT = if ($upIdx.Count -gt 0) { [string]$evs[$upIdx[0]].t } else { $null }
         $uptimeSec = if ($upStart -and $shutdownT) { Get-LogTimestampDeltaSec -FromTs $upStart -ToTs $shutdownT } else { $null }
         $stopSec = if ($shutdownT -and $stoppedT) { Get-LogTimestampDeltaSec -FromTs $shutdownT -ToTs $stoppedT } else { $null }
-        # Downtime is only defined when the next up is known (stopped → next up).
+        # Downtime is only defined when the next up is known (stopped -> next up).
         $downSec = $null
         if ($stoppedT -and $nextUpT) {
             $downSec = Get-LogTimestampDeltaSec -FromTs $stoppedT -ToTs $nextUpT
@@ -3107,11 +3107,12 @@ function script:Add-SnapCountNameTable {
         $Rows,
         [string]$NameKey,
         [string]$NameHeader,
-        [string]$CountKey = 'count'
+        [string]$CountKey = 'count',
+        [string]$Class = 'data'
     )
     $list = @($Rows)
     if ($list.Count -eq 0) { return }
-    [void]$Sb.AppendLine(('<table class="data"><thead><tr><th>Count</th><th>{0}</th></tr></thead><tbody>' -f $NameHeader))
+    [void]$Sb.AppendLine(('<table class="{1}"><thead><tr><th>Count</th><th>{0}</th></tr></thead><tbody>' -f $NameHeader, $Class))
     foreach ($row in $list) {
         $name = [string]$row.$NameKey
         $n = [int]$row.$CountKey
@@ -3142,6 +3143,26 @@ function script:Add-SnapPatternTable {
 }
 
 # Generic renderer over the whole rule table - adding a rule needs no edit here.
+# "18x threshold" - how this rule's volume compares with its own hand-tuned FindingAt bar,
+# which is the count at which it earns a Findings headline. Shown rather than the rate that
+# drives the ordering, because a seven-second burst rates at 270,000/hr.
+function script:Format-RuleOverLabel {
+    param($Rule)
+    if (-not $Rule.findingAt -or [int]$Rule.findingAt -le 0) { return $null }
+    $o = [double]$Rule.over
+    $n = if ($o -ge 10) { '{0:N0}' -f $o } else { '{0:N1}' -f $o }
+    return ('{0}x threshold' -f $n)
+}
+
+function script:Get-RuleBadgeHtml {
+    param($Rule)
+    $txt = Format-RuleOverLabel -Rule $Rule
+    if (-not $txt) { return '' }
+    $cls = if ([double]$Rule.over -ge 1) { 'badge over' } else { 'badge' }
+    return (' <span class="{0}" title="Raises a finding at {1:N0} line(s)">{2}</span>' -f `
+            $cls, [int]$Rule.findingAt, ($txt -replace 'x threshold', '&times; threshold'))
+}
+
 function script:Add-SnapDetectionsSection {
     param([System.Text.StringBuilder]$Sb, $Encode, $Detections)
     [void]$Sb.AppendLine('<section id="detections"><h2>Detections</h2><div class="card">')
@@ -3154,6 +3175,22 @@ function script:Add-SnapDetectionsSection {
     foreach ($g in $groups) {
         [void]$Sb.AppendLine(('<h3>{0} <span class="meta">({1:N0} lines)</span></h3>' -f (& $Encode ([string]$g.group)), [int]$g.total))
         foreach ($r in @($g.rules)) {
+            # One severity covering every line just restates the count, so name it in the
+            # headline ("161,964 SEVERE line(s)") rather than echoing the number twice.
+            $sevWord = ''
+            $sevTxt = ''
+            if ($r.severities) {
+                $sevKeys = @($r.severities.Keys)
+                if ($sevKeys.Count -eq 1 -and [int]$r.severities[$sevKeys[0]] -eq [int]$r.count) {
+                    $sevWord = (& $Encode ([string]$sevKeys[0])) + ' '
+                }
+                else {
+                    $sp = @()
+                    foreach ($sk in $sevKeys) { $sp += ('{0} {1:N0}' -f (& $Encode ([string]$sk)), [int]$r.severities[$sk]) }
+                    if ($sp.Count -gt 0) { $sevTxt = ' &middot; ' + ($sp -join ', ') }
+                }
+            }
+
             # A rule carrying a Measure leads with the aggregate: counting lines understates
             # things like "We counted N COVs", where the payload is the number.
             $head = ''
@@ -3161,21 +3198,17 @@ function script:Add-SnapDetectionsSection {
             if ($ms) {
                 $parts = @()
                 foreach ($mk in @($ms.Keys)) { $parts += ('{0}: <strong>{1:N0}</strong>' -f (& $Encode ([string]$mk)), $ms[$mk]) }
-                if ($parts.Count -gt 0) { $head = ($parts -join ' &middot; ') + (' &middot; over {0:N0} line(s)' -f [int]$r.count) }
+                if ($parts.Count -gt 0) { $head = ($parts -join ' &middot; ') + (' &middot; over {0:N0} {1}line(s)' -f [int]$r.count, $sevWord) }
             }
-            if (-not $head) { $head = '<strong>{0:N0}</strong> line(s)' -f [int]$r.count }
-
-            $sevTxt = ''
-            if ($r.severities) {
-                $sp = @()
-                foreach ($sk in @($r.severities.Keys)) { $sp += ('{0} {1:N0}' -f (& $Encode ([string]$sk)), [int]$r.severities[$sk]) }
-                if ($sp.Count -gt 0) { $sevTxt = ' &middot; ' + ($sp -join ', ') }
-            }
-            [void]$Sb.AppendLine(('<h4>{0}</h4>' -f (& $Encode ([string]$r.label))))
+            if (-not $head) { $head = '<strong>{0:N0}</strong> {1}line(s)' -f [int]$r.count, $sevWord }
+            [void]$Sb.AppendLine(('<h4>{0}{1}</h4>' -f (& $Encode ([string]$r.label)), (Get-RuleBadgeHtml -Rule $r)))
             [void]$Sb.AppendLine(('<p>{0}{1}</p>' -f $head, $sevTxt))
             if ($r.first) {
-                [void]$Sb.AppendLine(('<p class="meta">{0} &rarr; {1} &middot; rule <span class="mono">{2}</span></p>' -f `
-                    (& $Encode ([string]$r.first)), (& $Encode ([string]$r.last)), (& $Encode ([string]$r.id))))
+                # Duration is what makes the ordering legible: 4,563 hits over 4h is an outage,
+                # the same count over three weeks is background.
+                $span = Format-DurationLabel -Seconds $r.spanSec
+                [void]$Sb.AppendLine(('<p class="meta">{0} &rarr; {1} &middot; {2} &middot; rule <span class="mono">{3}</span></p>' -f `
+                    (& $Encode ([string]$r.first)), (& $Encode ([string]$r.last)), (& $Encode $span), (& $Encode ([string]$r.id))))
             }
             if ($r.sample) { [void]$Sb.AppendLine(('<p class="muted mono">{0}</p>' -f (& $Encode ([string]$r.sample)))) }
             if ($r.buckets) {
@@ -3183,10 +3216,17 @@ function script:Add-SnapDetectionsSection {
                     $b = $r.buckets[$bname]
                     $rows = @($b.top)
                     if ($rows.Count -eq 0) { continue }
+                    # A single distinct value does not need a table around it - say it in words.
+                    if ([int]$b.distinct -eq 1 -and $rows.Count -eq 1) {
+                        [void]$Sb.AppendLine(('<p class="meta">All from {0} <span class="mono">{1}</span></p>' -f `
+                            (& $Encode ([string]$bname)), (& $Encode ([string]$rows[0].value))))
+                        continue
+                    }
                     [void]$Sb.AppendLine(('<p class="meta">By {0} &mdash; {1:N0} distinct{2}</p>' -f `
                         (& $Encode ([string]$bname)), [int]$b.distinct,
                             $(if ($b.capped) { ' (capped)' } else { '' })))
-                    Add-SnapCountNameTable -Sb $Sb -Encode $Encode -Rows $rows -NameKey 'value' -NameHeader ([string]$bname)
+                    Add-SnapCountNameTable -Sb $Sb -Encode $Encode -Rows $rows -NameKey 'value' `
+                        -NameHeader ([string]$bname) -Class 'data kv'
                 }
             }
         }
@@ -3395,6 +3435,32 @@ table.data th {
   background: var(--bg-elevated);
   font-weight: 600;
 }
+/* Detections: how a rule's volume compares with its own reporting threshold. */
+.badge {
+  display: inline-block;
+  margin-left: 0.5rem;
+  padding: 0.05rem 0.4rem;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 0.72rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  vertical-align: middle;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+.badge.over {
+  border-color: var(--sev-warning);
+  color: #ffd0a0;
+}
+/* Count/value pairs: a full-width split strands the number far from the value it counts. */
+table.data.kv { width: auto; min-width: 22rem; max-width: 100%; }
+table.data.kv th:first-child, table.data.kv td:first-child {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+  padding-right: 0.9rem;
+}
 .kind-up { color: #90d090; }
 .kind-shutdown { color: #ffd0a0; }
 .kind-stopped { color: #ffb0b0; }
@@ -3452,7 +3518,9 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
     [void]$sb.AppendLine(('<p class="meta">Severity filters: {0}  &middot;  Area filters: {1}</p>' -f (& $e $sevOn), (& $e $areaOn)))
     [void]$sb.AppendLine(('<p class="meta">Parsed lines: {0:N0}  &middot;  gen {1}</p>' -f `
         [int]$Snap.meta.parsedLines, [int]$Snap.meta.generation))
-    [void]$sb.AppendLine(('<p class="meta">Module pages (BACnet/CNS/…) show all areas; area filter applies to charts, patterns, managers, and severity KPIs.</p>'))
+    # Keep this file pure ASCII: PS 5.1 parses a BOM-less .ps1 as Windows-1252, so a literal
+    # non-ASCII character here is mis-decoded and written out as mojibake. Use entities.
+    [void]$sb.AppendLine(('<p class="meta">Module pages (BACnet/CNS/&hellip;) show all areas; area filter applies to charts, patterns, managers, and severity KPIs.</p>'))
     [void]$sb.AppendLine('</div><main>')
 
     $opt = $Snap.options
@@ -4223,7 +4291,12 @@ function script:Convert-SnapshotToText {
                     $sp = @(); foreach ($sk in @($r.severities.Keys)) { $sp += ('{0}={1:N0}' -f $sk, [int]$r.severities[$sk]) }
                     & $W ('   {0,-14}: {1}' -f 'severities', ($sp -join ' '))
                 }
-                & $W ('   {0,-14}: {1}  -->  {2}' -f 'window', $r.first, $r.last)
+                & $W ('   {0,-14}: {1}  -->  {2}  ({3})' -f 'window', $r.first, $r.last, (Format-DurationLabel -Seconds $r.spanSec))
+                $over = Format-RuleOverLabel -Rule $r
+                if ($over) {
+                    & $W ('   {0,-14}: {1:N0} line(s) - {2}{3}' -f 'threshold', [int]$r.findingAt, $over,
+                        $(if ([double]$r.over -ge 1) { ' EXCEEDED' } else { '' }))
+                }
                 & $W ('   {0,-14}: {1}' -f 'rule', $r.id)
                 if ($r.sample) { & $W ('   {0,-14}: {1}' -f 'example', $r.sample) }
                 if ($r.buckets) {
@@ -4231,6 +4304,11 @@ function script:Convert-SnapshotToText {
                         $b = $r.buckets[$bn]
                         $rows = @($b.top)
                         if ($rows.Count -eq 0) { continue }
+                        # A single distinct value does not need a ranked list under it.
+                        if ([int]$b.distinct -eq 1 -and $rows.Count -eq 1) {
+                            & $W ('   {0,-14}: all from {1}' -f $bn, $rows[0].value)
+                            continue
+                        }
                         & $W ('   By {0} ({1:N0} distinct{2}):' -f $bn, [int]$b.distinct, $(if ($b.capped) { ', capped' } else { '' }))
                         $rank = 0
                         foreach ($x in $rows) { $rank++; & $W ('    {0,3}. {1,8:N0}  {2}' -f $rank, [int]$x.count, $x.value) }

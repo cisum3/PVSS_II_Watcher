@@ -65,10 +65,15 @@ $script:PvssRules = @(
     # --- Trending -----------------------------------------------------------
     # 2.3 only caught the ApogeeDrv "overflow" / "greater than" variants; these are the
     # BACnet-side counterparts and were going entirely unreported.
+    # "trend log object" is BACnet's own term for the object, so this cannot come from
+    # another driver - the Apogee equivalent is apogeeDrv.trendOverflow above.
     @{ Id = 'trend.dataLoss'; Group = 'Trending'; Label = 'Trend buffer data loss'
+        Scope = 'GmsBACnet'
         Re = [regex]'(?i)Trend buffer data loss for trend log object\s+(\S+)\s+in device\s+(\d+)'
         BucketBy = @{ device = 2 }
         Sample = $true; FindingAt = 100 }
+    # Deliberately unscoped: fires for both GmsBACnet and ApogeeDrv, and Scope is a single
+    # substring. See BACKLOG.md - multi-scope would let this one be gated.
     @{ Id = 'trend.seqLess'; Group = 'Trending'; Label = 'Sequence number lower than saved'
         Re = [regex]'(?i)Last sequence number\s+\d+\s+is less than saved'
         BucketBy = @{ manager = '$component' }
@@ -81,11 +86,15 @@ $script:PvssRules = @(
         Re = [regex]'(?i)The Driver returned Error Code\s+(\d+)'
         BucketBy = @{ code = 1; manager = '$component' }
         Sample = $true; FindingAt = 250 }
+    # Both are the command handler reporting on a command it dispatched, so CoHo is the only
+    # manager that can raise them.
     @{ Id = 'driver.offline'; Group = 'Driver'; Label = 'Command failed - driver offline'
+        Scope = 'CoHo'
         Re = [regex]'(?i)Command failed because Driver\s+(\d+)\s+is offline'
         BucketBy = @{ driver = 1 }
         Sample = $true; FindingAt = 250 }
     @{ Id = 'driver.readFile'; Group = 'Driver'; Label = 'Read File returned error code'
+        Scope = 'CoHo'
         Re = [regex]'(?i)Device\s+(\d+)\s+Read File returned error code\s+(\d+)'
         BucketBy = @{ device = 1; code = 2 }
         Sample = $true; FindingAt = 250 }
@@ -96,17 +105,23 @@ $script:PvssRules = @(
         Re = [regex]'(?i)AlertID\s+\S+\s+is not known'
         BucketBy = @{ manager = '$component' }
         Sample = $true; FindingAt = 250 }
+    # GetAlarmSummary is a BACnet service.
     @{ Id = 'alarm.getSummaryFail'; Group = 'Alarms'; Label = 'GetAlarmSummary failed'
+        Scope = 'GmsBACnet'
         Re = [regex]'(?i)GetAlarmSummary failed for device\s+(\d+)'
         BucketBy = @{ device = 1 }
         Sample = $true; FindingAt = 100 }
 
     # --- Device access ------------------------------------------------------
+    # CPT is BACnet ConfirmedPrivateTransfer; the AES password is the BACnet device
+    # credential. Both are driver-internal messages.
     @{ Id = 'device.cptFailed'; Group = 'Devices'; Label = 'CPT failed - device failed'
+        Scope = 'GmsBACnet'
         Re = [regex]'(?i)CPT failed:.*?Dev\s*=\s*(\d+)'
         BucketBy = @{ device = 1 }
         Sample = $true; FindingAt = 100 }
     @{ Id = 'device.aesDecrypt'; Group = 'Devices'; Label = 'AES password decryption failed'
+        Scope = 'GmsBACnet'
         Re = [regex]'(?i)Device\s+(\d+):\s*AES decryption of password unsuccessful'
         BucketBy = @{ device = 1 }
         Sample = $true; FindingAt = 100 }
@@ -125,7 +140,10 @@ $script:PvssRules = @(
         BucketBy = @{ manager = '$component'; subArea = 1 }
         Measure = @{ covs = @{ Group = 2; Agg = 'Sum' }; worstBurst = @{ Group = 2; Agg = 'Max' } }
         Sample = $true; FindingAt = 250 }
+    # The central comm manager marshals the server calls, so it is the one that sees the
+    # remote exception come back. 4,683 hits across the corpus, all CComMgr.
     @{ Id = 'afw.serverSideException'; Group = 'Framework'; Label = 'SERVER-SIDE exception'
+        Scope = 'CComMgr'
         Re = [regex]'SERVER-SIDE exception:\s*([A-Za-z0-9_.]+)'
         BucketBy = @{ exception = 1; manager = '$component' }
         Sample = $true; FindingAt = 100 }
@@ -147,6 +165,31 @@ $script:RuleSetCache = @{}
 $script:RuleBucketCap = 2000
 
 $script:RuleSevOrder = @('FATAL', 'SEVERE', 'ERROR', 'WARNING', 'INFO')
+
+# Detections ranking (PRD 6.2). Ordering by raw count, or by count/FindingAt, both put the
+# highest-volume rule first - which on the corpus is "Repeated trace", a logging artifact,
+# ahead of a driver that was offline for four hours. Rate over the rule's OWN first->last
+# span separates the two: the outage reads 1,038 hits/hr, the chatter 82/hr. Note this is
+# deliberately not the window span - scaling by the window is the same divisor for every
+# rule, so it cancels out of the ordering entirely.
+$script:RuleSevWeight = @{ FATAL = 4.0; SEVERE = 3.0; ERROR = 2.0; WARNING = 1.0; INFO = 0.25 }
+
+# Sub-minute bursts are treated as one minute. Without a floor, two hits a second apart
+# score higher than a sustained outage.
+$script:RuleMinSpanSec = 60
+
+$script:RuleTsFormat = 'yyyy.MM.dd HH:mm:ss.fff'
+
+function script:ConvertFrom-RuleTimestamp {
+    param([string]$Text)
+    if ([string]::IsNullOrWhiteSpace($Text)) { return $null }
+    $dt = [datetime]::MinValue
+    if ([datetime]::TryParseExact($Text, $script:RuleTsFormat,
+            [Globalization.CultureInfo]::InvariantCulture, [Globalization.DateTimeStyles]::None, [ref]$dt)) {
+        return $dt
+    }
+    return $null
+}
 
 function script:Register-RuleSet {
     param([string]$Comp)
@@ -355,12 +398,43 @@ function script:Build-DetectionsObject {
         $t = if ($Data.HitTime.ContainsKey($id)) { $Data.HitTime[$id] } else { $null }
         $slot = [string]$r['SampleSlot']; if (-not $slot) { $slot = $id }
 
+        # How intense was this rule while it was active, and how does its volume compare with
+        # its own hand-tuned bar? 'score' orders the section; 'over' is what gets displayed,
+        # because a seven-second burst rates at 270,000/hr and that is not a readable badge.
+        $spanSec = $script:RuleMinSpanSec
+        if ($t) {
+            $a = ConvertFrom-RuleTimestamp -Text ([string]$t.First)
+            $b = ConvertFrom-RuleTimestamp -Text ([string]$t.Last)
+            if ($a -and $b -and $b -gt $a) {
+                $spanSec = [math]::Max($script:RuleMinSpanSec, ($b - $a).TotalSeconds)
+            }
+        }
+        $rate = $count / $spanSec * 3600.0
+
+        $sevW = 1.0
+        if ($sevs.Count -gt 0) {
+            $wsum = 0.0; $n = 0
+            foreach ($k in $sevs.Keys) {
+                $w = if ($script:RuleSevWeight.ContainsKey($k)) { $script:RuleSevWeight[$k] } else { 1.0 }
+                $wsum += $w * [int]$sevs[$k]; $n += [int]$sevs[$k]
+            }
+            if ($n -gt 0) { $sevW = $wsum / $n }
+        }
+
+        $findingAt = 0
+        if ($r['FindingAt']) { $findingAt = [int]$r['FindingAt'] }
+
         $row = [ordered]@{
             id         = $id
             label      = [string]$r['Label']
             count      = $count
             first      = $(if ($t) { $t.First } else { $null })
             last       = $(if ($t) { $t.Last } else { $null })
+            findingAt  = $findingAt
+            over       = $(if ($findingAt -gt 0) { [math]::Round($count / $findingAt, 2) } else { 0 })
+            spanSec    = [int][math]::Round($spanSec)
+            rate       = [math]::Round($rate, 1)
+            score      = [math]::Round($rate * $sevW, 1)
             sample     = (Get-RuleSample -Data $Data -Id $slot)
             severities = $sevs
             measures   = $measures
@@ -374,12 +448,24 @@ function script:Build-DetectionsObject {
         [void]$byGroup[$g].Add($row)
     }
 
-    $out = New-Object System.Collections.ArrayList
+    # Worst-first, by intensity rather than volume. Groups follow their own worst rule, so the
+    # section leads with wherever the sharpest activity was. Every sort carries an id/name
+    # tiebreak - the 10.1 equivalence check compares batch and dashboard HTML byte for byte.
+    $groups = New-Object System.Collections.ArrayList
     foreach ($g in $order) {
-        $rows = @($byGroup[$g] | Sort-Object @{ E = { $_.count }; Descending = $true }, @{ E = { $_.id } })
+        $rows = @($byGroup[$g] | Sort-Object @{ E = { $_.score }; Descending = $true }, @{ E = { $_.id } })
         $total = 0
-        foreach ($row in $rows) { $total += [int]$row.count }
-        [void]$out.Add([ordered]@{ group = $g; total = $total; rules = $rows })
+        $top = 0.0
+        foreach ($row in $rows) {
+            $total += [int]$row.count
+            if ([double]$row.score -gt $top) { $top = [double]$row.score }
+        }
+        [void]$groups.Add([ordered]@{ group = $g; total = $total; score = $top; rules = $rows })
+    }
+
+    $out = New-Object System.Collections.ArrayList
+    foreach ($g in @($groups | Sort-Object @{ E = { $_.score }; Descending = $true }, @{ E = { $_.group } })) {
+        [void]$out.Add($g)
     }
     return @($out)
 }

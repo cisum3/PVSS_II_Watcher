@@ -1,7 +1,52 @@
 PVSS Log Analyzer — changelog
 ==============================
-Newest first. Current versions are also in Watch\VERSION.txt and
-Watch\OfflineAnalyze\VERSION.txt.
+Newest first. The current version is also in Watch\VERSION.txt.
+
+
+------------------------------------------------------------------------
+2.4 — 2026-09-08
+------------------------------------------------------------------------
+Author: Cisum
+
+One tool, two modes. OfflineAnalyze is gone as a separate tool — everything
+it did is now report mode inside Watch, so there is one folder to copy and
+one place where a detection gets added.
+
+- New: report mode. Run-Report.cmd writes an HTML report and exits — no
+  dashboard, no browser, no network port. Run-Report-Interactive.cmd asks
+  for the time window, report shape and format first; every question has a
+  default, so pressing Enter throughout is fine.
+- New: Detections. Known problem signatures — trend buffer loss, driver
+  error codes, offline drivers, unknown AlertIDs, COV bursts, repeated
+  traces, AES password failures and more — are called out by name instead of
+  being left for you to spot in the pattern tables. They appear both in the
+  dashboard (new Detections page) and in reports. 14 new signatures this
+  release, several of which were going completely unreported before.
+- Detections are ordered worst-first. Ranking is by how intensely each
+  signature fired over its own active period, not by raw line count, so a
+  driver offline for four hours sorts above three weeks of background
+  chatter that happens to have ten times the line count. Each one shows how
+  it compares with its reporting threshold ("18x threshold") and how long it
+  was active.
+- New: absolute time windows. -From and -To take a date and time, so you can
+  report on exactly the period an incident happened rather than the last N
+  minutes. A date-only -To covers the whole of that day.
+- New: report format choice. Snapshot on the dashboard now expands to offer
+  HTML, Text, or JSON instead of always downloading HTML.
+- Reports gained the options used, hourly volume, and driver deep-dive
+  sections, and now match the dashboard's snapshot exactly.
+- If you do not pass -LogPath, report mode looks beside itself for
+  PVSS_II.log, then PVSS_II.log.bak, then the newest PVSS_II*.log it finds.
+- A report run no longer changes the log path saved in watch-config.txt.
+  Only the dashboard does that, as before.
+- Fixed: changing the time window while the dashboard was still loading one
+  left the page describing a window the host was not actually building. The
+  window buttons are now greyed out until the load finishes.
+
+Upgrading: delete your old Watch\OfflineAnalyze\ folder. Run-Analyze.cmd and
+Run-Analyze-Interactive.cmd are replaced by Run-Report.cmd and
+Run-Report-Interactive.cmd. Reports look the same; the old -NonInteractive
+switch is now simply the default, and -Interactive opts back in.
 
 
 ------------------------------------------------------------------------

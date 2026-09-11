@@ -20,30 +20,22 @@ _Not scoped into 2.4. Promote to a PRD when one becomes the next version._
 ### Watch
 - WebSocket / SSE vs poll (parked — adaptive poll covers most UX gain)
 - Manager instance rollup helpers
-- Remote bind / auth (explicitly out of the current security model — localhost only)
+- Remote bind / auth (out of current security model — localhost only)
+- **Finer chart bar granularity.** Today only minute / hour / day. Prefer
+  **1m → 5m → 10m → 15m → 1h → 6h → 12h → 1d**, rolled up from existing minute buckets,
+  with thresholds tuned so bar count stays readable on live windows and Entire.
 
-### Reporting (post-2.4)
+### Reporting
 - Keyword organize path (parked from V1)
 - Driver type-in search (parked — picker is enough for most sites)
-- ~~Omit modules with zero hits.~~ **Dropped 2026-09-08.** Reconsidered: a zeroed section is
-  worth more than a cleaner page, because "we looked and there was nothing" is itself a
-  triage answer. 2.4's behaviour stands.
 
-### Performance (post-2.4)
-_Scan cost was never a 2.4 regression — the 2.3 baseline was measured on a much faster
-desktop, and the apparent slowdown was the move to a slower laptop. See `PROGRESS-V2.4.md`
-4A/4F for the back-to-back A/B on one machine._
-- **Inline the four hot helpers into `Process-LogLine`**: `Add-Pattern` (55 % of the
-  function), `Ensure-Minute` / `Ensure-MinuteArea` (20 %), `Get-PerfCategory` (15 %),
-  `Normalize-Message` (13 %). PowerShell call overhead dominates the scan — removing ~8
-  calls per line should cut it by roughly 70 %. Same trick 4A used on the rule loop.
-  Mechanical but ugly; the §10.1 byte-identical check makes it verifiable.
-- ~~Add `Scope` to rules that only fire for one component.~~ **Done 2026-09-08** — 7 rules
-  scoped, 12 of 23 now gated, 44 % fewer rule evaluations. See `PROGRESS-V2.4.md` 4A.
+### Performance
+- **Inline hot helpers in `Process-LogLine`:** `Add-Pattern`, `Ensure-Minute` /
+  `Ensure-MinuteArea`, `Get-PerfCategory`, `Normalize-Message`. PowerShell call overhead
+  dominates; same approach as 4A on the rule loop. Verify with the §10.1 byte-identical check.
 - **Multi-scope (`Scope` as an array).** `trend.seqLess` and `alarm.alertIdUnknown` fire for
-  exactly two drivers (`GmsBACnet` + `ApogeeDrv`) and so cannot be gated by a single
-  substring. Allowing `Scope = @('GmsBACnet','ApogeeDrv')` is ~4 lines in `Register-RuleSet`,
-  but it changes the locked rule shape in PRD §4.1, so it waits for the next version.
+  exactly two drivers and cannot use a single `Scope` string. Changes the locked rule shape
+  (PRD §4.1), so wait for the next version.
 
 ### Detection / parsing
 - **BACnet emits four Apogee-scoped message families and none of them are reported.** The
@@ -60,9 +52,9 @@ desktop, and the apparent slowdown was the move to a slower laptop. See `PROGRES
   how wide the gap is: `driver.offline` fires 4,506 times in **7 seconds** on C2P, while
   `state.unexpected` fires 3,179 times across **four months** on the same log. Both clear
   their thresholds the same way, and only one is an incident. Affects ~19 hardcoded
-  comparisons in `Build-Findings` (`Watch-PvssLog.ps1` 1812-1930) plus the 14 rule
-  `FindingAt` values. The model already exists at the top of that function: the
-  critical-severity finding is a *percentage of parsed lines*, so it is scale-free today.
+  comparisons in `Build-Findings` plus the 14 rule `FindingAt` values. The model already
+  exists at the top of that function: the critical-severity finding is a *percentage of
+  parsed lines*, so it is scale-free today.
   **Scope note:** this only affects which Findings fire. It cannot reorder Detections — a
   window-derived factor is the same divisor for every rule, so it cancels out of the
   ranking (`PROGRESS-V2.4.md` "Detections ranking"). The two are independent.
@@ -77,43 +69,37 @@ desktop, and the apparent slowdown was the move to a slower laptop. See `PROGRES
   - Needs clamping at both ends, or an entire-file report spanning months drops every
     finding and a 60-second live tail raises all of them.
   Changes report text, so it needs the §10.1 check re-run and a CHANGELOG note.
+- **Relate severe / high-volume traffic to project startup.** Severity (especially SEVERE)
+  often skyrockets around a restart; we already detect project up / shutdown / stopped and
+  build cycles. Next step is not more detection — it is characterizing the traffic relative
+  to those markers: does the burst come **before** `up`, **after**, or **span** the
+  startup window (e.g. shutdown→stopped→up, or up through driver-ready)? Use the corpus to
+  see what a "normal startup plume" looks like (duration, severity mix, which managers /
+  modules dominate) so later Findings or UI can tag or down-weight startup noise vs a real
+  incident. Ties into Findings window-scaling above.
 - Fuller multi-line log reassembly (beyond single-header-line parse)
-- Rule-engine extensions, if the field asks: cross-line correlation, and per-rule rate
-  thresholds in the rule table (the declarative half of the Findings-scaling item above).
-  Neither is expressible in the 2.4 rule table.
+- Rule-engine extensions if the field asks: cross-line correlation; per-rule rate thresholds
+  in the rule table (declarative half of Findings scaling)
 
 ---
 
 ## Known bugs
 
-_Found while testing 2.4 (2026-09-08). None block the release._
+_None of these block the 2.4 release._
 
-**Fixed before the 2.4 zip:** the time-window desync and the `â€¦` encoding bug, plus the
-mechanical half of the detections readability pass. See `PROGRESS-V2.4.md` "Pre-ship fixes".
-
-- **Snapshot download locked up on a live server.** Seen once during live-server testing,
-  not reproducible locally. Unknown whether it is size, a slow client, tailing during the
-  download, or the listener blocking while the snapshot is built. Needs a repro before a
-  fix; if it recurs, capture the log size, the window, and whether the host console was
-  still printing tail activity.
-
-- **Entire-window caching feels wrong.** Switching away from Entire and back re-reads far
-  more than expected — the cache appears not to be written until the window is exited,
-  so the expensive path runs when the operator can feel it. Investigate when
-  `Save-EntireCache` actually fires and whether the state clone can be made incremental or
-  cheaper. Related: batch mode already skips the cache entirely (`PROGRESS-V2.4.md` 4E).
-
-- **Detections UI — mostly closed.** 2.4 shipped the noise fixes, then worst-first ranking
-  by rate over each rule's own span, a threshold badge and the span duration
-  (`PROGRESS-V2.4.md` "Detections ranking"). Two smaller items were not taken: the raw
-  sample line is still the visually dominant element in each rule block, and a bucket
-  dimension's meaning ("by subArea") is not self-explanatory to a first-time reader.
-
-- **Detections renders in two places.** `Convert-SnapshotToHtml` and `renderDetections` in
-  `app.js` build the same markup independently. The 10.1 check keeps batch and dashboard
-  *snapshots* byte-identical, but nothing verifies the live dashboard view against them —
-  the two only stay consistent because both get edited together. A drift check, or driving
-  the dashboard view from the same payload shape under test, would close it.
+- **Host console catch-up % feels inaccurate.** Successive `Catch-up ... N%` lines can
+  stall or jump. Console is throttled (`+10%` or every 3s in `Update-LoadProgress`); UI
+  reads `%` more often. Confirm whether the % is wrong or only the throttle looks odd.
+- **Snapshot download locked up once on a live server.** Not reproduced locally. If it
+  recurs: log size, window, and whether the host was still printing tail activity.
+- **Entire-window caching feels wrong.** Leaving Entire and returning re-reads more than
+  expected — cache may not be written until the window is exited. Check when
+  `Save-EntireCache` fires. Batch mode already skips the cache (4E).
+- **Detections UI leftovers:** sample line still dominates each rule block; bucket labels
+  like "by subArea" are not self-explanatory.
+- **Detections renders in two places.** `Convert-SnapshotToHtml` and `renderDetections`
+  in `app.js` duplicate markup. Snapshots stay byte-identical via §10.1; the live view
+  does not. Drift check or one shared payload shape would close it.
 
 ---
 

@@ -1,6 +1,6 @@
 # PvssRules.ps1 - declarative detection rules + generic rule engine.
 # Dot-sourced by Watch-PvssLog.ps1 (no new scope: script: bindings land in the caller).
-# Spec: docs\PRD-V2.4.md section 4.
+# Spec: docs\PRD-V0.4.md section 4.
 #
 # A rule is one hashtable row:
 #   Id           required  stable key 'group.name'; keys state maps and payloads
@@ -63,7 +63,7 @@ $script:PvssRules = @(
         Sample = $true; FindingAt = 500 }
 
     # --- Trending -----------------------------------------------------------
-    # 2.3 only caught the ApogeeDrv "overflow" / "greater than" variants; these are the
+    # 0.3.0 only caught the ApogeeDrv "overflow" / "greater than" variants; these are the
     # BACnet-side counterparts and were going entirely unreported.
     # "trend log object" is BACnet's own term for the object, so this cannot come from
     # another driver - the Apogee equivalent is apogeeDrv.trendOverflow above.

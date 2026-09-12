@@ -1,7 +1,7 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  PVSS Log Watch V2  -  localhost host + live dashboard APIs (PRD-V2).
+  PVSS Log Watch  -  localhost host + live dashboard APIs (see docs\PRD-V0.4.md).
 .DESCRIPTION
   Serves ui\ and /api/pulse|/api/section|/api/manager|/api/health.
   Opens the live log read-only (FileAccess.Read + FileShare.ReadWrite).
@@ -26,7 +26,7 @@ param(
     [ValidateRange(100, 2000)]
     [int]$SampleMaxChars = 500,
 
-    # --- batch report mode (2.4; -Port / -NoBrowser / -RefreshSeconds are ignored here) ---
+    # --- batch report mode (0.4.0; -Port / -NoBrowser / -RefreshSeconds are ignored here) ---
     [switch]$Report,
     [string]$OutPath = '',
     [ValidateSet('Text', 'Html', 'Both')]
@@ -50,7 +50,7 @@ $script:Root = Split-Path -Parent $MyInvocation.MyCommand.Path
 $script:UiRoot = Join-Path $script:Root 'ui'
 $script:ConfigPath = Join-Path $script:Root 'watch-config.txt'
 $script:Version = (Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue | Select-Object -First 1)
-if (-not $script:Version) { $script:Version = '2.3' }
+if (-not $script:Version) { $script:Version = '0.3.0' }
 $script:Author = 'Cisum'
 foreach ($verLine in @(Get-Content (Join-Path $script:Root 'VERSION.txt') -ErrorAction SilentlyContinue)) {
     if ($verLine -match '^\s*Author\s*:\s*(.+)\s*$') { $script:Author = $Matches[1].Trim(); break }

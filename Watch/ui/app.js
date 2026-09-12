@@ -1,4 +1,4 @@
-/* PVSS Log Watch UI — pulse/section/manager client (PRD-V2) */
+/* PVSS Log Watch UI — pulse/section/manager client */
 (function () {
   'use strict';
 
@@ -254,7 +254,7 @@
         perfCategories: [{ name: 'Timeout', count: 6 }, { name: 'CNS/Resolve', count: 140 }],
         unparsedLines: 120,
         parsedLines: 50000,
-        health: { version: '2.2', author: 'Cisum', port: 8787, refreshSeconds: 3,
+        health: { version: '0.2.0', author: 'Cisum', port: 8787, refreshSeconds: 3,
           defaults: { lastMinutes: 60, windowEntire: false, severities: ['FATAL', 'SEVERE', 'ERROR', 'WARNING'] } }
       };
     }
@@ -289,7 +289,7 @@
           return { status: 200, json: mockManager(decodeURIComponent(mn)) };
         }
         if (path.indexOf('/api/health') === 0) {
-          return { status: 200, json: { ok: true, version: '2.2', author: 'Cisum', mock: true, prefillPath: '',
+          return { status: 200, json: { ok: true, version: '0.2.0', author: 'Cisum', mock: true, prefillPath: '',
             refreshSeconds: 3,
             defaults: { lastMinutes: 60, windowEntire: false, severities: ['FATAL', 'SEVERE', 'ERROR', 'WARNING'] } } };
         }

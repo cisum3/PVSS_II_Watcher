@@ -1,8 +1,8 @@
 # Future backlog — PVSS Log Analyzer
 
-**Shipped baseline:** Watch **2.3** · OfflineAnalyze **1.3** · Author: Cisum (2026-09-07)
-**In progress:** **2.4** — declarative rule engine; OfflineAnalyze absorbed as report mode.
-Spec: [`PRD-V2.4.md`](PRD-V2.4.md) · Tracker: [`PROGRESS-V2.4.md`](PROGRESS-V2.4.md).
+**Shipped baseline:** Watch **0.3.0** · OfflineAnalyze **1.3** · Author: Cisum (2026-09-07)
+**In progress:** **0.4.0** — declarative rule engine; OfflineAnalyze absorbed as report mode.
+Spec: [`PRD-V0.4.md`](PRD-V0.4.md) · Tracker: [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md).
 4A-4F done; 4G docs done, `Watch\OfflineAnalyze\` deletion and the field zip still pending.
 
 **Rule:** Keep this file short — ideas as bullets, not specs. Active scope lives in the PRD
@@ -15,12 +15,13 @@ operator-focused — no docs/backlog links.
 
 ## Ideas / improvements
 
-_Not scoped into 2.4. Promote to a PRD when one becomes the next version._
+_Not scoped into 0.4.0. Promote to a PRD when one becomes the next version._
 
 ### Watch
-- WebSocket / SSE vs poll (parked — adaptive poll covers most UX gain)
-- Manager instance rollup helpers
-- Remote bind / auth (out of current security model — localhost only)
+- **Absolute time window in the dashboard.** Report mode already has `-From` / `-To`
+  (and the seek path behind them). Dashboard only offers last-N-minutes and Entire.
+  Expose the same absolute bounds in the UI so an incident window can be loaded live
+  without dropping to report mode.
 - **Finer chart bar granularity.** Today only minute / hour / day. Prefer
   **1m → 5m → 10m → 15m → 1h → 6h → 12h → 1d**, rolled up from existing minute buckets,
   with thresholds tuned so bar count stays readable on live windows and Entire.
@@ -39,7 +40,7 @@ _Not scoped into 2.4. Promote to a PRD when one becomes the next version._
 
 ### Detection / parsing
 - **BACnet emits four Apogee-scoped message families and none of them are reported.** The
-  `apogeeDrv.*` rules are gated to `WCCOAApogeeDrv` because that is what 2.3 counted and 4A
+  `apogeeDrv.*` rules are gated to `WCCOAApogeeDrv` because that is what 0.3.0 counted and 4A
   froze it. Across the 12-log corpus every out-of-scope hit is `WCCOAGmsBACnet`:
   trend buffer overflow 10,845 · sequence-number-greater 10,846 · AlertID 11,003 ·
   query timeout 5,675. The clearest tell is that the *"less than saved"* variant
@@ -57,7 +58,7 @@ _Not scoped into 2.4. Promote to a PRD when one becomes the next version._
   parsed lines*, so it is scale-free today.
   **Scope note:** this only affects which Findings fire. It cannot reorder Detections — a
   window-derived factor is the same divisor for every rule, so it cancels out of the
-  ranking (`PROGRESS-V2.4.md` "Detections ranking"). The two are independent.
+  ranking (`PROGRESS-V0.4.md` "Detections ranking"). The two are independent.
   Three things to settle first:
   - Thresholds need triage, not blanket scaling. Rate-like counts (BACnet chatter, CNS
     volume, Apogee failures, every `FindingAt`) should scale; **presence** checks must not —
@@ -85,7 +86,7 @@ _Not scoped into 2.4. Promote to a PRD when one becomes the next version._
 
 ## Known bugs
 
-_None of these block the 2.4 release._
+_None of these block the 0.4.0 release._
 
 - **Host console catch-up % feels inaccurate.** Successive `Catch-up ... N%` lines can
   stall or jump. Console is throttled (`+10%` or every 3s in `Update-LoadProgress`); UI

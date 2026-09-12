@@ -4,13 +4,22 @@ Newest first. The current version is also in Watch\VERSION.txt.
 
 
 ------------------------------------------------------------------------
-2.4 — 2026-09-08
+0.4.0 — 2026-09-08
 ------------------------------------------------------------------------
 Author: Cisum
 
+Versioning: scheme reset to SemVer 2.0.0 0.y.z for pre-v1.0 development
+(historical 2.1 / 2.2 / 2.3 / 2.4 map to 0.1.0 / 0.2.0 / 0.3.0 / 0.4.0).
+Under SemVer §4, breaking changes during initial development only bump the
+MINOR (0.3.0 → 0.4.0). The root package is versioned as one unit; separate
+OfflineAnalyze version numbers are dropped.
+
 One tool, two modes. OfflineAnalyze is gone as a separate tool — everything
 it did is now report mode inside Watch, so there is one folder to copy and
-one place where a detection gets added.
+one place where a detection gets added. This is a breaking integration:
+delete Watch\OfflineAnalyze\, use Run-Report.cmd / Run-Report-Interactive.cmd
+instead of Run-Analyze*.cmd, and note changed flags (-NonInteractive is now
+the default; -Interactive opts back in).
 
 - New: report mode. Run-Report.cmd writes an HTML report and exits — no
   dashboard, no browser, no network port. Run-Report-Interactive.cmd asks
@@ -50,11 +59,14 @@ switch is now simply the default, and -Interactive opts back in.
 
 
 ------------------------------------------------------------------------
-2.3 / 1.3 — 2026-09-07 (Watch 2.3 + OfflineAnalyze 1.3)
+0.3.0 — 2026-09-07
 ------------------------------------------------------------------------
 Author: Cisum
 
-Watch 2.3
+(Then still shipped as Watch + OfflineAnalyze side by side; OfflineAnalyze
+changes in this release are listed under that heading for history.)
+
+Watch
 - Project restarts (Overview + snapshot): cycle rows with uptime / stop /
   downtime instead of a flat event list. Downtime is only stopped→next up
   (blank + “still down” when the window ends mid-stop). Window-start may
@@ -67,7 +79,7 @@ Watch 2.3
   that console. PreferredPort / MaxPortTries / OpenBrowser / Browser still
   need a host restart. CLI flags keep overriding the file.
 
-OfflineAnalyze 1.3
+OfflineAnalyze (absorbed in 0.4.0)
 - Project restarts section in text/HTML reports uses the same cycle view
   (uptime / stop / downtime) as Watch.
 - Report section order: modules (BACnet / CNS / CoHo / Apogee) now follow
@@ -76,7 +88,7 @@ OfflineAnalyze 1.3
 
 
 ------------------------------------------------------------------------
-2.2 — 2026-09-06 (Watch)  ·  OfflineAnalyze unchanged at 1.2
+0.2.0 — 2026-09-06
 ------------------------------------------------------------------------
 Author: Cisum
 
@@ -98,7 +110,7 @@ Author: Cisum
 
 
 ------------------------------------------------------------------------
-2.1 — 2026-09-05 (Watch)  ·  OfflineAnalyze 1.2
+0.1.0 — 2026-09-05
 ------------------------------------------------------------------------
 Author: Cisum
 

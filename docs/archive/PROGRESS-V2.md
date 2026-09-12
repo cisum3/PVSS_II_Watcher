@@ -2,7 +2,7 @@
 
 > **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).
 
-**Shipped: Watch 2.1** (2026-09-06, Cisum) — live smoke OK; manager health/blocking, findings layout, Entire cache, snapshot, modules confirmed in field use.  
+**Shipped: Watch 0.1.0** (2026-09-06, Cisum) — live smoke OK; manager health/blocking, findings layout, Entire cache, snapshot, modules confirmed in field use.  
 OfflineAnalyze **1.2** shipped in the same package (project restart timeline, HTML pattern cards, manager health).
 
 Tracks work against locked [`PRD-V2.md`](PRD-V2.md).  
@@ -25,7 +25,7 @@ OfflineAnalyze remains under `OfflineAnalyze\` (see [`PROGRESS.md`](PROGRESS.md)
 | **2B** | Host serves `ui\` + `/api/pulse` + `/api/section` (+ generation/304, catch-up, filters) | yes | yes | Self-test OK |
 | **2C** | Tail + poll rules + path/Start + Pause/Resume/Restart + rotate + on-page errors | yes | yes | Self-test OK |
 | **2D** | Charts, filters, §7.5 modules/patterns, any-manager drill-down, Desigo colors | yes | yes | Self-test OK |
-| **2E** | Docs, package polish, Snapshot download; Watch 2.1 / Offline 1.2 ship | yes | yes | Live smoke 2026-09-06 |
+| **2E** | Docs, package polish, Snapshot download; Watch 0.1.0 / Offline 1.2 ship | yes | yes | Live smoke 2026-09-06 |
 
 ---
 
@@ -151,5 +151,5 @@ Open items carried forward to [`../BACKLOG.md`](../BACKLOG.md). Do not keep grow
 | 2026-09-06 | Renamed `Watch\batch\` → `Watch\OfflineAnalyze\`; offline HTML report restyled to V2 Siemens dark |
 | 2026-09-06 | Cache Entire analysis across window switches (in-memory snapshot + incremental tail) |
 | 2026-09-06 | Manager health in sections: starts/stops/pmon restarts + blocking/unblocked (per manager, e.g. CoHo) |
-| 2026-09-06 | Versions: Watch **2.1**, OfflineAnalyze **1.2**; authored by **Cisum** |
+| 2026-09-06 | Versions: Watch **0.1.0**, OfflineAnalyze **1.2**; authored by **Cisum** |
 | 2026-09-06 | **SHIPPED** after live smoke; PRD/PROGRESS moved to `docs/archive\`; living ideas → `docs/BACKLOG.md` |

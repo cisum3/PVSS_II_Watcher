@@ -1,11 +1,11 @@
-# PRD: PVSS Log Analyzer V2.4 — rule engine + Watch absorbs OfflineAnalyze
+# PRD: PVSS Log Analyzer V0.4 — rule engine + Watch absorbs OfflineAnalyze
 
 **Product:** `Watch-PvssLog.ps1` / `Run-Watch.cmd` (+ new `Run-Report.cmd`)
 **Status:** **Locked / ready to build** (reviewed 2026-09-07, Cisum)
 **Date:** 2026-09-07
 **Supersedes:** the "shared parser library" plan in [`BACKLOG.md`](BACKLOG.md) (see §2)
-**Ships as:** Watch **2.4** — `OfflineAnalyze\` is **removed** from the package
-**Build tracker:** [`PROGRESS-V2.4.md`](PROGRESS-V2.4.md)
+**Ships as:** Watch **0.4.0** — `OfflineAnalyze\` is **removed** from the package
+**Build tracker:** [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md)
 
 **Primary goal:** make "this log line means this" cheap to add — one rule row instead of
 edits in nine places.
@@ -52,7 +52,7 @@ Watch lacks is only the *output* half: a text report and a way to run without a 
 
 ## 2. Relationship to the backlog plan
 
-`BACKLOG.md` scoped V2.4 as a three-layer shared parser library consumed by both tools,
+`BACKLOG.md` scoped V0.4 as a three-layer shared parser library consumed by both tools,
 with the note that "OfflineAnalyze becomes an additional tool inside Watch."
 
 This PRD reaches the same endpoint by deleting the second consumer instead of building a
@@ -408,7 +408,7 @@ Watch's snapshot object already covers most of the OfflineAnalyze report:
 | `--- Hourly volume ---` / `--- Busiest hours ---` | `series.byMinute` | **new key** `hourly` |
 | `--- Driver deep-dive ---` | `Build-ManagerObject` (exists, not in snapshot) | **include** when Organize=Driver |
 | `--- Top patterns by severity ---` | `patternsBySeverity` | render only |
-| *(none — new in 2.4)* | `Hits` / `HitBuckets` | **new key** `detections` (§6.2) |
+| *(none — new in 0.4.0)* | `Hits` / `HitBuckets` | **new key** `detections` (§6.2) |
 
 Additions:
 
@@ -474,7 +474,7 @@ object can produce any mode.
 
 Today the Snapshot button always downloads HTML: `index.html` has a single `#btnSnapshot`,
 and `app.js` line 331 hardcodes `format=html`. JSON is reachable only by hand-editing the
-URL. With text arriving in 2.4 there are three formats, so the choice belongs in the UI.
+URL. With text arriving in 0.4.0 there are three formats, so the choice belongs in the UI.
 
 **Expand in place.** Clicking Snapshot replaces the button with three buttons occupying the
 same slot — `HTML` · `Text` · `JSON`. Clicking one starts that download and collapses back
@@ -598,7 +598,7 @@ line reduction and removes the marker-sniffing coupling between formats.
 
 ---
 
-## 9. Package layout after 2.4
+## 9. Package layout after 0.4.0
 
 ```text
 PvssLogAnalyze\
@@ -608,14 +608,14 @@ PvssLogAnalyze\
   readMe.txt                    ← rewritten: one tool, two modes
   CHANGELOG.txt
   Watch\
-    VERSION.txt                 → 2.4
+    VERSION.txt                 → 0.4.0
     Watch-PvssLog.ps1
     PvssRules.ps1               ← new, dot-sourced rule table
     watch-config.txt
     ui\
   (OfflineAnalyze\ deleted)
 docs\                           ← dev only, not in field zips
-  PRD-V2.4.md, BACKLOG.md, archive\, PVSS_II_Examples\
+  PRD-V0.4.md, BACKLOG.md, archive\, PVSS_II_Examples\
   Test-WatchSelf.ps1            ← repaired + new rule/text/batch phases (§4.7)
 ```
 
@@ -682,7 +682,7 @@ The same comparison applies to `format=text` and `format=json`.
 | **4D** | `Convert-SnapshotToText` (including detections); accept `format=text` at 3654-3669; expand-in-place format buttons on Snapshot (§6.4). Text is now testable from the dashboard before batch mode exists. |
 | **4E** | Batch mode: `-Report` branch, path-validation extraction, `Resolve-LogPath`, absolute `-From`/`-To`, new param block + config precedence, full V1.3 prompt set (§7.3), both launchers. |
 | **4F** | Verification per §10 — the §10.1 equivalence check lands as a `Test-WatchSelf.ps1` phase. |
-| **4G** | Delete `OfflineAnalyze\`; rewrite root `readMe.txt` (no OfflineAnalyze mention); `CHANGELOG.txt`; `VERSION.txt` → 2.4; update `BACKLOG.md` + `docs/README.txt`. |
+| **4G** | Delete `OfflineAnalyze\`; rewrite root `readMe.txt` (no OfflineAnalyze mention); `CHANGELOG.txt`; `VERSION.txt` → 0.4.0; update `BACKLOG.md` + `docs/README_docs.txt`. |
 
 4A through 4D only add to the dashboard and are shippable-safe at any point. The
 irreversible step is 4G, gated on 4F.
@@ -694,8 +694,8 @@ irreversible step is 4G, gated on 4F.
 1. Adding a detection is one row in `$script:PvssRules` plus one line in
    `Test-PvssRules.ps1`, and it appears in the text report, the HTML report, and the
    dashboard with no other edits.
-2. Rule-engine scan performance on a ~50 MB log is within noise of 2.3.
-3. CNS and ApogeeDrv sections render byte-identically to 2.3 after the proof migration.
+2. Rule-engine scan performance on a ~50 MB log is within noise of 0.3.0.
+3. CNS and ApogeeDrv sections render byte-identically to 0.3.0 after the proof migration.
 4. BACnet flip tracking, project lifecycle cycles, and the Apogee orchestration trio still
    work, hand-written and unmigrated.
 5. A rule in a curated group reports once, not twice.
@@ -713,11 +713,11 @@ irreversible step is 4G, gated on 4F.
 11. `-From` / `-To` / `-LastHours` / `-Entire` / `-LastMinutes` all scope the report.
 12. Log auto-discovery finds `PVSS_II.log`, then `.bak`, then newest `PVSS_II*`.
 13. ~~Batch runtime ≤ V1.3 on a ~50 MB log.~~ **Amended 2026-09-08 → batch runtime is within
-    noise of a 2.3 dashboard entire-file load on the same machine.** The original wording
+    noise of a 0.3.0 dashboard entire-file load on the same machine.** The original wording
     assumed the two tools do comparable per-line work; they do not, since Watch also builds
     the per-minute series, the severity/component-by-area matrices, per-component pattern
     maps and BACnet device tracking. Measured 2.2x V1.3 and not closable without a
-    `Process-LogLine` refactor, which is deferred to the backlog. See `PROGRESS-V2.4.md` 4F.
+    `Process-LogLine` refactor, which is deferred to the backlog. See `PROGRESS-V0.4.md` 4F.
 14. A batch run does not modify `watch-config.txt`.
 15. The dashboard Snapshot control offers HTML / Text / JSON; behavior is otherwise unchanged.
 16. `Test-WatchSelf.ps1` runs green from its new `docs\` location.
@@ -734,4 +734,4 @@ irreversible step is 4G, gated on 4F.
 - [x] §7.1 parameter names and defaults agreed (`-Report` as the mode switch)
 - [x] §7.4 launcher names agreed — `Run-Report.cmd` / `Run-Report-Interactive.cmd`
 - [x] §5.3 absolute `-From`/`-To` approach accepted; seek strategy settled in §5.3.1
-- [x] Status → **Locked / ready to build** → [`PROGRESS-V2.4.md`](PROGRESS-V2.4.md) created
+- [x] Status → **Locked / ready to build** → [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) created

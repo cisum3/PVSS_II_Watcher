@@ -159,7 +159,7 @@ if ($Phase -eq 'Rules' -or $Phase -eq 'All') {
         else { Bad 'CNS payload' }
         if ($cns.patterns.Count -ge 1) { Ok 'PatternGroup still feeds CNS pattern map' } else { Bad 'CNS patterns' }
 
-        # Header-token buckets and Measure aggregation (used by rules added in 2.4).
+        # Header-token buckets and Measure aggregation (used by rules added in 0.4.0).
         $script:PvssRules += @{
             Id = 'selftest.measure'; Group = 'SelfTest'; Label = 'self-test'
             Re = [regex]'Repetition \(\#=(\d+)\) of a former trace'

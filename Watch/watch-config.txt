@@ -58,7 +58,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=
+LogPath=C:\Users\Isaac\Documents\Cursor\PVSII_Log\PVSS_II_C1P.log
 
 
 

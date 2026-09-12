@@ -1,7 +1,7 @@
-# Implementation Progress — PVSS Log Analyzer V2.4
+# Implementation Progress — PVSS Log Analyzer V0.4
 
-Tracks work against locked [`PRD-V2.4.md`](PRD-V2.4.md).
-**Target:** Watch **2.4** — declarative rule engine; `OfflineAnalyze\` absorbed and removed.
+Tracks work against locked [`PRD-V0.4.md`](PRD-V0.4.md).
+**Target:** Watch **0.4.0** — declarative rule engine; `OfflineAnalyze\` absorbed and removed.
 **Started:** 2026-09-07 · **Author:** Cisum
 
 | Status | Meaning |
@@ -24,7 +24,7 @@ Tracks work against locked [`PRD-V2.4.md`](PRD-V2.4.md).
 | **4D** | `Convert-SnapshotToText` + `format=text` + snapshot format buttons | yes | | |
 | **4E** | Batch mode `-Report` + absolute window + prompts + launchers | yes | | Prompts driven end to end by `_batch2.ps1`; human pass cosmetic only |
 | **4F** | Verification (§10) | yes | | Full suite 40/40. Acceptance 13 amended (PRD §12.13); perf work deferred to backlog |
-| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 2.4 | part | | Docs + VERSION done; deletion and zip held by Cisum |
+| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 0.4.0 | part | | Docs + VERSION done; deletion and zip held by Cisum |
 
 
 4A-4D are additive to the dashboard and shippable-safe at any point.
@@ -88,7 +88,7 @@ at the `# --- main ---` marker — keep that marker in place.
 
 - `Trim` is specified **per bucket**, not per rule: a `BucketBy` value may be a capture index,
   a header token, or `@{ Group = 2; TrimEnd = '.' }`. The migrated trend-overflow rule needs
-  `TrimEnd` on `device` but not on `trend`, so a rule-level key could not reproduce 2.3.
+  `TrimEnd` on `device` but not on `trend`, so a rule-level key could not reproduce 0.3.0.
 - `FindingAt` is **not implemented yet**. No shipped rule uses it — the migrated clusters keep
   their hand-written `Build-Findings` thresholds. It lands in 4B with the generic renderers.
 - The match loop is **inlined in `Process-LogLine`** instead of living behind a
@@ -110,13 +110,13 @@ C2P, all three builds over an identical line set, alternated across two rounds:
 
 | Build | Round 1 | Round 2 |
 |---|---|---|
-| 2.3 committed baseline | 131.1 s | 133.6 s |
-| 2.4 with an **empty** rule table | 120.2 s | 132.4 s |
-| 2.4 shipping (23 rules) | 135.9 s | 157.8 s |
+| 0.3.0 committed baseline | 131.1 s | 133.6 s |
+| 0.4.0 with an **empty** rule table | 120.2 s | 132.4 s |
+| 0.4.0 shipping (23 rules) | 135.9 s | 157.8 s |
 
-All three parse the same 93,347 lines. The ordering is consistent in both rounds: the 2.4
+All three parse the same 93,347 lines. The ordering is consistent in both rounds: the 0.4.0
 refactor is a small win on its own, and **the rules then cost 13-19 % on top of it**, leaving
-2.4 net 4-18 % slower than 2.3.
+0.4.0 net 4-18 % slower than 0.3.0.
 
 So the +16 % was real and it *is* the rule table. The ~3 % prediction was wrong for two
 reasons: it priced only the regex match, ignoring the per-line `foreach` and hashtable lookup
@@ -125,7 +125,7 @@ fact **18 of the 23 rules have no `Scope`**, so they evaluate on every parsed li
 5 ApogeeDrv rules are gated.
 
 Two caveats on the table. The empty-rule build is not a clean control — with no rules,
-`$isCnsLine` never goes true, so it also skips the CNS pattern accumulation that 2.3 and 2.4
+`$isCnsLine` never goes true, so it also skips the CNS pattern accumulation that 0.3.0 and 0.4.0
 both do, which flatters it. And run-to-run variance on this box is large (the shipping build
 moved 136 s → 158 s between identical rounds), so treat the percentages as a direction, not a
 figure.
@@ -163,7 +163,7 @@ Three left deliberately unscoped despite looking scopeable:
   single substring. Backlogged as multi-scope.
 
 The check also surfaced a **coverage gap that predates this pass**: the four narrowing
-`apogeeDrv.*` scopes hide 38,000+ `WCCOAGmsBACnet` hits. That is correct 2.3 behaviour and 4A
+`apogeeDrv.*` scopes hide 38,000+ `WCCOAGmsBACnet` hits. That is correct 0.3.0 behaviour and 4A
 froze it, so it is not touched here — written up in `BACKLOG.md` → Detection / parsing.
 
 ---
@@ -345,7 +345,7 @@ Run `Run-Report-Interactive.cmd` once before marking 4E confirmed.
 | Log auto-discovery: exact → `.bak` → newest `PVSS_II*` → error (acceptance 12) | yes | |
 | `Run-Report.cmd` writes HTML, binds no port, exits non-zero on failure (acceptance 7) | yes | |
 | Full interactive prompt flow driven end to end (acceptance 8) | yes | |
-| Batch runtime within noise of a 2.3 entire-file load (PRD §12.13, amended) | yes | |
+| Batch runtime within noise of a 0.3.0 entire-file load (PRD §12.13, amended) | yes | |
 
 **§10.1 run 2026-09-07** — `Test-WatchSelf.ps1 -Phase Report` on `PVSS_II_C1P.log`, entire
 file, matched severities/areas: batch HTML **byte-identical** to the dashboard snapshot
@@ -360,11 +360,11 @@ and their disposition:
 
 | Difference | Disposition |
 |---|---|
-| Severity counts ordered by count desc, zeros omitted (1.3) vs fixed FATAL→INFO with zeros (2.4) | **Keep 2.4.** The fixed order is Watch's convention everywhere else (dashboard, HTML snapshot, `$script:RuleSevOrder`); making text disagree with HTML would be worse. |
-| `--- Top 10 components ---` vs `--- Top 20 ---` | **Keep 2.4** — see 4D. |
+| Severity counts ordered by count desc, zeros omitted (1.3) vs fixed FATAL→INFO with zeros (0.4.0) | **Keep 0.4.0.** The fixed order is Watch's convention everywhere else (dashboard, HTML snapshot, `$script:RuleSevOrder`); making text disagree with HTML would be worse. |
+| `--- Top 10 components ---` vs `--- Top 20 ---` | **Keep 0.4.0** — see 4D. |
 | Apogee / CoHo block layout | **Fixed.** The first pass condensed them; both now reproduce 1.3's labelled layout line for line. |
-| 1.3 omits CNS / CoHo / Apogee sections entirely when their counters are zero | **Keep 2.4.** A zeroed section is a useful triage answer, and always emitting keeps the text and HTML section inventories the same. |
-| 2.4 adds `--- Area counts ---`, `--- Detections: * ---`, `--- Options used ---`, `--- Notes ---` | Expected per §10.2 step 3. |
+| 1.3 omits CNS / CoHo / Apogee sections entirely when their counters are zero | **Keep 0.4.0.** A zeroed section is a useful triage answer, and always emitting keeps the text and HTML section inventories the same. |
+| 0.4.0 adds `--- Area counts ---`, `--- Detections: * ---`, `--- Options used ---`, `--- Notes ---` | Expected per §10.2 step 3. |
 
 Performance-related keyword categories came out **byte-identical** on both logs.
 
@@ -383,12 +383,12 @@ human pass is cosmetic only.
 | Tool | Runtime |
 |---|---|
 | OfflineAnalyze 1.3 | **219.3 s** |
-| Watch 2.4 `-Report` | **481.1 s** (+119 %) — 475.9 s of it the scan |
+| Watch 0.4.0 `-Report` | **481.1 s** (+119 %) — 475.9 s of it the scan |
 
 An independent repeat gave 207.0 s vs 465.5 s (+125 %), so the ratio is stable even though
 absolute times drift 3-6 % between runs on this machine.
 
-This is **not** a 2.4 regression: 4A measured the same scan at 411 s on 2.3 and 369 s on 2.4.
+This is **not** a 0.4.0 regression: 4A measured the same scan at 411 s on 0.3.0 and 369 s on 0.4.0.
 It is also not the rule engine, and it is barely about regexes at all.
 
 `docs\_callcost2.ps1` — every PowerShell **function call** on this machine costs ~80-96 µs,
@@ -407,8 +407,8 @@ while everything else runs at normal speed:
 the likely hook". That was wrong. The primitives above are *also* slow in absolute terms — a
 0.2 µs hashtable op is normal, 2.1 µs is not — so the whole machine is roughly 5-10x down,
 and the call-to-primitive **ratio** (~45x) is what PowerShell 5.1 normally shows. There is no
-evidence of a hook. Cisum confirmed the cause: 2.3 was developed and benchmarked on a fast
-desktop, and the switch to this laptop happened immediately after 2.3 shipped, so a machine
+evidence of a hook. Cisum confirmed the cause: 0.3.0 was developed and benchmarked on a fast
+desktop, and the switch to this laptop happened immediately after 0.3.0 shipped, so a machine
 change was read as a version regression. Function calls are simply the most expensive thing
 in a PS 5.1 hot loop, which is what 4A found when inlining the rule loop.
 
@@ -434,11 +434,11 @@ device/flip tracking. Normalising out the call overhead still leaves Watch rough
 OfflineAnalyze, so the criterion is unreachable as written even on a healthy machine.
 
 **Resolved 2026-09-08 — acceptance 13 amended, no code change.** PRD §12.13 now reads
-"batch runtime is within noise of a 2.3 dashboard entire-file load on the same machine",
-which 2.4 meets. Absolute runtime on a 48 MB log stays ~8 min on this laptop.
+"batch runtime is within noise of a 0.3.0 dashboard entire-file load on the same machine",
+which 0.4.0 meets. Absolute runtime on a 48 MB log stays ~8 min on this laptop.
 
-Inlining the four hot helpers is deferred to `BACKLOG.md` → Performance (post-2.4), together
-with scoping the 18 unscoped rules. Both are worth doing; neither blocks 2.4. **4F is green.**
+Inlining the four hot helpers is deferred to `BACKLOG.md` → Performance (post-0.4.0), together
+with scoping the 18 unscoped rules. Both are worth doing; neither blocks 0.4.0. **4F is green.**
 
 ### Full-suite run 2026-09-08 — 40 PASS / 0 FAIL, exit 0, 340 s
 
@@ -458,9 +458,10 @@ Modules 10 · Snapshot 2 · Report 3. Two bugs surfaced only in the combined run
   `meta.generated`. Everything else still matches byte for byte: HTML 55,148 chars, text
   26,499 chars.
 
-**Scratch harnesses kept in `docs\`** (untracked, dev-only): `_batch.ps1`, `_batch2.ps1`,
-`_crosstool.ps1`, `_perf.ps1`, `_profile.ps1`, `_callcost2.ps1`. Delete them at 4G unless the
-perf decision above turns into work.
+**Scratch harnesses** (`_batch.ps1`, `_batch2.ps1`, `_crosstool.ps1`, `_perf.ps1`,
+`_profile.ps1`, `_callcost2.ps1`, plus later `_ab*`, `_scopes*`, `_detdata`, `_rank`)
+were deleted 2026-09-12. Findings stay in this tracker; `Test-WatchSelf.ps1` is the
+kept harness.
 
 ---
 
@@ -470,14 +471,14 @@ perf decision above turns into work.
 |------|:-----:|:---------:|
 | Root `readMe.txt` rewritten — one tool, two modes; no OfflineAnalyze mention | yes | |
 | `CHANGELOG.txt` updated (operator-focused) | yes | |
-| `Watch\VERSION.txt` → `2.4` | yes | |
-| `BACKLOG.md` + `docs\README.txt` updated | yes | |
+| `Watch\VERSION.txt` → `0.4.0` | yes | |
+| `BACKLOG.md` + `docs\README_docs.txt` updated | yes | |
 | `Watch\OfflineAnalyze\` deleted | | **held by Cisum** |
 | Field zip built and smoke-tested | | **held by Cisum** |
 
 **Docs pass 2026-09-08.** Cisum asked for the documentation half of 4G only — the folder
 deletion and the zip are deliberately not done, so the package is in a mixed state right now:
-the docs describe 2.4 (one tool, two modes) while `Watch\OfflineAnalyze\` is still on disk.
+the docs describe 0.4.0 (one tool, two modes) while `Watch\OfflineAnalyze\` is still on disk.
 That is intended and temporary; nothing else needs redoing when it goes.
 
 `readMe.txt` is a rewrite rather than an edit. It now leads with "one tool, two modes",
@@ -485,7 +486,7 @@ documents both launchers, and carries a switch table for report mode (`-From`/`-
 `-Organize`, `-Severities`, auto-discovery order) that the old file had pushed into the
 OfflineAnalyze sub-readme. Two additions worth noting: a short **Detections** section that
 tells an operator `PvssRules.ps1` is where a missed signature gets added — which is the whole
-point of 2.4 and would otherwise be invisible to the field — and a plain warning that a 50 MB
+point of 0.4.0 and would otherwise be invisible to the field — and a plain warning that a 50 MB
 log takes several minutes, so nobody thinks it has hung.
 
 `CHANGELOG.txt` leads with the OfflineAnalyze absorption and ends with an **Upgrading** note,
@@ -503,7 +504,7 @@ then build and smoke-test the field zip.
 
 ## Pre-ship fixes (2026-09-08)
 
-Three of the five bugs logged during 2.4 testing were cheap enough to fix before the zip.
+Three of the five bugs logged during 0.4.0 testing were cheap enough to fix before the zip.
 The other two (snapshot lockup, entire-window caching) stay in `BACKLOG.md` — the first has
 no reproduction, and the second is an investigation with a likely architectural outcome.
 
@@ -558,7 +559,7 @@ for four hours. Dynamic scaling changes *which Findings fire*; it cannot order D
 What does separate them is rate over each rule's **own** first-to-last span, which is already
 in the payload:
 
-| C3P, top 3 | by count (2.4.0) | by count/FindingAt | by rate over own span |
+| C3P, top 3 | by count (0.4.0) | by count/FindingAt | by rate over own span |
 |---|---|---|---|
 | 1 | Repeated trace (45,066) | Repeated trace (90x) | **driver offline (1,038/hr)** |
 | 2 | driver offline (4,563) | driver offline (18x) | Repeated trace (82/hr) |
@@ -588,8 +589,9 @@ the span duration in the meta line, in all three renderers. Duration is what mak
 legible — 4,563 hits over 4 h is an outage, the same count over three weeks is background.
 
 Verified: 26 Rules assertions pass (5 new), Report phase still byte-identical on HTML and
-text, dashboard checked in mock mode. `docs\_detdata.ps1` and `docs\_rank.ps1` are the
-throwaway harnesses behind the tables above.
+text, dashboard checked in mock mode. Ranking tables above came from throwaway
+`_detdata.ps1` / `_rank.ps1` harnesses (deleted 2026-09-12 with the other `_*.ps1`
+scratch scripts).
 
 **Still open:** dynamic scaling of the Findings thresholds themselves — see `BACKLOG.md`.
 It is independent of this work, and needs triage calls on ~19 comparisons first.

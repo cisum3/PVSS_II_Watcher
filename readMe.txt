@@ -1,6 +1,6 @@
 PVSS / WinCC OA Log Analyzer
 ============================
-Version: 2.4
+Version: 0.4.0
 Author: Cisum
 
 What this is
@@ -44,7 +44,7 @@ Keep this folder outside the WinCC OA project log directory.
   Watch\                     Runtime payload
     Watch-PvssLog.ps1        Host, analyzer, and report writer
     PvssRules.ps1            Detection rules (see "Detections" below)
-    VERSION.txt              Version (2.4)
+    VERSION.txt              Version (0.4.0)
     watch-config.txt         Defaults / preferences (edit this)
     ui\                      Dashboard (Siemens dark theme + Chart.js)
 
@@ -184,4 +184,4 @@ Important notes
   - Large logs take a while. A 50 MB log is several minutes on a typical
     laptop; the console prints progress while it scans.
   - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
-  - Current version: 2.4. See CHANGELOG.txt for what changed in each release.
+  - Current version: 0.4.0. See CHANGELOG.txt for what changed in each release.

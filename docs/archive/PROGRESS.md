@@ -2,7 +2,7 @@
 
 > **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).
 
-**Release: V1.2** (batch triage tool — OfflineAnalyze) — **shipped** 2026-09-06 with Watch 2.1 package.
+**Release: V1.2** (batch triage tool — OfflineAnalyze) — **shipped** 2026-09-06 with Watch 0.1.0 package.
 
 Tracks work against `PRD.md` (draft v5) plus post-v1 backlog through V1.2.
 Author: Cisum.

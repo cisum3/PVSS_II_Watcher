@@ -1,10 +1,10 @@
 # PRD: PVSS Log Analyzer V2 — Live Dashboard
 
 > **ARCHIVED (historical).** Do not extend this file. Future ideas: [`../BACKLOG.md`](../BACKLOG.md).  
-> Shipped field baseline: Watch **2.1** + OfflineAnalyze **1.2** (Cisum), 2026-09-06.
+> Shipped field baseline: Watch **0.1.0** + OfflineAnalyze **1.2** (Cisum), 2026-09-06.
 
 **Product:** PowerShell local host + Chrome UI (`Watch-PvssLog.ps1` / `Run-Watch.cmd`)  
-**Status:** Locked / **shipped** (Watch 2.1)  
+**Status:** Locked / **shipped** (Watch 0.1.0)  
 **Date:** 2026-09-05 (ship note 2026-09-06)  
 **Depends on:** OfflineAnalyze under `OfflineAnalyze\` (not replaced)
 

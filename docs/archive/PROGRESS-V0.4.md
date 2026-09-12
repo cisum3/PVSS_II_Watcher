@@ -2,7 +2,8 @@
 
 Tracks work against locked [`PRD-V0.4.md`](PRD-V0.4.md).
 **Target:** Watch **0.4.0** — declarative rule engine; `OfflineAnalyze\` absorbed and removed.
-**Started:** 2026-09-07 · **Author:** Cisum
+**Started:** 2026-09-07 · **Shipped:** 2026-09-12 · **Author:** Cisum
+**Status:** Complete — archived under `docs\archive\` with the 0.4.0 ship.
 
 | Status | Meaning |
 |--------|---------|
@@ -24,7 +25,7 @@ Tracks work against locked [`PRD-V0.4.md`](PRD-V0.4.md).
 | **4D** | `Convert-SnapshotToText` + `format=text` + snapshot format buttons | yes | | |
 | **4E** | Batch mode `-Report` + absolute window + prompts + launchers | yes | | Prompts driven end to end by `_batch2.ps1`; human pass cosmetic only |
 | **4F** | Verification (§10) | yes | | Full suite 40/40. Acceptance 13 amended (PRD §12.13); perf work deferred to backlog |
-| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 0.4.0 | part | | Docs + VERSION done; deletion and zip held by Cisum |
+| **4G** | Delete `OfflineAnalyze\`, docs, version bump to 0.4.0 | yes | yes | Shipped 2026-09-12; OA → `docs\archive\OfflineAnalyze\` |
 
 
 4A-4D are additive to the dashboard and shippable-safe at any point.
@@ -473,13 +474,12 @@ kept harness.
 | `CHANGELOG.txt` updated (operator-focused) | yes | |
 | `Watch\VERSION.txt` → `0.4.0` | yes | |
 | `BACKLOG.md` + `docs\README_docs.txt` updated | yes | |
-| `Watch\OfflineAnalyze\` deleted | | **held by Cisum** |
-| Field zip built and smoke-tested | | **held by Cisum** |
+| `Watch\OfflineAnalyze\` removed from the field package | yes | yes | Moved to `docs\archive\OfflineAnalyze\` (frozen 1.3) |
+| Field zip | | | Optional — Cisum ships when ready; package layout matches PRD §9 |
 
 **Docs pass 2026-09-08.** Cisum asked for the documentation half of 4G only — the folder
-deletion and the zip are deliberately not done, so the package is in a mixed state right now:
-the docs describe 0.4.0 (one tool, two modes) while `Watch\OfflineAnalyze\` is still on disk.
-That is intended and temporary; nothing else needs redoing when it goes.
+deletion and the zip were held so the package was temporarily mixed: docs said 0.4.0 while
+`Watch\OfflineAnalyze\` was still on disk.
 
 `readMe.txt` is a rewrite rather than an edit. It now leads with "one tool, two modes",
 documents both launchers, and carries a switch table for report mode (`-From`/`-To` formats,
@@ -497,8 +497,9 @@ two launchers that no longer have a partner. The header's reference to
 Two things deliberately **not** claimed in the user-facing docs: the rule count (it changes
 every release) and any performance figure (see 4F — the numbers are machine-dependent).
 
-**Left to do in 4G:** delete `Watch\OfflineAnalyze\`, tag frozen 1.3 first (§10.2 step 1),
-then build and smoke-test the field zip.
+**Shipped 2026-09-12.** `Watch\OfflineAnalyze\` is gone from the field package; the frozen
+1.3 tree lives at `docs\archive\OfflineAnalyze\` (PRD §10.2 / acceptance 17). This tracker
+and `PRD-V0.4.md` move to `docs\archive\` with that ship.
 
 ---
 

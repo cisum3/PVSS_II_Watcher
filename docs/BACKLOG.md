@@ -1,11 +1,13 @@
 # Future backlog — PVSS Log Analyzer
 
-**Shipped baseline:** Watch **0.3.0** · OfflineAnalyze **1.3** · Author: Cisum (2026-09-07)
-**In progress:** **0.4.0** — declarative rule engine; OfflineAnalyze absorbed as report mode.
-Spec: [`PRD-V0.4.md`](PRD-V0.4.md) · Tracker: [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md).
-4A-4F done; 4G docs done, `Watch\OfflineAnalyze\` deletion and the field zip still pending.
+**Shipped baseline:** Watch **0.4.0** · Author: Cisum (2026-09-12)
+OfflineAnalyze **1.3** is absorbed as report mode; frozen copy under
+[`archive/OfflineAnalyze/`](archive/OfflineAnalyze/). Spec / tracker for 0.4.0:
+[`archive/PRD-V0.4.md`](archive/PRD-V0.4.md) · [`archive/PROGRESS-V0.4.md`](archive/PROGRESS-V0.4.md).
 
-**Rule:** Keep this file short — ideas as bullets, not specs. Active scope lives in the PRD
+**In progress:** _(none — next version TBD)_
+
+**Rule:** Keep this file short — ideas as bullets, not specs. Active scope lives in a PRD
 and tracker; historical requirements in [`archive/`](archive/).
 Anything shipping to the field needs a **version bump** first (`VERSION.txt` + user-facing
 `readMe.txt` / `CHANGELOG.txt`). Keep root [`CHANGELOG.txt`](../CHANGELOG.txt)
@@ -15,7 +17,7 @@ operator-focused — no docs/backlog links.
 
 ## Ideas / improvements
 
-_Not scoped into 0.4.0. Promote to a PRD when one becomes the next version._
+_Not scoped. Promote to a PRD when one becomes the next version._
 
 ### Watch
 - **Absolute time window in the dashboard.** Report mode already has `-From` / `-To`
@@ -29,6 +31,9 @@ _Not scoped into 0.4.0. Promote to a PRD when one becomes the next version._
 ### Reporting
 - Keyword organize path (parked from V1)
 - Driver type-in search (parked — picker is enough for most sites)
+- **Interactive manager pick: support ranges.** Today the prompt takes a comma-separated
+  list of indices only (`1,2,3,10`). Allow `-` ranges too — e.g. `1-3,10` → managers
+  1, 2, 3, and 10. Same parser can serve any other numbered multi-select prompts.
 
 ### Performance
 - **Inline hot helpers in `Process-LogLine`:** `Add-Pattern`, `Ensure-Minute` /
@@ -58,7 +63,7 @@ _Not scoped into 0.4.0. Promote to a PRD when one becomes the next version._
   parsed lines*, so it is scale-free today.
   **Scope note:** this only affects which Findings fire. It cannot reorder Detections — a
   window-derived factor is the same divisor for every rule, so it cancels out of the
-  ranking (`PROGRESS-V0.4.md` "Detections ranking"). The two are independent.
+  ranking (`archive/PROGRESS-V0.4.md` "Detections ranking"). The two are independent.
   Three things to settle first:
   - Thresholds need triage, not blanket scaling. Rate-like counts (BACnet chatter, CNS
     volume, Apogee failures, every `FindingAt`) should scale; **presence** checks must not —
@@ -86,7 +91,7 @@ _Not scoped into 0.4.0. Promote to a PRD when one becomes the next version._
 
 ## Known bugs
 
-_None of these block the 0.4.0 release._
+_None of these blocked the 0.4.0 release._
 
 - **Host console catch-up % feels inaccurate.** Successive `Catch-up ... N%` lines can
   stall or jump. Console is throttled (`+10%` or every 3s in `Update-LoadProgress`); UI

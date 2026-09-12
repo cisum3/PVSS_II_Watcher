@@ -1,11 +1,11 @@
 # PRD: PVSS Log Analyzer V0.4 — rule engine + Watch absorbs OfflineAnalyze
 
 **Product:** `Watch-PvssLog.ps1` / `Run-Watch.cmd` (+ new `Run-Report.cmd`)
-**Status:** **Locked / ready to build** (reviewed 2026-09-07, Cisum)
+**Status:** **Shipped 2026-09-12** (reviewed 2026-09-07, Cisum)
 **Date:** 2026-09-07
-**Supersedes:** the "shared parser library" plan in [`BACKLOG.md`](BACKLOG.md) (see §2)
+**Supersedes:** the "shared parser library" plan in [`BACKLOG.md`](../BACKLOG.md) (see §2)
 **Ships as:** Watch **0.4.0** — `OfflineAnalyze\` is **removed** from the package
-**Build tracker:** [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md)
+**Build tracker:** [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) (also archived)
 
 **Primary goal:** make "this log line means this" cheap to add — one rule row instead of
 edits in nine places.
@@ -613,9 +613,9 @@ PvssLogAnalyze\
     PvssRules.ps1               ← new, dot-sourced rule table
     watch-config.txt
     ui\
-  (OfflineAnalyze\ deleted)
+  (OfflineAnalyze\ deleted — frozen 1.3 under docs\archive\OfflineAnalyze\)
 docs\                           ← dev only, not in field zips
-  PRD-V0.4.md, BACKLOG.md, archive\, PVSS_II_Examples\
+  BACKLOG.md, archive\ (incl. this PRD + PROGRESS-V0.4.md), PVSS_II_Examples\
   Test-WatchSelf.ps1            ← repaired + new rule/text/batch phases (§4.7)
 ```
 
@@ -735,3 +735,4 @@ irreversible step is 4G, gated on 4F.
 - [x] §7.4 launcher names agreed — `Run-Report.cmd` / `Run-Report-Interactive.cmd`
 - [x] §5.3 absolute `-From`/`-To` approach accepted; seek strategy settled in §5.3.1
 - [x] Status → **Locked / ready to build** → [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) created
+- [x] Shipped 2026-09-12 as Watch 0.4.0; this file + tracker archived under `docs\archive\`

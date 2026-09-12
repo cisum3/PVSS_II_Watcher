@@ -1,6 +1,6 @@
 # PvssRules.ps1 - declarative detection rules + generic rule engine.
 # Dot-sourced by Watch-PvssLog.ps1 (no new scope: script: bindings land in the caller).
-# Spec: docs\PRD-V0.4.md section 4.
+# Spec: docs\archive\PRD-V0.4.md section 4.
 #
 # A rule is one hashtable row:
 #   Id           required  stable key 'group.name'; keys state maps and payloads

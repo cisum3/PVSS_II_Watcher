@@ -1,0 +1,5 @@
+# Exclude internal dev docs and tracking files from generated ZIP archives
+PRD-*.md export-ignore
+PROGRESS-*.md export-ignore
+docs/ export-ignore
+.github/ export-ignore

@@ -35,6 +35,16 @@ npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
 dev-debug.log
+# .NET build / publish outputs
+**/bin/
+**/obj/
+Watch/DesigoLogWatcher.exe
+Watch/DesigoLogWatcher.pdb
+Watch/*.deps.json
+Watch/*.runtimeconfig.json
+Watch/*.dll
+!Watch/ui/**
+
 # Dependency directories
 node_modules/
 # Environment variables

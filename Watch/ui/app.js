@@ -707,8 +707,8 @@
       var ds2 = [];
       if (hasBac) {
         ds2 = [
-          { label: 'Failed', data: rows.map(function (r) { return r.bacFailed || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 },
-          { label: 'OK', data: rows.map(function (r) { return r.bacOk || 0; }), borderColor: SEV_COLORS.INFO, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 }
+          { label: 'OK', data: rows.map(function (r) { return r.bacOk || 0; }), borderColor: SEV_COLORS.INFO, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 },
+          { label: 'Failed', data: rows.map(function (r) { return r.bacFailed || 0; }), borderColor: SEV_COLORS.SEVERE, backgroundColor: 'transparent', tension: 0.2, pointRadius: rows.length > 80 ? 0 : 2 }
         ];
       } else if (hasSevFallback) {
         ds2 = [

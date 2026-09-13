@@ -1,4 +1,4 @@
-﻿# Watch preferences (Watch-PvssLog.ps1)
+# Watch preferences (Watch-PvssLog.ps1)
 # Edit values below. Lines starting with # are ignored.
 # CLI flags override these when you launch with -Port / -LogPath / etc.
 # Invalid values are rejected, logged in the host console, and reset to defaults.
@@ -58,7 +58,7 @@ BacFlapMin=3
 
 # Live PVSS_II.log path (prefill). Leave empty until Start, or set your site path.
 # LogPath: empty or a file path (updated on Start)
-LogPath=
+LogPath=C:\Users\Isaac\Documents\Cursor\PVSII_Log\docs\PVSS_II_Examples\PVSS_II_C3P.log.bak
 
 
 

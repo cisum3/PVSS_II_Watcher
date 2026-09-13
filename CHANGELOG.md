@@ -1,0 +1,67 @@
+# Changelog
+
+Newest first. Field packages ship **[`CHANGELOG.txt`](CHANGELOG.txt)** (plain text). This Markdown file is for GitHub. Current version is also in [`Watch/VERSION.txt`](Watch/VERSION.txt).
+
+---
+
+## 0.4.0 — 2026-09-12
+
+**Author:** Cisum
+
+**Versioning:** scheme reset to SemVer 2.0.0 `0.y.z` for pre-v1.0 development (historical 2.1 / 2.2 / 2.3 / 2.4 map to 0.1.0 / 0.2.0 / 0.3.0 / 0.4.0). Under SemVer §4, breaking changes during initial development only bump the MINOR (0.3.0 → 0.4.0). The root package is versioned as one unit; separate OfflineAnalyze version numbers are dropped.
+
+One tool, two modes. OfflineAnalyze is gone as a separate tool — everything it did is now report mode inside Watch, so there is one folder to copy and one place where a detection gets added. This is a **breaking** integration: delete `Watch\OfflineAnalyze\`, use `Run-Report.cmd` / `Run-Report-Interactive.cmd` instead of `Run-Analyze*.cmd`, and note changed flags (`-NonInteractive` is now the default; `-Interactive` opts back in).
+
+- **New: report mode.** `Run-Report.cmd` writes an HTML report and exits — no dashboard, no browser, no network port. `Run-Report-Interactive.cmd` asks for the time window, report shape and format first; every question has a default, so pressing Enter throughout is fine.
+- **New: Detections.** Known problem signatures — trend buffer loss, driver error codes, offline drivers, unknown AlertIDs, COV bursts, repeated traces, AES password failures and more — are called out by name instead of being left for you to spot in the pattern tables. They appear both in the dashboard (new Detections page) and in reports. 14 new signatures this release, several of which were going completely unreported before.
+- Detections are ordered worst-first. Ranking is by how intensely each signature fired over its own active period, not by raw line count, so a driver offline for four hours sorts above three weeks of background chatter that happens to have ten times the line count. Each one shows how it compares with its reporting threshold ("18x threshold") and how long it was active.
+- **New: absolute time windows.** `-From` and `-To` take a date and time, so you can report on exactly the period an incident happened rather than the last N minutes. A date-only `-To` covers the whole of that day.
+- **New: report format choice.** Snapshot on the dashboard now expands to offer HTML, Text, or JSON instead of always downloading HTML.
+- Reports gained the options used, hourly volume, and driver deep-dive sections, and now match the dashboard's snapshot exactly.
+- If you do not pass `-LogPath`, report mode looks beside itself for `PVSS_II.log`, then `PVSS_II.log.bak`, then the newest `PVSS_II*.log` it finds.
+- A report run no longer changes the log path saved in `watch-config.txt`. Only the dashboard does that, as before.
+- **Fixed:** changing the time window while the dashboard was still loading one left the page describing a window the host was not actually building. The window buttons are now greyed out until the load finishes.
+
+**Upgrading:** delete your old `Watch\OfflineAnalyze\` folder. `Run-Analyze.cmd` and `Run-Analyze-Interactive.cmd` are replaced by `Run-Report.cmd` and `Run-Report-Interactive.cmd`. Reports look the same; the old `-NonInteractive` switch is now simply the default, and `-Interactive` opts back in.
+
+---
+
+## 0.3.0 — 2026-09-07
+
+**Author:** Cisum
+
+Then still shipped as Watch + OfflineAnalyze side by side; OfflineAnalyze changes in this release are listed under that heading for history.
+
+### Watch
+
+- Project restarts (Overview + snapshot): cycle rows with uptime / stop / downtime instead of a flat event list. Downtime is only stopped→next up (blank + “still down” when the window ends mid-stop). Window-start may show an implied up. `START_MODE` remains count-only.
+- Longer pattern labels / example lines (default 500 chars, was 180/300), with `SampleMaxChars` in `watch-config.txt` (100–2000).
+- Restart in the dashboard now re-reads `watch-config.txt`, so TopN, SamplePerPattern, SampleMaxChars, BacFlapMin, RefreshSeconds and the log path prefill apply without closing the host console. Changes are listed in that console. PreferredPort / MaxPortTries / OpenBrowser / Browser still need a host restart. CLI flags keep overriding the file.
+
+### OfflineAnalyze (absorbed in 0.4.0)
+
+- Project restarts section in text/HTML reports uses the same cycle view (uptime / stop / downtime) as Watch.
+- Report section order: modules (BACnet / CNS / CoHo / Apogee) now follow performance keyword categories and come before hourly volume.
+- Longer pattern labels (300 chars) and example lines (500 chars).
+
+---
+
+## 0.2.0 — 2026-09-06
+
+**Author:** Cisum
+
+- Preferences file `Watch\watch-config.txt` (port, refresh, browser, default time window, severity/area chips, TopN, LogPath prefill, and more). Invalid values are rejected, shown in the host console, and reset to defaults. Start updates LogPath automatically.
+- Faster progress updates while a window is loading (~0.5s); steady polling uses RefreshSeconds from the config file after that.
+- Area filter chips: SYS / IMPL / CTRL / PARAM / OTHER. Filters change what charts, patterns, and managers show; every area is still collected (unknown areas appear under OTHER). Module pages still show all areas.
+- Overview lists project restart times (pmon up / shutdown / stopped).
+- Snapshot HTML report: jump links to each section, project restarts, manager health, and more BACnet / CNS / CoHo / Apogee detail. Same look as the dashboard.
+- Dashboard starts with defaults from `watch-config.txt` (window, severity chips, area chips, refresh).
+
+---
+
+## 0.1.0 — 2026-09-05
+
+**Author:** Cisum
+
+- Live Watch dashboard with severity filters, time windows, module pages (BACnet, CNS, CoHo, Apogee), patterns, managers, and charts (including project-up markers).
+- OfflineAnalyze HTML/text reports with findings, severity patterns, module sections, project restart timeline, and manager health.

@@ -38,12 +38,12 @@ Both modes share the same analyzer. A report is a snapshot without opening the d
 ```text
 Run-Watch.cmd / Run-Report*.cmd   Field launchers
 readMe.txt                        Operator guide (ships in field zips)
-CHANGELOG.txt                     Release notes
+CHANGELOG.txt                     Release notes (ships in field zips)
 Watch\                            Runtime (host, rules, UI, config)
 docs\                             Dev docs, tests, archive (not in field zips)
 ```
 
-Field packages are operator-focused: use **[`readMe.txt`](readMe.txt)** for full setup, switches, detections, and config details. See **[`CHANGELOG.txt`](CHANGELOG.txt)** for what changed per release.
+Field packages are operator-focused: use **[`readMe.txt`](readMe.txt)** for full setup, switches, detections, and config details. See **[`CHANGELOG.txt`](CHANGELOG.txt)** (or **[`CHANGELOG.md`](CHANGELOG.md)** on GitHub) for what changed per release.
 
 ## Development docs
 

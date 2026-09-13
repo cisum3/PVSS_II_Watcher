@@ -17,7 +17,8 @@ Spec: [`PRD-V0.5.md`](PRD-V0.5.md) (**pre-finalized**; lock → create `PROGRESS
 (or the patch list here) and tracker; historical requirements in [`archive/`](archive/).
 Anything shipping to the field needs a **version bump** first (`VERSION.txt` + user-facing
 `readMe.txt` / `CHANGELOG.txt`). Keep root [`CHANGELOG.txt`](../CHANGELOG.txt)
-operator-focused — no docs/backlog links.
+operator-focused — no docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELOG.md).
+
 
 ---
 

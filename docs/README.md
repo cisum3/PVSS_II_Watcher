@@ -28,4 +28,4 @@ Root of the repo (and field zip):
 
 No `OfflineAnalyze\` in the field package.
 
-Keep `readMe.txt` / `CHANGELOG.txt` operator-focused (no refs to `docs\` or the internal backlog). GitHub overview: root [`README.md`](../README.md).
+Keep `readMe.txt` / `CHANGELOG.txt` operator-focused (no refs to `docs\` or the internal backlog). GitHub overview: root [`README.md`](../README.md) · [`CHANGELOG.md`](../CHANGELOG.md).

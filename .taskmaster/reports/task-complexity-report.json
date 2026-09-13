@@ -1,0 +1,109 @@
+{
+	"meta": {
+		"generatedAt": "2026-09-13T03:45:53.370Z",
+		"tasksAnalyzed": 12,
+		"totalTasks": 12,
+		"analysisCount": 12,
+		"thresholdScore": 5,
+		"projectName": "Task Master",
+		"usedResearch": false
+	},
+	"complexityAnalysis": [
+		{
+			"taskId": 1,
+			"taskTitle": "Phase 5A: Codebase inventory and DesigoLogWatcher project scaffold",
+			"complexityScore": 4,
+			"recommendedSubtasks": 5,
+			"expansionPrompt": "Break down the codebase inventory and C# project scaffolding into discrete steps: (1) inventory and document existing PowerShell CLI semantics, config keys, and API routes from the 5,134-line Watch-PvssLog.ps1; (2) create the DesigoLogWatcher.csproj with net10.0-windows single-file publish settings; (3) configure build output to Watch/ directory with correct assembly naming; (4) create placeholder source files for all major components; (5) validate build and publish produces a runnable executable without requiring .NET runtime installation.",
+			"reasoning": "Moderate complexity due to comprehensive inventory of large PowerShell codebase (5,134 lines) and establishing correct .NET 10 project structure with single-file publish. Requires understanding existing CLI patterns, config system, and API contracts before scaffolding. However, this is primarily setup work with clear .csproj configuration requirements and no algorithmic challenges. The inventory aspect adds complexity but the scaffolding itself is straightforward .NET project creation."
+		},
+		{
+			"taskId": 2,
+			"taskTitle": "Config.cs implementation for watch-config.txt load, validation, and self-correction",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Decompose the configuration system into: (1) implement key=value parser with comment and whitespace handling matching PowerShell behavior; (2) create strongly-typed WatchConfig class with all 12+ configuration properties and validation ranges; (3) implement self-correction logic that rewrites invalid entries to defaults while preserving file structure and comments; (4) add CLI override precedence where command-line arguments supersede file values; (5) implement mode-specific LogPath write-back rules (dashboard updates, report mode read-only); (6) add runtime reload capability for dashboard restart action.",
+			"reasoning": "Moderate-high complexity due to preserving exact 0.4.x behavior while porting from PowerShell's Get-WatchConfigDefaults and ConvertTo-ConfigBool functions. The config file has 12+ tunable parameters with range validation, type conversion, and self-correction requirements. Must handle CLI precedence, mode-specific LogPath rules, and runtime reload. The self-correction file rewrite logic adds complexity, requiring careful preservation of comments and formatting while only modifying invalid values. Parity with existing PowerShell behavior is critical."
+		},
+		{
+			"taskId": 3,
+			"taskTitle": "Cli.cs and Program.cs: CLI parsing, mode selection, and interactive prompts",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down CLI implementation into: (1) design strongly-typed options class capturing all 18+ switches from existing PowerShell params; (2) implement System.CommandLine integration with root command and option definitions preserving exact switch names; (3) add mode selection logic branching to dashboard vs report pipelines; (4) implement interactive prompt system for -Interactive mode with Enter-defaulted answers; (5) build manager pick range parser supporting syntax like '1-3,10' with validation and deduplication; (6) implement window precedence rules where relative windows override absolute From/To; (7) generate help text and integrate with Program.cs entry point.",
+			"reasoning": "Moderately high complexity due to 18+ command-line switches, interactive prompts, and complex manager pick range syntax parsing. Must preserve exact PowerShell CLI semantics including window precedence rules (relative overrides absolute), handle both dashboard and report mode selection, and implement interactive dialogs that mirror PowerShell host prompts. The range syntax parser ('1-3,10') requires parsing, expansion, validation, and deduplication logic. Integration with System.CommandLine adds API learning curve. Critical for maintaining operator workflows unchanged."
+		},
+		{
+			"taskId": 4,
+			"taskTitle": "LogParser.cs: high-performance streaming read, windowing, and tailing",
+			"complexityScore": 8,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Decompose the high-performance log parser into: (1) implement FileStream with FileAccess.Read + FileShare.ReadWrite for concurrent access; (2) design buffered line enumeration using ReadOnlySpan<char> to eliminate per-line allocations; (3) implement analysis window logic for Entire, LastHours, LastMinutes, From, and To with timestamp boundary calculations; (4) build catch-up phase that processes historical window with progress tracking; (5) implement tailing loop with file position monitoring and new byte detection; (6) add log rotation and truncation detection with re-seeking logic; (7) optimize span-based parsing to avoid substring allocations; (8) integrate performance instrumentation to validate sub-second parse goals on 50MB corpus.",
+			"reasoning": "High complexity due to performance-critical requirements (50MB in under 5 seconds, aspirational under 1 second) and sophisticated streaming logic. Must implement zero-allocation span-based parsing, efficient windowing across multiple time boundary types, catch-up with progress percentages, and robust tailing that handles log rotation/truncation. The transition from 8-minute PowerShell baseline to sub-second C# requires careful optimization with spans, buffered I/O, and avoiding LINQ. Log sharing semantics (FileShare.ReadWrite) add concurrency considerations. This is the performance bottleneck removal core of the entire 0.5.0 effort."
+		},
+		{
+			"taskId": 5,
+			"taskTitle": "AnalysisState.cs and header parsing: pattern, module, and lifecycle accumulation",
+			"complexityScore": 7,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Break down state accumulation into: (1) design AnalysisState class with accumulators for severity counts, module metrics, driver stats, pattern tables, and lifecycle signals; (2) implement span-based header parser extracting timestamp, severity, module/manager, and message from PVSS_II.log format; (3) add severity normalization to DEBUG/INFO/WARNING/ERROR/SEVERE categories; (4) build pattern accumulation logic updating per-module and per-driver tables; (5) implement lifecycle event detection for project start/stop and manager restart signatures; (6) port hand-written PowerShell analysis helpers (BACnet flips, Apogee orchestration families) to C# methods; (7) validate against PowerShell Process-LogLine behavior for parity.",
+			"reasoning": "Moderately high complexity due to span-based header parsing requirements, multiple accumulation dimensions (severity, module, driver, pattern, lifecycle), and porting complex PowerShell logic from the 5,134-line script. The header parser must handle PVSS_II.log format variations with zero allocations using span slicing. AnalysisState must mirror PowerShell's aggregation semantics exactly for parity gate. Lifecycle detection and driver-specific behaviors (BACnet flips, Apogee families) add domain complexity. Performance-critical path requiring optimization while maintaining correctness."
+		},
+		{
+			"taskId": 6,
+			"taskTitle": "RuleEngine.cs and Rules table port: single-scope dev gate implementation",
+			"complexityScore": 8,
+			"recommendedSubtasks": 9,
+			"expansionPrompt": "Decompose rule engine development into: (1) design RuleDefinition record capturing Id, Group, Label, Scope, pattern, BucketBy, Measure, Sample, FindingAt from PowerShell PvssRules.ps1; (2) port all 40+ rule definitions from PowerShell hashtable format to C# data structures; (3) implement data-driven RuleEngine that processes LogEntry events against rule table; (4) add compiled Regex initialization for all pattern-based rules; (5) implement BucketBy logic supporting capture groups, component/area/severity variables, and TrimEnd modifiers; (6) build Measure aggregation with Sum/Max operations; (7) add Sample and SampleSlot tracking; (8) implement FindingAt threshold evaluation; (9) enforce single-scope semantics for dev gate with configuration toggle for later multi-scope enablement.",
+			"reasoning": "High complexity due to porting 40+ declarative rules from PvssRules.ps1 (471 lines) to a fully data-driven C# engine. RuleDefinition must support complex BucketBy expressions (capture groups, variables like '$component', TrimEnd modifiers), Measure aggregations, and FindingAt thresholds. The engine must remain extensible ('one row plus one test' principle) while being performance-optimized with compiled regexes. Parity with PowerShell rule evaluation is critical for the dev gate. Hand-written analysis for BACnet flips, lifecycle, and Apogee families must integrate smoothly. This is core detection logic requiring high accuracy and performance."
+		},
+		{
+			"taskId": 7,
+			"taskTitle": "ReportWriter.cs and SnapshotBuilder.cs: HTML, text, and JSON renderers with parity gate",
+			"complexityScore": 7,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Break down snapshot and report generation into: (1) design Snapshot class structure with Meta, Overview, Findings, Detections, and module sections mirroring PowerShell Build-SnapshotObject; (2) implement SnapshotBuilder consuming AnalysisState and RuleEngine outputs; (3) build HTML renderer matching 0.4.0 report structure, headings, tables, and styling; (4) implement text format renderer for plain-text reports; (5) add JSON serializer producing dashboard-compatible snapshot payloads; (6) integrate -Format switch handling for Text/Html/Both options; (7) implement -OutPath and -NoPause semantics; (8) establish parity testing infrastructure with byte-identical comparison allowing only meta field differences from allowlist.",
+			"reasoning": "Moderately high complexity due to generating three output formats (HTML, text, JSON) that must achieve byte-identical parity with 0.4.0 PowerShell outputs (5,048-line Write-ReportSummary function and Build-SnapshotObject). Snapshot structure must mirror existing PowerShell object graph for dashboard API compatibility. HTML rendering must preserve exact structure, headings, and tables for field continuity. Parity gate requires careful testing with allowlist for tolerated differences (meta.generated, version banners). JSON shape must match /api/snapshot contract. Integration with dashboard and report modes adds cross-cutting concerns."
+		},
+		{
+			"taskId": 8,
+			"taskTitle": "Enable §2.1 exceptions: multi-scope rules, BACnet-scoped families, and manager range prompts",
+			"complexityScore": 6,
+			"recommendedSubtasks": 7,
+			"expansionPrompt": "Decompose the §2.1 enhancements into: (1) augment RuleDefinition to support Scope as either string or IReadOnlyList<string> for multi-scope rules; (2) update RuleEngine to evaluate rules across all configured scopes in multi-scope mode; (3) implement BACnet-scoped rule families for four Apogee-shaped drivers without widening existing Apogee scopes; (4) add configuration toggles separating dev-gate (single-scope) from ship-gate (multi-scope + BACnet) behavior; (5) enhance manager range prompt parsing to support '1-3,10' syntax with validation; (6) document expected report deltas in PROGRESS-V0.5 for multi-scope and BACnet detections; (7) adjust ship-gate tests to expect documented differences while failing on unexpected diffs.",
+			"reasoning": "Moderate-high complexity due to extending the rule system from single-scope to multi-scope while maintaining backward compatibility and careful separation of dev vs ship gate behaviors. Must avoid scope leakage and double-counting in dual-driver scenarios. BACnet rule families add four new driver patterns requiring domain understanding without affecting existing Apogee scopes. Configuration toggles needed to validate parity before enabling enhancements. Manager range parsing already started in task 3 but needs full validation integration. Documentation of expected deltas and test expectation updates add rigor requirements."
+		},
+		{
+			"taskId": 9,
+			"taskTitle": "HttpServer.cs: embedded 127.0.0.1 listener, static ui serving, and /api/* routes",
+			"complexityScore": 7,
+			"recommendedSubtasks": 8,
+			"expansionPrompt": "Break down HTTP server implementation into: (1) design HttpServer class using HttpListener bound to 127.0.0.1 with port configuration and fallback tries; (2) implement static file serving from Watch/ui/ directory with content-type detection and charset handling; (3) inventory all /api/* routes from existing PowerShell implementation (health, pulse, section, manager, snapshot, start, pause, resume, restart); (4) implement /api/health and /api/pulse endpoints with JSON responses; (5) add /api/section and /api/manager data endpoints backed by SnapshotBuilder; (6) implement /api/snapshot returning full snapshot JSON; (7) add control endpoints for start/pause/resume/restart with state management; (8) ensure 404 handling, proper content-type headers, and localhost-only binding for security.",
+			"reasoning": "Moderately high complexity due to implementing embedded HTTP server with dual responsibilities: static file serving from ui/ and multiple JSON API endpoints. Must inventory and port all existing PowerShell /api/* routes while maintaining exact JSON contract compatibility for dashboard. Static file serving requires content-type detection, charset handling, and 404 responses. Control endpoints (start/pause/restart) require state management and integration with log parser lifecycle. Security requirement to bind only 127.0.0.1 is critical. Integration with SnapshotBuilder and AnalysisState adds dependencies."
+		},
+		{
+			"taskId": 10,
+			"taskTitle": "Dashboard catch-up, tailing, restart behavior, and config reload integration",
+			"complexityScore": 8,
+			"recommendedSubtasks": 9,
+			"expansionPrompt": "Decompose dashboard integration into: (1) implement catch-up phase with progress percentage based on file position and total size exposed via /api/health or /api/pulse; (2) build transition from catch-up to tailing loop with continuous log reading and state updates; (3) add periodic pulse updates during tailing for live dashboard refresh; (4) implement restart semantics with watch-config.txt reload and state reinitialization; (5) ensure LogPath write-back to config on dashboard Start action while preventing report mode write-back; (6) coordinate concurrency between log reading, state updates, and HTTP request handling for consistent snapshots; (7) handle window selection changes and re-analysis without restarting HttpServer; (8) validate progress reporting from 0 to 100% during catch-up and stabilization in tail mode; (9) ensure resource cleanup and no leaked tail loops on repeated restarts.",
+			"reasoning": "High complexity due to orchestrating multiple concurrent activities: log parsing, state accumulation, HTTP serving, and configuration management. Progress percentage calculation requires careful tracking of file position vs size. Transition from catch-up to tailing must be seamless with no lost lines. Restart logic must reload config, reinitialize state, and restart analysis without leaving HttpServer in inconsistent state. Concurrency between tail loop and HTTP handlers requires thread-safe access to snapshots. LogPath write-back rules differ by mode. Resource management across restart cycles is critical to avoid leaks. This integrates nearly all prior components."
+		},
+		{
+			"taskId": 11,
+			"taskTitle": "Build, publish, launcher integration, and field package layout for 0.5.0",
+			"complexityScore": 5,
+			"recommendedSubtasks": 6,
+			"expansionPrompt": "Break down packaging and deployment into: (1) finalize DesigoLogWatcher.csproj with PublishSingleFile, SelfContained, RuntimeIdentifier=win-x64, and IncludeNativeLibrariesForSelfExtract settings; (2) configure dotnet publish command to output to Watch/ directory; (3) update Run-Watch.cmd, Run-Report.cmd, and Run-Report-Interactive.cmd to invoke DesigoLogWatcher.exe instead of powershell.exe with argument forwarding; (4) ensure ui/ assets are included in publish or copied to Watch/; (5) update VERSION.txt to 0.5.0 and revise readMe.txt and CHANGELOG.txt documenting runtime change; (6) create field zip excluding src/ and docs/ for operator deployment and validate on clean Windows machine without .NET runtime.",
+			"reasoning": "Moderate complexity due to .NET single-file publish configuration, launcher updates, and packaging requirements. Must ensure correct .csproj settings for self-contained deployment with native libraries. Launcher scripts need argument forwarding preserved exactly. ui/ assets must be in correct location for HttpServer. Documentation updates require explaining runtime change to operators while maintaining usage continuity. Field validation on clean Windows machine without .NET runtime is critical acceptance test. Less algorithmic complexity than other tasks but requires careful configuration and validation across deployment scenarios."
+		},
+		{
+			"taskId": 12,
+			"taskTitle": "Performance measurement, parity verification, and optional Entire-window cache decision",
+			"complexityScore": 9,
+			"recommendedSubtasks": 10,
+			"expansionPrompt": "Decompose final validation into: (1) establish performance test harness for ~50MB PVSS_II.log corpus measuring entire-file scan and HTML write times; (2) run report mode timing tests comparing against 8-minute PowerShell baseline with target under 5 seconds; (3) measure dashboard cold Entire parse specifically to inform cache decision (implement cache if > 0.5-1 second); (4) run dev-gate parity tests comparing HTML, text, and JSON outputs byte-for-byte against 0.4.0 with meta differences allowlist; (5) enable §2.1 exceptions and update ship-gate expectations for multi-scope and BACnet rule deltas; (6) validate all API contracts by comparing JSON schemas for pulse, section, manager, health endpoints against 0.4.0 responses; (7) test config behavior, launcher integration, and CLI semantics against acceptance checklist; (8) implement optional Entire-window cache with clone/serve/background-save if cold parse exceeds threshold; (9) profile and optimize hotspots using instrumentation to achieve performance goals; (10) document all findings, decisions, and measurements in PROGRESS-V0.5.md.",
+			"reasoning": "Highest complexity as this is comprehensive validation integrating all prior tasks. Performance testing against 50MB corpus with 96x speedup requirement (8 minutes to 5 seconds) needs careful measurement and optimization. Parity verification requires byte-identical comparison across three formats with sophisticated allowlist handling. Ship-gate testing must validate expected deltas while catching unexpected regressions. Optional cache implementation decision based on real measurements adds conditional complexity. API contract validation across multiple endpoints requires fixtures and schema comparison. Profiling and optimization may require iteration across multiple components. Documentation of all decisions and tradeoffs is substantial. This is the final quality gate before release."
+		}
+	]
+}

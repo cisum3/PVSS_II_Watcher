@@ -1,0 +1,1230 @@
+{
+  "master": {
+    "tasks": [
+      {
+        "id": 1,
+        "title": "Phase 5A: Codebase inventory and DesigoLogWatcher project scaffold",
+        "description": "Perform a full inventory of the existing PVSS log triage toolkit, then scaffold the C# DesigoLogWatcher project with the required layout and single-file publish settings as the baseline for all subsequent work.",
+        "details": "Begin by reviewing the existing PowerShell-based runtime in the project root, focusing on scripts such as \"Watch-PvssLog.ps1\", \"PvssRules.ps1\", and the current batch launchers \"Run-Watch.cmd\" and \"Run-Report*.cmd\" to understand existing CLI semantics, config usage, API routes, and dashboard behavior described in the PRD. Use the documented field layout to confirm the expected structure under \"Watch\\\" and \"ui\\\", and cross-check how the toolkit currently discovers and opens the \"PVSS_II.log\" file, aligning with the WinCC OA documentation that places log files under the project \"log\" directory and emphasizes that PVSS_II.log contains general project-relevant information[3][8][10]. Then create a new C# console project under \"src\\DesigoLogWatcher\" using \"dotnet new console\" and modify the .csproj to match the PRD: target framework \"net10.0-windows\", output type \"Exe\", implicit usings and nullable enabled, single-file publish and self-contained runtime with RuntimeIdentifier set to \"win-x64\" and IncludeNativeLibrariesForSelfExtract enabled, following the guidance that PublishSingleFile is a dotnet publish-specific setting[15].\n```xml\n<!-- DesigoLogWatcher.csproj core settings -->\n<PropertyGroup>\n  <OutputType>Exe</OutputType>\n  <TargetFramework>net10.0-windows</TargetFramework>\n  <ImplicitUsings>enable</ImplicitUsings>\n  <Nullable>enable</Nullable>\n  <PublishSingleFile>true</PublishSingleFile>\n  <SelfContained>true</SelfContained>\n  <RuntimeIdentifier>win-x64</RuntimeIdentifier>\n  <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>\n</PropertyGroup>\n```\nRename the generated assembly output to the operator-facing binary name \"DesigoLogWatcher.exe\" via the appropriate msbuild properties or by keeping the project name aligned, ensuring that publish output lands in the \"Watch\\\" folder in accordance with the PRD’s publish recipe using \"dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\\"[15]. Establish an initial Program.cs that wires up a minimal entry point, deferring mode selection and CLI parsing to later phases but leaving hooks for report and dashboard paths. Finally, create empty placeholder source files Config.cs, LogParser.cs, RuleEngine.cs, AnalysisState.cs, SnapshotBuilder.cs, ReportWriter.cs, HttpServer.cs, Cli.cs, and a \"Rules\\\" subfolder so that later tasks can fill in behavior without restructuring the project.",
+        "testStrategy": "Validate the scaffold by building and publishing the project using \"dotnet build\" and \"dotnet publish\" to confirm that the single-file self-contained executable is produced in the \"Watch\\\" directory and runs as a basic console application without requiring a global .NET runtime install[15]. Verify that the on-disk layout matches the PRD’s package diagram, with \"PvssLogAnalyze\" root containing the \"Watch\\\" folder, launchers, and source tree, and ensure that the new exe can be invoked from the existing \"Run-Watch.cmd\" and \"Run-Report*.cmd\" without changing their argument patterns. As an initial smoke test, confirm that the exe process can be started and terminated successfully and that the process name matches the expected operator-facing binary name, documenting this as the foundation for later integration tests.",
+        "priority": "medium",
+        "dependencies": [],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Inventory existing PowerShell codebase and document CLI semantics, config keys, and API routes",
+            "description": "Perform comprehensive analysis of Watch-PvssLog.ps1 (5,134 lines), PvssRules.ps1, and launcher scripts to extract and document all CLI parameters, configuration keys, API endpoints, and operational semantics.",
+            "dependencies": [],
+            "details": "Review Watch-PvssLog.ps1 to document all CLI parameters (LogPath, Port, LastMinutes, RefreshSeconds, Report mode flags, etc.), extract all API routes (/api/pulse, /api/section, /api/manager, /api/health), and catalog all watch-config.txt configuration keys with their validation rules and defaults from Get-WatchConfigDefaults function. Document the dual-mode operation (dashboard vs report), understanding how Run-Watch.cmd and Run-Report.cmd invoke the PowerShell runtime. Cross-reference PvssRules.ps1 to understand the rule detection patterns and how they integrate with the main analyzer. Map out the file discovery mechanism for PVSS_II.log and how FileAccess.Read with FileShare.ReadWrite is used for concurrent access. Create a reference document capturing CLI semantics, config precedence (file vs CLI overrides), API contracts (request/response schemas), and dashboard polling behavior to serve as the specification for C# reimplementation.",
+            "status": "pending",
+            "testStrategy": "Validate inventory completeness by cross-referencing documented CLI parameters against actual param block in Watch-PvssLog.ps1, verify all config keys match those in watch-config.txt and Get-WatchConfigDefaults, and confirm API routes by searching for route handler functions and /api/ string literals in the codebase."
+          },
+          {
+            "id": 2,
+            "title": "Create DesigoLogWatcher.csproj with net10.0-windows and single-file publish configuration",
+            "description": "Scaffold new C# console project under src/DesigoLogWatcher with proper .csproj settings for single-file, self-contained Windows deployment targeting .NET 10.",
+            "dependencies": [
+              1
+            ],
+            "details": "Execute 'dotnet new console -n DesigoLogWatcher -o src\\DesigoLogWatcher' to generate initial project structure. Edit DesigoLogWatcher.csproj to set TargetFramework to 'net10.0-windows', OutputType to 'Exe', enable ImplicitUsings and Nullable, and configure single-file publish settings: PublishSingleFile=true, SelfContained=true, RuntimeIdentifier=win-x64, IncludeNativeLibrariesForSelfExtract=true. These settings ensure the published output is a single executable that bundles the .NET runtime and native dependencies, eliminating the need for operators to have .NET installed. Verify the .csproj matches the PRD specification exactly, as PublishSingleFile is a publish-time setting that requires specific dotnet publish invocation.",
+            "status": "pending",
+            "testStrategy": "Run 'dotnet build src\\DesigoLogWatcher\\DesigoLogWatcher.csproj' to verify the project compiles successfully and confirm that the .csproj file contains all required PropertyGroup elements with correct values by inspecting the XML structure."
+          },
+          {
+            "id": 3,
+            "title": "Configure build output to Watch/ directory with DesigoLogWatcher.exe assembly name",
+            "description": "Set up build and publish configuration to output the compiled executable to the Watch/ directory with the operator-facing binary name DesigoLogWatcher.exe.",
+            "dependencies": [
+              2
+            ],
+            "details": "Ensure the project name 'DesigoLogWatcher' produces an assembly named 'DesigoLogWatcher.exe' by default, or explicitly set <AssemblyName>DesigoLogWatcher</AssemblyName> in the .csproj PropertyGroup. Document the publish recipe 'dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\' that places the single-file self-contained executable directly into the Watch folder alongside the existing PowerShell runtime. Verify that this publish command produces DesigoLogWatcher.exe in the Watch/ directory without requiring additional build configuration or post-build copy steps. This layout maintains the field package structure where Watch/ contains all runtime components and the package root holds only launchers and documentation.",
+            "status": "pending",
+            "testStrategy": "Execute the documented publish command and verify that Watch\\DesigoLogWatcher.exe is created, check that the file size indicates single-file bundling (should be substantially larger than a framework-dependent build), and confirm the executable runs without errors by invoking it directly from the command line."
+          },
+          {
+            "id": 4,
+            "title": "Create placeholder source files for all major analyzer components",
+            "description": "Establish initial source file structure with empty placeholder classes for Config, LogParser, RuleEngine, AnalysisState, SnapshotBuilder, ReportWriter, HttpServer, and Cli components.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create src\\DesigoLogWatcher\\Config.cs with an empty Config class stubbed for configuration loading, src\\DesigoLogWatcher\\LogParser.cs for log file streaming and parsing, src\\DesigoLogWatcher\\RuleEngine.cs for rule detection logic, src\\DesigoLogWatcher\\AnalysisState.cs for state management, src\\DesigoLogWatcher\\SnapshotBuilder.cs for JSON snapshot generation, src\\DesigoLogWatcher\\ReportWriter.cs for HTML/text report output, src\\DesigoLogWatcher\\HttpServer.cs for dashboard API server, and src\\DesigoLogWatcher\\Cli.cs for command-line argument parsing. Create a src\\DesigoLogWatcher\\Rules\\ subdirectory to hold future rule implementations. Each file should contain a minimal namespace and class declaration with TODO comments indicating their future purpose, ensuring the project compiles but deferring all business logic to subsequent implementation phases.",
+            "status": "pending",
+            "testStrategy": "Verify all placeholder files exist in the expected locations, run 'dotnet build' to confirm the project compiles successfully with empty class declarations, and check that the Rules\\ subdirectory is present and ready for future rule files."
+          },
+          {
+            "id": 5,
+            "title": "Validate build and publish produces runnable self-contained executable without .NET runtime dependency",
+            "description": "Perform end-to-end validation that the scaffolded project builds, publishes to Watch/, and produces a working self-contained executable that runs on systems without .NET installed.",
+            "dependencies": [
+              3,
+              4
+            ],
+            "details": "Execute 'dotnet build src\\DesigoLogWatcher\\DesigoLogWatcher.csproj' to verify development build succeeds, then run 'dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\' to generate the single-file self-contained package. Launch Watch\\DesigoLogWatcher.exe directly from the command line to confirm it executes without requiring a global .NET runtime installation, validating that the single-file bundling correctly packages all dependencies. Update Program.cs with a minimal entry point that prints version information and exits cleanly, providing a hook for future mode selection (dashboard vs report) and CLI argument processing. Document the successful scaffold in development notes, confirming that the baseline structure is ready for incremental feature implementation in subsequent phases without requiring project reorganization.",
+            "status": "pending",
+            "testStrategy": "On a test machine without .NET SDK or runtime installed, copy Watch\\DesigoLogWatcher.exe and execute it to verify it runs independently. Check that the executable prints expected output and exits with code 0, confirming the self-contained publish worked correctly and all native libraries are properly extracted and loaded."
+          }
+        ]
+      },
+      {
+        "id": 2,
+        "title": "Config.cs implementation for watch-config.txt load, validation, and self-correction",
+        "description": "Implement the configuration subsystem that loads watch-config.txt, validates and self-corrects configuration values, and applies precedence rules between file-based settings and CLI overrides while preserving 0.4.x behavior.",
+        "details": "Implement a Config class responsible for reading \"Watch\\watch-config.txt\" as a simple key=value text file, ignoring comments and blank lines, and normalizing keys exactly as done in 0.4.0 so that existing field configurations remain valid without modification. The loader should open the configuration file using regular file access semantics and parse each line into a dictionary of strongly typed properties, including LogPath, window settings, dashboard port, and other tunables described in the PRD. When loading values, validate ranges and types, and for any invalid or out-of-range entry, log a clear message to the console and rewrite the configuration file to a corrected default value, preserving the PRD’s self-correcting behavior. In report mode, Config must not write back LogPath, whereas in dashboard mode, a Start action may update LogPath to reflect the last opened log as in 0.4.x. Implement precedence so that CLI arguments always override the configuration file when both are present, matching the existing semantics described in the PRD.\n```csharp\npublic sealed class WatchConfig\n{\n    public string? LogPath { get; set; }\n    public int DashboardPort { get; set; }\n    // other keys...\n\n    public static WatchConfig Load(string path)\n    {\n        var config = new WatchConfig();\n        foreach (var line in File.ReadLines(path))\n        {\n            if (string.IsNullOrWhiteSpace(line) || line.TrimStart().StartsWith(\"#\"))\n                continue;\n            var parts = line.Split('=', 2);\n            if (parts.Length != 2) continue;\n            var key = parts[0].Trim();\n            var value = parts[1].Trim();\n            // parse and validate keys\n        }\n        // self-correction pass that rewrites invalid entries\n        return config;\n    }\n}\n```\nDesign Config so that it can be reloaded at runtime when the dashboard restart action is invoked, ensuring that changes in watch-config.txt are picked up without requiring a process restart. Align file path resolution with the documented PVSS_II.log location in Desigo CC projects, where logs live under the project log directory, and integrate knowledge of PVSS_II.log as the default scan file used by the Trace Viewer[3][8][10][11].",
+        "testStrategy": "Develop unit tests for the Config loader that feed synthetic watch-config.txt files containing valid, invalid, and borderline values, asserting that valid keys are parsed correctly and invalid ones are reset to defaults while producing appropriate console messages. Add tests that simulate CLI overrides, verifying that CLI-provided values take precedence over file-based settings and that report mode does not modify LogPath while dashboard mode may update it according to the PRD’s rules. Use file-system-based tests to confirm that self-correction rewrites the config file on disk, preserving comments where possible and only adjusting invalid value lines, and exercise reload behavior to ensure that an updated watch-config.txt is reflected in the running configuration when the restart path is triggered.",
+        "priority": "medium",
+        "dependencies": [
+          1
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement key=value parser with comment and whitespace handling",
+            "description": "Create a robust configuration file parser that reads watch-config.txt line-by-line, handles comments (lines starting with #), blank lines, and splits key=value pairs while preserving exact PowerShell parsing behavior.",
+            "dependencies": [],
+            "details": "Implement the core parsing logic that opens Watch\\watch-config.txt using regular file I/O, reads each line, and filters out comments (lines starting with # after trimming) and blank/whitespace-only lines. For valid lines, split on the first '=' character to separate key from value, trimming both parts. Handle malformed lines (no '=' or empty key) by logging warnings and skipping. The parser must exactly replicate the PowerShell Read-WatchConfig function's line processing logic (lines 165-178 in Watch-PvssLog.ps1), including the IndexOf('=') approach and substring extraction. Return a raw dictionary of string key-value pairs that will be consumed by the strongly-typed WatchConfig class in the next subtask.",
+            "status": "pending",
+            "testStrategy": "Unit test the parser with synthetic watch-config.txt files containing valid key=value pairs, comment lines with and without leading whitespace, blank lines, lines with no '=' character, lines with empty keys, and lines with multiple '=' characters. Assert that comments and blanks are ignored, valid pairs are extracted correctly, and malformed lines produce appropriate warnings without throwing exceptions."
+          },
+          {
+            "id": 2,
+            "title": "Create strongly-typed WatchConfig class with validation ranges",
+            "description": "Design and implement the WatchConfig class with all 14 configuration properties (PreferredPort, MaxPortTries, RefreshSeconds, OpenBrowser, Browser, DefaultWindowMinutes, DefaultWindowEntire, DefaultSeverities, DefaultAreas, TopN, SamplePerPattern, SampleMaxChars, BacFlapMin, LogPath) including type conversion and range validation logic.",
+            "dependencies": [
+              1
+            ],
+            "details": "Define a WatchConfig class with properties matching the PowerShell Get-WatchConfigDefaults structure (lines 75-92). For each property, implement type conversion from string to the target type (int, bool, string, string[]) and validate ranges: PreferredPort (1-65535), MaxPortTries (1-200), RefreshSeconds (1-60), DefaultWindowMinutes (1-10080), TopN (5-100), SamplePerPattern (1-20), SampleMaxChars (100-2000), BacFlapMin (1-50). Boolean properties (OpenBrowser, DefaultWindowEntire) must support the ConvertTo-ConfigBool logic (lines 65-73) accepting 1|true|yes|on for true and 0|false|no|off for false (case-insensitive). DefaultSeverities and DefaultAreas are comma-separated lists validated against allowed tokens (FATAL|SEVERE|ERROR|WARNING|INFO and SYS|IMPL|CTRL|PARAM|OTHER respectively), with partial validation dropping invalid tokens and preserving valid ones. Browser field accepts 'default', 'chrome', 'msedge', or a valid file path. For each invalid value, collect a validation warning and prepare to reset to the default value defined in Get-WatchConfigDefaults.",
+            "status": "pending",
+            "testStrategy": "Test WatchConfig construction with dictionaries containing valid values in-range, values at boundary limits (e.g., PreferredPort=1, 65535), out-of-range integers, unparseable strings, and boolean variants (true/yes/1/on and false/no/0/off). Validate that DefaultSeverities correctly filters mixed valid/invalid tokens and preserves valid ones, and that unknown severity or area tokens are dropped with warnings. Confirm defaults are applied when parsing fails."
+          },
+          {
+            "id": 3,
+            "title": "Implement self-correction file rewrite preserving structure and comments",
+            "description": "Build the self-correction logic that rewrites watch-config.txt when invalid values are detected, updating only the incorrect key=value lines to their default values while preserving all comments, blank lines, and file structure.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement the Set-WatchConfigKeys equivalent (lines 105-132) that accepts a dictionary of corrections (key -> corrected value). Read the existing watch-config.txt into a list of lines preserving original formatting. For each correction key, locate the line matching '^\\s*{key}\\s*=' using a case-sensitive search, and replace that line with the corrected 'key=formatted_value' line. If a correction key is not found in the file (should be rare), append it to the end with a blank line separator. Use Format-WatchConfigValue logic (lines 94-103) to serialize booleans as 'true'/'false' strings and arrays (DefaultSeverities, DefaultAreas) as comma-separated values. Write the corrected lines back to watch-config.txt with UTF-8 encoding, preserving the original line order and all comment/blank lines. Only invoke the rewrite when the corrections dictionary is non-empty. Emit console messages for each corrected key indicating the invalid value, reason, and reset default.",
+            "status": "pending",
+            "testStrategy": "Create unit tests with a watch-config.txt containing an out-of-range PreferredPort and an invalid OpenBrowser value. Run the config loader and self-correction, then re-read the file and verify that the invalid lines have been corrected to defaults while all comment lines and structure remain unchanged. Test that valid keys are not rewritten and that the file is not touched when no corrections are needed."
+          },
+          {
+            "id": 4,
+            "title": "Add CLI override precedence for command-line arguments",
+            "description": "Implement precedence logic ensuring that command-line arguments always override corresponding watch-config.txt values, replicating the existing CLI parameter system from Watch-PvssLog.ps1.",
+            "dependencies": [
+              2
+            ],
+            "details": "After loading WatchConfig from file, merge CLI-provided arguments so that any explicitly set CLI parameter (e.g., -Port, -LogPath, -RefreshSeconds, -TopN, -SamplePerPattern, -SampleMaxChars) supersedes the file-based value. The merge must distinguish between a CLI argument not provided (use config file value) versus explicitly provided (use CLI value even if same as default). Reference the PowerShell param block (lines 13-45) and ensure that CLI switches for report mode (-Report, -OutPath, -Format, -Organize, -Severities, -Areas, -Driver, -TopN, -Entire, -LastHours, -LastMinutes, -From, -To, -Interactive, -NoPause) are integrated. For dashboard mode, CLI overrides apply to -Port (PreferredPort), -LastMinutes (DefaultWindowMinutes), -RefreshSeconds, -TopN, -SamplePerPattern, -SampleMaxChars, and -NoBrowser (inverts OpenBrowser). Ensure that the final WatchConfig object returned from the Load method reflects CLI > file precedence and that CLI overrides are not written back to the config file during self-correction.",
+            "status": "pending",
+            "testStrategy": "Construct tests where watch-config.txt defines PreferredPort=8787 and RefreshSeconds=5, then invoke the CLI parser with -Port 9999. Verify the resulting WatchConfig has Port=9999 and RefreshSeconds=5 (file value). Confirm that self-correction does not rewrite PreferredPort to 9999 in the file. Test -NoBrowser override against OpenBrowser=true in the file, ensuring the runtime uses NoBrowser but the file remains unchanged."
+          },
+          {
+            "id": 5,
+            "title": "Implement mode-specific LogPath write-back rules",
+            "description": "Add mode-aware LogPath update logic so that dashboard mode updates LogPath in watch-config.txt when Start is invoked, while report mode never writes back LogPath, matching 0.4.x behavior.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "In dashboard mode, when the /api/start endpoint is called with a LogPath, update the WatchConfig.LogPath property and invoke Set-WatchConfigKeys to persist the new LogPath to watch-config.txt (line 10 comment: 'On Start, LogPath is updated automatically to the path you used'). In report mode, LogPath is read from the file or CLI but never written back regardless of analysis. Implement a mode flag (Dashboard vs Report) that gates the LogPath write-back behavior. Ensure that the write-back uses the same self-correction file update mechanism (subtask 3) so that comments and structure are preserved. The LogPath update should occur immediately after the dashboard successfully opens the log file, ensuring that subsequent restarts or relaunches prefill the last-used path.",
+            "status": "pending",
+            "testStrategy": "Test dashboard mode by starting with an empty LogPath in watch-config.txt, invoking /api/start with a specific log file path, and verifying that LogPath is updated in the file. Restart the dashboard (reload config) and confirm the LogPath is prefilled. Test report mode with a CLI-provided -LogPath, run a report, and verify that the config file LogPath remains unchanged. Ensure that LogPath write-back does not trigger self-correction of other keys unless they are also invalid."
+          },
+          {
+            "id": 6,
+            "title": "Add runtime reload capability for dashboard restart action",
+            "description": "Enable the WatchConfig class to reload configuration from watch-config.txt at runtime when the dashboard restart API is invoked, picking up user edits without requiring a process restart.",
+            "dependencies": [
+              2,
+              3,
+              4
+            ],
+            "details": "Expose a Reload() method on the WatchConfig class (or a static WatchConfig.Load that can be called multiple times) that re-reads watch-config.txt, re-validates, and re-applies CLI overrides, returning a fresh WatchConfig instance. When the dashboard /api/restart endpoint is triggered (simulating the PowerShell 'Restart' button that reloads config per line 5 comment), call Reload() and swap the active WatchConfig instance. Ensure that startup-only settings like PreferredPort, MaxPortTries, OpenBrowser, and Browser are documented as requiring a full host restart (Run-Watch.cmd re-launch) and are not applied mid-session, while runtime settings like RefreshSeconds, DefaultWindowMinutes, DefaultWindowEntire, DefaultSeverities, DefaultAreas, TopN, SamplePerPattern, SampleMaxChars, and BacFlapMin take effect immediately after reload. Log a console message indicating config reload success or failure, and handle file read errors gracefully by retaining the previous config if reload fails.",
+            "status": "pending",
+            "testStrategy": "Start the dashboard with default config values, edit watch-config.txt to change RefreshSeconds and DefaultWindowMinutes, invoke the /api/restart endpoint, and verify that the new values are picked up and reflected in subsequent /api/pulse and window operations. Confirm that changes to PreferredPort in the file do not affect the running host (it continues on the original port) and that a console message or log entry documents the successful reload. Test reload failure by deleting or corrupting watch-config.txt mid-session and verify the dashboard continues with the prior config and logs an error."
+          }
+        ]
+      },
+      {
+        "id": 3,
+        "title": "Cli.cs and Program.cs: CLI parsing, mode selection, and interactive prompts",
+        "description": "Implement robust command-line parsing and mode selection for dashboard and report modes, supporting all existing switches, interactive prompts, and manager pick range syntax while maintaining compatibility with 0.4.x CLI behavior.",
+        "details": "Introduce a Cli class that uses either System.CommandLine or a minimal custom parser to map command-line tokens into a strongly typed options object, preserving the existing switch names and semantics such as -LogPath, -OutPath, -Format, -Organize, -Severities, -Areas, -Driver, -TopN, -Entire, -LastHours, -LastMinutes, -From, -To, -Interactive, -NoPause, and -Report[18][19]. System.CommandLine’s Command and RootCommand abstractions can be leveraged to represent subcommands or modes, with the root command corresponding to the executable name and potential subcommands or options indicating whether the analyzer should run in dashboard or report mode[18][19]. Program.cs should initialize configuration, parse arguments, and then branch into either report-mode pipeline or dashboard-mode pipeline, with report mode exiting after finishing analysis and dashboard mode starting an HttpServer and tailing the log.\n```csharp\nvar rootCommand = new RootCommand(\"Desigo PVSS log analyzer\");\nvar reportOption = new Option<bool>(\"-Report\", \"Run in batch/report mode\");\nvar logPathOption = new Option<string?>(\"-LogPath\", \"Override log path\");\nrootCommand.AddOption(reportOption);\nrootCommand.AddOption(logPathOption);\nrootCommand.SetHandler((bool report, string? logPath) =>\n{\n    var config = WatchConfig.Load(\"watch-config.txt\");\n    // apply CLI overrides\n    if (report)\n        RunReportMode(config);\n    else\n        RunDashboardMode(config);\n}, reportOption, logPathOption);\nreturn rootCommand.InvokeAsync(args).Result;\n```\nImplement interactive prompts for the -Interactive report mode, presenting questions similar to the 0.4.0 PowerShell host, with Enter-defaulted answers and an interactive manager pick list. For manager pick, fully support range syntax such as \"1-3,10\" by parsing comma-separated tokens, expanding ranges, and validating that selections map to actual managers. Ensure that argument parsing generates consistent help text and usage messages that are operator-friendly, and preserve existing short and long switch names without introducing breaking changes.",
+        "testStrategy": "Construct unit tests and integration tests around the Cli and Program entry points that cover all supported switches, including combinations that exercise window precedence rules where relative windows override absolute From/To settings. Validate that -Report correctly selects report mode, that -Interactive causes the process to prompt for values instead of relying solely on arguments, and that -NoPause suppresses any end-of-run keypress wait. Create dedicated tests for the manager pick range syntax, feeding inputs such as \"1\", \"1-3\", and \"1-3,10\" and asserting that the resulting selection sets are accurate, ordered, and free of duplicates. Additionally, run end-to-end tests where the exe is invoked via the existing Run-Report-Interactive.cmd and Run-Watch.cmd scripts to confirm that arguments are forwarded and interpreted correctly and that help text remains readable for field operators.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          2
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design strongly-typed CliOptions class capturing all 18+ switches",
+            "description": "Create a comprehensive CliOptions class that captures all command-line switches from the existing PowerShell implementation, including -LogPath, -OutPath, -Format, -Organize, -Severities, -Areas, -Driver, -TopN, -Entire, -LastHours, -LastMinutes, -From, -To, -Interactive, -NoPause, and -Report.",
+            "dependencies": [],
+            "details": "Define a CliOptions class with strongly-typed properties for each switch, preserving exact naming and semantics from 0.4.x. Include properties for mode selection (dashboard vs report), path overrides, window selection parameters, output formatting options, and interactive flags. Implement validation logic for each property type (string paths, integers for TopN, DateTime for From/To, enums for Format and Organize). Document the precedence rules where relative windows (-LastHours, -LastMinutes, -Entire) override absolute windows (-From, -To). Ensure the class supports both nullable and default values matching PowerShell parameter defaults.",
+            "status": "pending",
+            "testStrategy": "Create unit tests that instantiate CliOptions with various property combinations, validating type constraints, default values, and that the object correctly represents all possible CLI states from the PowerShell version. Test edge cases like null paths, zero/negative TopN, and conflicting window parameters."
+          },
+          {
+            "id": 2,
+            "title": "Implement System.CommandLine integration with RootCommand and option definitions",
+            "description": "Integrate System.CommandLine library to define a RootCommand with all option definitions, preserving exact switch names and semantics from the PowerShell CLI while generating automatic help text.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add System.CommandLine NuGet package to DesigoLogWatcher.csproj. Create a Cli class with a static BuildRootCommand() method that constructs a RootCommand named 'Desigo PVSS log analyzer'. Define Option<T> instances for each switch: Option<string?>('-LogPath'), Option<string?>('-OutPath'), Option<string>('-Format'), Option<bool>('-Organize'), Option<string>('-Severities'), Option<string>('-Areas'), Option<string>('-Driver'), Option<int>('-TopN'), Option<bool>('-Entire'), Option<int?>('-LastHours'), Option<int?>('-LastMinutes'), Option<DateTime?>('-From'), Option<DateTime?>('-To'), Option<bool>('-Interactive'), Option<bool>('-NoPause'), Option<bool>('-Report'). Configure each option with descriptions, default values, and argument arities. Wire the SetHandler to populate a CliOptions instance from parsed values.",
+            "status": "pending",
+            "testStrategy": "Test System.CommandLine integration by invoking the root command with various argument combinations and asserting that the resulting CliOptions object matches expected values. Test help text generation with '--help' flag. Validate that unknown switches produce appropriate error messages and that required vs optional parameters behave correctly."
+          },
+          {
+            "id": 3,
+            "title": "Implement mode selection logic branching to dashboard vs report pipelines",
+            "description": "Build the mode selection logic in Program.cs that branches execution flow into either dashboard mode (HTTP server + log tailing) or report mode (batch analysis with exit) based on the -Report flag and interactive inputs.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "In Program.cs Main method, invoke the Cli parser to obtain a CliOptions instance. Implement branching logic: if CliOptions.Report is true, call RunReportMode(config, options); otherwise call RunDashboardMode(config, options). Define RunReportMode as a method that loads configuration, applies CLI overrides, executes the full analysis pipeline, writes output files, and exits the process. Define RunDashboardMode as a method that loads configuration, applies overrides, starts the HttpServer instance, and begins log tailing with periodic re-analysis. Ensure both pipelines respect CLI overrides for paths, windows, and formatting options by merging CliOptions into the Config object before analysis.",
+            "status": "pending",
+            "testStrategy": "Create integration tests that launch Program.Main with different argument sets: one with -Report flag to verify report mode execution and process exit, another without -Report to verify dashboard mode starts (mock HttpServer to avoid binding). Assert that correct pipeline methods are invoked and that configuration merging produces expected analysis parameters."
+          },
+          {
+            "id": 4,
+            "title": "Implement interactive prompt system for -Interactive mode with Enter-defaulted answers",
+            "description": "Build an interactive prompt system that presents questions to users when -Interactive flag is set, supporting Enter-defaulted answers and replicating the 0.4.0 PowerShell host behavior for report mode parameter collection.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create an InteractivePrompt class with methods for each configurable parameter: PromptForLogPath(defaultValue), PromptForOutputPath(defaultValue), PromptForFormat(defaultValue), PromptForOrganize(defaultValue), PromptForWindow(defaultValues), PromptForFilters(defaultValues). Each prompt method should display the question text, show the default value in brackets [default], read Console.ReadLine(), and return the default if input is empty/whitespace or parse the input otherwise. Implement validation and re-prompting for invalid inputs. Wire these prompts into the CLI parsing flow: when -Interactive is true, call prompt methods to populate/override CliOptions properties before proceeding to mode selection. Mirror the PowerShell prompt sequence and phrasing exactly.",
+            "status": "pending",
+            "testStrategy": "Test interactive prompts by mocking Console input/output streams and feeding sequences of user inputs (empty lines for defaults, valid values, invalid values requiring re-prompt). Assert that the resulting CliOptions object contains expected values from prompts and that default handling works correctly. Verify prompt text matches PowerShell version."
+          },
+          {
+            "id": 5,
+            "title": "Build manager pick range parser supporting syntax '1-3,10' with validation",
+            "description": "Implement a robust parser for manager pick range syntax that handles comma-separated tokens, range expansion, deduplication, validation against actual manager lists, and interactive selection UI for -Interactive mode.",
+            "dependencies": [
+              4
+            ],
+            "details": "Create a ManagerPickParser class with a ParseRangeString(input, availableManagers) method. Parse comma-separated tokens by splitting on ','. For each token, detect if it contains a dash '-' for range notation: split on dash to get start and end integers, validate both are positive and start <= end, expand to individual integers. For non-range tokens, parse as single integers. Collect all integers into a HashSet for automatic deduplication. Validate that all integers are within the valid range [1..availableManagers.Count], returning an error list for out-of-bounds selections. Implement an InteractiveManagerPick() method that displays available managers with numbered indices, prompts for range input, parses it, displays resolved selections, and asks for confirmation before returning the validated list. Handle edge cases: empty input, invalid characters, overlapping ranges, and whitespace.",
+            "status": "pending",
+            "testStrategy": "Write unit tests for ParseRangeString with inputs like '1', '1,3,5', '1-3', '1-3,10', '5-5', '10-1' (invalid), 'abc' (invalid), '1-3,2-4' (overlapping/dedup), and '999' (out of bounds). Assert correct expansion, deduplication, and validation. Test InteractiveManagerPick with mocked console I/O for complete selection workflows including re-prompts on error."
+          },
+          {
+            "id": 6,
+            "title": "Implement window precedence rules where relative windows override absolute From/To",
+            "description": "Implement the window precedence logic that ensures relative window parameters (-Entire, -LastHours, -LastMinutes) take precedence over absolute window parameters (-From, -To) when both are specified.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add a ResolveWindowPrecedence() method to CliOptions or Cli class that applies precedence rules: if -Entire is true, set window to entire log and clear From/To; else if -LastHours or -LastMinutes is set, calculate relative window from current time and clear From/To; else use From/To if both are set; else default to appropriate window (LastHours=24 or entire log based on mode). Document this logic clearly in code comments matching the PowerShell behavior. Ensure that Config merging applies these rules consistently so that the analysis pipeline receives unambiguous window parameters. Return a normalized TimeWindow object with explicit Start/End DateTimes or an EntireLog flag.",
+            "status": "pending",
+            "testStrategy": "Create unit tests with CliOptions instances containing various window parameter combinations: Entire only, LastHours only, From+To only, Entire+From+To (Entire wins), LastHours+From+To (LastHours wins), no window params (defaults). Assert that ResolveWindowPrecedence returns correct TimeWindow objects matching PowerShell behavior. Test in both dashboard and report mode contexts."
+          },
+          {
+            "id": 7,
+            "title": "Generate help text and integrate Cli with Program.cs entry point",
+            "description": "Complete the CLI integration by generating comprehensive help text, integrating the Cli class with Program.cs Main method, and ensuring operator-friendly usage messages that match existing documentation and preserve workflow compatibility.",
+            "dependencies": [
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "details": "Enhance System.CommandLine option definitions with detailed descriptions for help text generation. Add examples and usage notes to the RootCommand description showing common invocations: dashboard mode (no args), report mode with -Report, interactive mode with -Interactive, window selection examples, and manager pick syntax. Integrate Cli.BuildRootCommand() into Program.cs Main: parse args, invoke command handler, handle return codes. Add global exception handling around CLI parsing to catch and display user-friendly error messages. Ensure that invoking with --help or invalid arguments produces clear, operator-friendly output. Test that existing Run-Watch.cmd and Run-Report.cmd batch launchers work unchanged with the new DesigoLogWatcher.exe by updating their target executable name.",
+            "status": "pending",
+            "testStrategy": "Execute the compiled DesigoLogWatcher.exe with --help flag and verify output includes all switches with descriptions and examples. Test with invalid arguments and assert friendly error messages. Run existing batch launchers (updated to call .exe) and verify they produce expected behavior. Conduct operator acceptance testing with representatives familiar with 0.4.x CLI to confirm workflow compatibility."
+          }
+        ]
+      },
+      {
+        "id": 4,
+        "title": "LogParser.cs: high-performance streaming read, windowing, and tailing",
+        "description": "Implement a high-performance log parser that can stream PVSS_II.log with shared read access, efficiently enumerate lines using spans, apply analysis windows, and support both catch-up and tailing for dashboard and report modes.",
+        "details": "Create a LogParser class that opens the target PVSS_II.log file using FileAccess.Read and FileShare.ReadWrite so that the live Desigo CC or WinCC OA system can continue appending while the analyzer reads concurrently, matching the guidance that log viewing tools copy or open PVSS_II.log in read-only mode with sharing to avoid interfering with the project[3][8][10][11]. Implement an internal method that reads the file in buffered chunks, enumerating lines without loading the entire file into memory, and use ReadOnlySpan<char> over the buffer to avoid per-line substring allocations when parsing timestamps, severity levels, and modules[13][14][16]. By converting the input text to spans via .AsSpan, and slicing segments to extract tokens like date, severity string, and message, the parser can achieve near-zero allocation per line and substantial performance improvements versus the original PowerShell implementation dominated by per-line function calls[13][14][16].\n```csharp\npublic IEnumerable<ReadOnlySpan<char>> EnumerateLines(string path)\n{\n    using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);\n    using var reader = new StreamReader(stream);\n    string? line;\n    while ((line = reader.ReadLine()) != null)\n    {\n        ReadOnlySpan<char> span = line.AsSpan();\n        yield return span;\n    }\n}\n```\nAdd support for analysis windows such as Entire, LastHours, LastMinutes, From, and To by computing timestamp boundaries and either skipping lines outside the window or adjusting the starting offset in the file. For dashboard mode, implement a catch-up phase that reads the historical window once, then transitions into a tailing loop that monitors for new bytes and processes appended lines, using file position and periodic polling. Tail logic should be resilient to log truncation or rotation, detecting file size shrink and re-seeking from the beginning when the PVSS_II.log file is reset by the system. The parser should surface parsed line objects or spans to the AnalysisState and RuleEngine components, keeping line parsing generic and reusable.",
+        "testStrategy": "Develop unit tests that feed synthetic logs through the LogParser, verifying that line enumeration correctly handles empty lines, very long lines, and lines using typical PVSS_II.log header formats highlighted in Siemens documentation[3][8][10][11]. Create performance-oriented tests that simulate a 50 MB log and measure total parse time under report mode, ensuring that streaming read plus span-based parsing complete in seconds or sub-second instead of minutes[13][14][16]. Add integration tests that exercise windowing logic by injecting logs spanning multiple days and asserting that Entire mode processes all lines, LastHours and LastMinutes select appropriate trailing windows, and From/To boundaries respect inclusive semantics and date-only To inputs. For tailing behavior, run a test that appends lines to a temporary file while the parser is active, confirming that new lines are observed and processed without blocking, and that truncation or rotation is detected and handled gracefully.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          2,
+          3
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement FileStream with concurrent read access using FileShare.ReadWrite",
+            "description": "Create LogParser class foundation that opens PVSS_II.log with FileAccess.Read and FileShare.ReadWrite to enable concurrent reading while WinCC OA continues appending.",
+            "dependencies": [],
+            "details": "Implement LogParser class constructor and core file opening logic using FileStream with FileMode.Open, FileAccess.Read, and FileShare.ReadWrite flags. This matches the guidance that log viewing tools open PVSS_II.log in read-only mode with sharing to avoid interfering with the running project. Add error handling for file-not-found, access-denied, and other I/O exceptions. Include file size retrieval and initial position tracking for subsequent streaming operations. Test with both static log files and actively growing logs to verify concurrent access semantics work correctly.",
+            "status": "pending",
+            "testStrategy": "Unit tests that verify FileStream opens successfully with correct sharing mode. Integration tests with a simulated log writer appending lines concurrently while LogParser reads. Validate that both processes can access the file simultaneously without locking errors."
+          },
+          {
+            "id": 2,
+            "title": "Design buffered line enumeration using ReadOnlySpan<char> for zero-allocation parsing",
+            "description": "Implement efficient line enumeration that reads file in buffered chunks and yields ReadOnlySpan<char> per line to eliminate per-line substring allocations.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create an internal method EnumerateLines that reads the log file in large buffered chunks (e.g., 64KB-256KB) using the FileStream from task 1. Use StreamReader with custom buffer size, reading lines and converting to ReadOnlySpan<char> via .AsSpan() to avoid allocating new strings for every line. Handle edge cases including very long lines (>2000 chars), empty lines, lines with only whitespace, and buffer boundaries that split lines. Implement span-based parsing for timestamp extraction (YYYY.MM.DD HH:mm:ss.fff), severity level detection (SEVERE, WARNING, INFO), and module identification without creating intermediate string objects. Use stackalloc for small temporary buffers where appropriate.",
+            "status": "pending",
+            "testStrategy": "Performance tests comparing allocation profiles (measuring Gen0/Gen1/Gen2 collections) between span-based and traditional string parsing on 50MB corpus. Unit tests with synthetic logs containing edge cases: empty lines, very long lines (10KB+), lines with various PVSS_II.log header formats. Validate correct line boundaries and no data loss at buffer edges."
+          },
+          {
+            "id": 3,
+            "title": "Implement analysis window logic for Entire, LastHours, LastMinutes, From, and To",
+            "description": "Build windowing logic that computes timestamp boundaries and filters lines to requested time ranges, supporting all five window modes with proper precedence.",
+            "dependencies": [
+              2
+            ],
+            "details": "Implement AnalysisWindow abstraction with five modes: Entire (full file), LastHours (relative to current time or log end), LastMinutes (relative), From (absolute start), and To (absolute end). Compute timestamp boundaries before enumeration begins, using file metadata (creation/modification times) and first/last line timestamps to optimize seeking. For relative windows (LastHours/LastMinutes), calculate cutoff timestamp and skip lines until the window start is reached. For absolute windows (From/To), parse and compare line timestamps against boundaries. Apply CLI precedence rules where relative windows (-LastHours/-LastMinutes) override absolute -From/-To settings when both are specified. Implement efficient seeking for large files: for Entire mode start at file beginning, for recent windows consider starting near file end and working backward or using binary search on timestamps if log is chronological.",
+            "status": "pending",
+            "testStrategy": "Unit tests exercising each window mode independently with known synthetic logs. Tests validating precedence rules when multiple window switches are combined. Performance tests measuring window application overhead on 50MB corpus. Edge case tests for logs spanning midnight, logs with non-monotonic timestamps, and empty window results."
+          },
+          {
+            "id": 4,
+            "title": "Build catch-up phase with historical window processing and progress tracking",
+            "description": "Implement catch-up mode that processes the historical analysis window once with progress percentage reporting for dashboard UI feedback.",
+            "dependencies": [
+              3
+            ],
+            "details": "Create catch-up processing loop that reads through the configured analysis window (from task 3) from start to end, tracking file position and bytes processed. Calculate and report progress percentage based on (current_position / window_end_position) * 100, updating at reasonable intervals (e.g., every 1-5% or every 500ms) to avoid excessive progress callbacks. Integrate with AnalysisState and RuleEngine to process each parsed line, accumulating statistics and detecting patterns. After catch-up completes, mark the catch-up phase as done and record the file position for transition to tailing mode. Handle the Entire window case specially: catch-up processes the full file from beginning to current end. For dashboard mode, surface progress via /api/pulse or equivalent endpoint; for report mode, progress may be written to console or omitted.",
+            "status": "pending",
+            "testStrategy": "Integration tests that simulate catch-up on logs of various sizes (1MB, 10MB, 50MB) and verify progress percentages are reported correctly. Tests validating that all lines in the window are processed exactly once. Performance tests measuring catch-up time on 50MB corpus to validate sub-5-second goal (aspirational sub-1-second). Mock AnalysisState/RuleEngine to isolate catch-up logic."
+          },
+          {
+            "id": 5,
+            "title": "Implement tailing loop with file position monitoring and new byte detection",
+            "description": "Build tailing mode that monitors log file for new appended bytes, reads and processes new lines in near real-time for dashboard live updates.",
+            "dependencies": [
+              4
+            ],
+            "details": "After catch-up completes (task 4), transition to tailing loop that periodically checks if file size has grown beyond the last-read position. Use FileStream.Length or FileInfo.Length to detect new bytes without re-opening the file. When new bytes detected, read from last_position to new end, enumerate new lines using the span-based parsing from task 2, and feed them to AnalysisState/RuleEngine. Implement polling interval (e.g., 500ms-2000ms, configurable) to balance responsiveness vs CPU overhead. For dashboard mode, new lines update the live state and trigger /api/pulse updates for UI refresh. Handle the case where no new bytes appear for extended periods gracefully (no busy-wait). Maintain file position cursor accurately across iterations. Tailing runs indefinitely in dashboard mode until user pauses or stops.",
+            "status": "pending",
+            "testStrategy": "Integration tests with a background thread or process appending lines to a log file while LogParser tails, verifying all new lines are detected and processed. Tests measuring tail latency: time from line written to line processed. Tests validating polling interval is respected and CPU usage remains low during idle periods (no new lines)."
+          },
+          {
+            "id": 6,
+            "title": "Add log rotation and truncation detection with re-seeking logic",
+            "description": "Implement resilience to log rotation or truncation by detecting file size shrink and re-seeking from the beginning when PVSS_II.log is reset.",
+            "dependencies": [
+              5
+            ],
+            "details": "In the tailing loop (task 5), before reading new bytes, compare current file size with last-known size. If file size has decreased (indicating truncation or rotation), log a warning/info message and reset the file position to 0 (beginning of file). Re-initialize catch-up from the start of the (now smaller/new) log file, re-processing lines as if starting fresh. Optionally clear or reset AnalysisState aggregates to avoid stale data from the previous log mixing with the new log, depending on product requirements (consult dashboard behavior in 0.4.0 for precedent). Handle edge case where file size stays the same but content changed (rare; inode/file handle change detection may require re-opening the file). Ensure robust error handling for file access issues during rotation (file temporarily unavailable).",
+            "status": "pending",
+            "testStrategy": "Integration tests that simulate log rotation by truncating the log file mid-tail, then appending new lines, verifying LogParser detects shrink and re-processes from beginning. Tests that replace the log file entirely (delete and create new) and verify the parser adapts. Edge case tests for simultaneous rotation and append operations."
+          },
+          {
+            "id": 7,
+            "title": "Optimize span-based timestamp, severity, and module parsing to avoid allocations",
+            "description": "Refine line parsing to extract timestamps, severity levels, and module names using span slicing and pattern matching without creating substring allocations.",
+            "dependencies": [
+              2
+            ],
+            "details": "Using the ReadOnlySpan<char> line enumeration from task 2, implement span-based header parsing that slices segments to extract date (YYYY.MM.DD), time (HH:mm:ss.fff), severity (SEVERE/WARNING/INFO), and module name from typical PVSS_II.log line formats documented in Siemens references. Use Span<T>.Slice and ReadOnlySpan<char> indexing to isolate tokens without calling .Substring() or .Split(). Parse timestamps using DateTime.TryParse or custom parsing over spans (consider ReadOnlySpan<char> overloads of parsing methods introduced in recent .NET). For severity and module, use span comparisons (SequenceEqual, StartsWith) or compiled Regex with span-compatible APIs where available. Allocate strings only when values must be inserted into long-lived dictionaries (e.g., pattern keys, device IDs in AnalysisState). Measure allocation reduction using BenchmarkDotNet or memory profiler.",
+            "status": "pending",
+            "testStrategy": "Microbenchmarks comparing span-based parsing vs traditional string parsing for representative PVSS_II.log lines, measuring allocations (bytes allocated per operation) and throughput (lines/sec). Unit tests validating correct extraction of timestamp, severity, and module fields from various log line formats, including edge cases (missing fields, malformed headers). Validate that no intermediate string allocations occur during parsing hot path using a memory profiler."
+          },
+          {
+            "id": 8,
+            "title": "Integrate performance instrumentation and validate sub-5-second parse goal on 50MB corpus",
+            "description": "Add performance metrics collection and run end-to-end tests on 50MB PVSS_II.log corpus to validate sub-5-second target (aspirational sub-1-second).",
+            "dependencies": [
+              2,
+              3,
+              4,
+              7
+            ],
+            "details": "Instrument LogParser with Stopwatch or System.Diagnostics.Activity to measure key phases: file open, catch-up enumeration, line parsing, and overall end-to-end time. Log or expose metrics via console output or internal telemetry for development visibility. Create or obtain a representative ~50MB PVSS_II.log corpus (real or synthetic with realistic line formats and density). Run full-file parse (Entire window, report mode) on the corpus and measure total time from start to completion. Validate that parse completes in under 5 seconds on typical laptop hardware (target CPU/RAM specs from PRD context). Aspirational goal is under 1 second. If goal not met, profile to identify bottlenecks (I/O, parsing, regex, AnalysisState updates) and iterate on optimizations (larger buffers, compiled regex, span usage). Document performance results in test output or summary report for acceptance gate.",
+            "status": "pending",
+            "testStrategy": "Performance acceptance tests running LogParser against 50MB corpus in Entire mode, asserting total parse time is under 5 seconds (strict gate) and ideally under 1 second (stretch goal). Baseline comparison against PowerShell 0.4.0 (~8 minutes) to demonstrate speedup magnitude. Profiling runs with dotTrace, PerfView, or BenchmarkDotNet to identify any remaining hot spots. Tests should run on representative hardware (not just high-end dev machines)."
+          }
+        ]
+      },
+      {
+        "id": 5,
+        "title": "AnalysisState.cs and header parsing: pattern, module, and lifecycle accumulation",
+        "description": "Implement header parsing and analysis state accumulation that converts raw log lines into structured events and aggregates patterns, modules, lifecycle signals, and other metrics required for snapshot building.",
+        "details": "Design an AnalysisState class to hold aggregated data about the log, including counts per severity level, per module, per driver, pattern tables, lifecycle transitions, and any project-specific metrics used by 0.4.0’s Build-SnapshotObject. Implement a header parser that, for each ReadOnlySpan<char> line from LogParser, extracts the timestamp, severity string, module or manager name, and message text using span slicing and index operations rather than substring allocations, similar to real-world examples of log parsing with spans[13][14][16]. The parser should normalize severity values to the same categories recognized by existing tools, such as DEBUG, INFO, WARNING, ERROR, and SEVERE, aligning with the filtering capabilities seen in related WinCC OA log viewers[1].\n```csharp\npublic bool TryParseHeader(ReadOnlySpan<char> line, out LogEntry entry)\n{\n    // Example: \"[2026-06-19 10:00:00] [ERROR] ManagerX: message\"\n    int firstClose = line.IndexOf(']');\n    if (firstClose < 0) { entry = default; return false; }\n    var timestampSpan = line.Slice(1, firstClose - 1);\n    if (!DateTime.TryParse(timestampSpan, out var timestamp)) { entry = default; return false; }\n    int secondOpen = line.Slice(firstClose + 1).IndexOf('[');\n    int secondClose = line.Slice(firstClose + 1 + secondOpen + 1).IndexOf(']');\n    var severitySpan = line.Slice(firstClose + 2 + secondOpen, secondClose);\n    // further parsing for module and message\n    entry = new LogEntry(timestamp, severitySpan.ToString(), /* module */, /* message */);\n    return true;\n}\n```\nConnect the parsed LogEntry objects to the AnalysisState by incrementing counters, updating pattern tables, and tracking lifecycle events such as project start, stop, and manager restarts that may be inferred from specific message signatures in PVSS_II.log[3]. Ensure that AnalysisState is structured to make it easy for SnapshotBuilder and RuleEngine to consume aggregated metrics and generate consistent output across report and dashboard APIs. Where complex lifecycle or driver-specific behavior existed as PowerShell helpers in 0.4.0, reimplement them as C# helper methods that operate on spans or pre-parsed entry objects to keep the hot path efficient.",
+        "testStrategy": "Create unit tests for the header parser that feed representative PVSS_II.log lines, including those with typical timestamp and severity formats as well as edge cases such as malformed headers or unusual module names, asserting that timestamps, severity strings, modules, and messages are correctly extracted[3][8][10][11]. Develop tests around AnalysisState that simulate logs with known distributions of severity and module activity, verifying that counters and pattern tables are updated correctly and that lifecycle events such as project start and stop are detected as expected. Incorporate performance tests that process large synthetic logs through header parsing and AnalysisState updates, confirming that span-based parsing avoids excessive allocations and that the cumulative behavior meets the PRD’s performance goals[13][14][16]. Additionally, validate that AnalysisState remains consistent when fed both historical catch-up lines and live tail lines, and that its outputs are stable for a given corpus to support parity testing against 0.4.0.",
+        "priority": "medium",
+        "dependencies": [
+          4
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design AnalysisState class with accumulator structure",
+            "description": "Create the AnalysisState class to hold aggregated log analysis data including severity counts, module metrics, driver statistics, pattern tables, and lifecycle signals matching PowerShell 0.4.0 semantics.",
+            "dependencies": [],
+            "details": "Design a public AnalysisState class with properties for: (1) severity level counters (Dictionary<string, int> for DEBUG/INFO/WARNING/ERROR/SEVERE); (2) per-module metrics (Dictionary<string, ModuleStats>); (3) per-driver statistics (Dictionary<string, DriverStats>); (4) pattern tables tracking recurring message signatures; (5) lifecycle event collections for project start/stop and manager restarts; (6) any project-specific metrics used by Build-SnapshotObject in 0.4.0. Structure accumulators to be efficiently updated during streaming parse and easily consumed by SnapshotBuilder and RuleEngine. Include thread-safety considerations for dashboard tailing mode.",
+            "status": "pending",
+            "testStrategy": "Unit tests verifying AnalysisState initialization with default values, correct accumulator updates when incrementing severity counts and module metrics, and proper state serialization for snapshot building."
+          },
+          {
+            "id": 2,
+            "title": "Implement span-based header parser for PVSS_II.log format",
+            "description": "Build a zero-allocation header parser using ReadOnlySpan<char> that extracts timestamp, severity, module/manager name, and message text from PVSS_II.log lines via span slicing and IndexOf operations.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement TryParseHeader(ReadOnlySpan<char> line, out LogEntry entry) method that: (1) uses IndexOf(']') to locate timestamp bracket boundaries; (2) slices timestamp span and calls DateTime.TryParse; (3) locates severity brackets using subsequent IndexOf operations on sliced spans; (4) extracts module/manager name following severity (typically 'ManagerX:' pattern); (5) captures remaining message text; (6) returns false for malformed lines without throwing exceptions. Handle PVSS_II.log format variations such as lines with or without module prefix. Avoid substring allocations—use span slicing throughout and only ToString() final extracted fields into LogEntry struct.",
+            "status": "pending",
+            "testStrategy": "Create unit tests with representative PVSS_II.log lines including typical formats '[2026-06-19 10:00:00] [ERROR] ManagerX: message', edge cases with malformed headers, missing brackets, unusual module names, and very long messages, asserting correct extraction of all fields and proper false returns for unparseable lines."
+          },
+          {
+            "id": 3,
+            "title": "Add severity normalization to standard categories",
+            "description": "Implement severity string normalization that maps parsed severity values to the standard DEBUG, INFO, WARNING, ERROR, and SEVERE categories aligned with existing WinCC OA log viewer filtering capabilities.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create a NormalizeSeverity(ReadOnlySpan<char> severitySpan) method that: (1) performs case-insensitive comparison against known severity strings (e.g., 'DEBUG', 'INFO', 'INFORMATION', 'WARN', 'WARNING', 'ERROR', 'ERR', 'SEVERE', 'CRITICAL', 'FATAL'); (2) returns standardized category names exactly as 'DEBUG', 'INFO', 'WARNING', 'ERROR', or 'SEVERE'; (3) handles abbreviations and aliases used in PVSS_II.log (e.g., 'WARN' → 'WARNING'); (4) defaults to 'INFO' for unrecognized values to maintain robustness. Integrate normalization into TryParseHeader so LogEntry always contains standardized severity, ensuring AnalysisState counters use consistent keys matching 0.4.0 PowerShell behavior.",
+            "status": "pending",
+            "testStrategy": "Unit tests verifying normalization of all expected severity aliases ('WARN'→'WARNING', 'ERR'→'ERROR', 'FATAL'→'SEVERE') and case-insensitive matching, asserting that unrecognized values default to 'INFO' and all LogEntry objects have standardized severity strings."
+          },
+          {
+            "id": 4,
+            "title": "Build pattern accumulation logic for module and driver tables",
+            "description": "Implement pattern recognition and accumulation that updates per-module and per-driver pattern tables by identifying recurring message signatures and incrementing occurrence counts in AnalysisState.",
+            "dependencies": [
+              1,
+              3
+            ],
+            "details": "Add AccumulatePattern(LogEntry entry) method in AnalysisState that: (1) extracts or computes a pattern signature from entry.Message (e.g., removing dynamic values like timestamps, IDs, paths to create stable pattern key); (2) updates module-specific pattern table (modulePatterns[entry.Module][patternKey]++); (3) if entry relates to a driver (detected via module name or message content), updates driver-specific pattern table; (4) maintains top-N most frequent patterns per module/driver for snapshot reporting; (5) uses efficient data structures (Dictionary<string, Dictionary<string, int>>) to avoid O(n²) lookups during streaming parse. Mirror PowerShell 0.4.0 pattern extraction logic to ensure parity.",
+            "status": "pending",
+            "testStrategy": "Unit tests feeding sequences of LogEntry objects with repeated message patterns (same signature with varying dynamic values) and verifying that pattern tables correctly increment counts, aggregate by module/driver, and maintain frequency rankings matching PowerShell baseline behavior."
+          },
+          {
+            "id": 5,
+            "title": "Implement lifecycle event detection for project and manager events",
+            "description": "Add lifecycle event detection that identifies project start/stop and manager restart signatures in PVSS_II.log messages and records them in AnalysisState for snapshot building and rule evaluation.",
+            "dependencies": [
+              1,
+              3
+            ],
+            "details": "Create DetectLifecycleEvent(LogEntry entry) method that: (1) pattern-matches entry.Message against known lifecycle signatures such as 'Project started', 'Project stopped', 'Manager [name] restarted', 'Manager [name] terminated'; (2) extracts relevant metadata (timestamp, manager name, event type); (3) appends detected events to AnalysisState.LifecycleEvents collection; (4) updates summary counters (e.g., totalProjectRestarts, managerRestartsByName); (5) handles PVSS_II.log-specific message formats documented in Siemens WinCC OA references. Use span-based string matching (e.g., Contains, StartsWith on ReadOnlySpan) where possible to maintain performance. Ensure detection logic matches PowerShell 0.4.0 behavior for parity.",
+            "status": "pending",
+            "testStrategy": "Unit tests with synthetic log entries containing known lifecycle event messages (project start/stop, manager restart signatures from PVSS_II.log examples) and verifying that DetectLifecycleEvent correctly identifies events, extracts metadata, and updates AnalysisState collections and counters accurately."
+          },
+          {
+            "id": 6,
+            "title": "Port PowerShell analysis helpers to C# methods",
+            "description": "Reimplement complex domain-specific PowerShell helper logic (BACnet flip detection, Apogee orchestration families) as efficient C# methods operating on spans or LogEntry objects to maintain hot-path performance.",
+            "dependencies": [
+              1,
+              3,
+              4
+            ],
+            "details": "Identify hand-written PowerShell helpers in the 5,134-line Watch-PvssLog.ps1 that handle: (1) BACnet address flip detection and correlation; (2) Apogee orchestration family grouping and metrics; (3) other driver-specific behaviors or domain logic. Port each to a C# static helper method or AnalysisState member method, maintaining the same input/output semantics but using span-based parsing where applicable to avoid allocations. Document any semantic differences from PowerShell (e.g., floating-point precision, regex vs span matching). Ensure helpers integrate cleanly into the streaming parse loop called from LogParser enumeration, updating AnalysisState accumulators efficiently.",
+            "status": "pending",
+            "testStrategy": "Unit tests for each ported helper method using input data derived from PowerShell test cases or representative PVSS_II.log excerpts, asserting that outputs (BACnet flip counts, Apogee family groupings) match PowerShell 0.4.0 results exactly for parity verification."
+          },
+          {
+            "id": 7,
+            "title": "Validate against PowerShell Process-LogLine behavior for parity",
+            "description": "Perform end-to-end validation comparing C# header parsing and AnalysisState accumulation outputs against PowerShell 0.4.0 Process-LogLine results on representative PVSS_II.log corpus to ensure functional parity.",
+            "dependencies": [
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "details": "Run the C# LogParser + AnalysisState pipeline on the same ~50 MB PVSS_II.log corpus used for 0.4.0 baseline and export aggregated metrics (severity counts, module stats, driver stats, pattern tables, lifecycle events) to a structured format (JSON or CSV). Run the PowerShell 0.4.0 Process-LogLine equivalent and export identical metrics. Perform automated diff or comparison script to verify: (1) severity counts match within acceptable tolerance; (2) module and driver metrics are equivalent; (3) pattern tables contain same top patterns; (4) lifecycle event counts and timestamps align. Document any discrepancies in PROGRESS-V0.5.md and adjust C# implementation to achieve parity gate requirements. This validation is critical before proceeding to SnapshotBuilder and RuleEngine integration.",
+            "status": "pending",
+            "testStrategy": "Automated parity tests using a known-good PVSS_II.log sample, running both C# and PowerShell pipelines, exporting results, and asserting equivalence within defined tolerances (e.g., counts ±1 due to edge case handling). Flag any deviations as test failures requiring investigation and correction."
+          }
+        ]
+      },
+      {
+        "id": 6,
+        "title": "RuleEngine.cs and Rules table port: single-scope dev gate implementation",
+        "description": "Port the PowerShell rule table into a C# data-driven RuleEngine and Rules definitions, implementing single-scope semantics equivalent to 0.4.0 as the dev gate before enabling multi-scope and BACnet-specific extensions.",
+        "details": "Introduce a RuleDefinition record or class that encapsulates all attributes of a detection rule, including Id, Group, Label, Scope, pattern expressions, BucketBy criteria, Measure metrics, Sample configuration, and FindingAt thresholds, mirroring the structure in PvssRules.ps1 but in typed C# form. Implement a RuleEngine that consumes parsed LogEntry events and AnalysisState aggregates, applying each RuleDefinition’s pattern logic using compiled regular expressions or span-based matching to produce hits, buckets, measures, and findings in a unified pipeline. The engine should be data-driven, meaning that rules are expressed as rows in a table or as instances of RuleDefinition, not hard-coded if/else trees, thereby preserving the principle that adding a detection should remain “one row plus one test.” Configure compiled Regex instances up front for any pattern-based rules to reduce runtime overhead and reuse them across the process lifetime.\n```csharp\npublic sealed record RuleDefinition(\n    string Id,\n    string Group,\n    string Label,\n    string Scope,\n    Regex Pattern,\n    Func<LogEntry, bool> BucketBy,\n    Func<AnalysisState, double> Measure,\n    Func<double, bool> FindingAt);\n\npublic sealed class RuleEngine\n{\n    private readonly IReadOnlyList<RuleDefinition> _rules;\n\n    public RuleEngine(IReadOnlyList<RuleDefinition> rules)\n    {\n        _rules = rules;\n    }\n\n    public void Process(LogEntry entry, AnalysisState state)\n    {\n        foreach (var rule in _rules)\n        {\n            if (!rule.Pattern.IsMatch(entry.Message)) continue;\n            // bucket, measure, and record findings\n        }\n    }\n}\n```\nFor the initial dev gate, restrict rules to single-scope semantics identical to 0.4.0, turning off any multi-scope or BACnet-specific variations that will be introduced in a later task. Port all existing rule definitions from PvssRules.ps1, including curated module cards and generic detections, making sure that scope filtering and ranking inputs behave exactly as previously. Where PowerShell contained hand-written analysis outside the rule table, such as BACnet flips, project lifecycle cycles, and Apogee orchestration families, implement equivalent C# logic as helper routines that either feed into the RuleEngine or supplement its outputs. Prepare fixtures and internal instrumentation to support parity checks at the snapshot level.",
+        "testStrategy": "Develop unit tests for RuleEngine that exercise representative RuleDefinition instances against synthetic logs, verifying that hits, buckets, measures, and findings are computed correctly and that the engine respects single-scope semantics under the dev gate. Create tests that compare RuleEngine outputs against the 0.4.0 PowerShell implementation using static log fixtures, asserting that detection counts, Ids, and ranking orders are identical aside from allowed meta differences, thereby fulfilling the parity gate’s first stage (§9.2 dev gate). Measure performance of RuleEngine under high-load conditions by feeding large spans of LogEntry objects and confirming that compiled regexes and span-based matching do not introduce excessive overhead. Additionally, ensure that rules remain modifiable via a data file or code table so that adding or adjusting rules does not require structural changes, and verify that hand-written analysis functions ported from 0.4.0 integrate smoothly with the main rule pipeline.",
+        "priority": "medium",
+        "dependencies": [
+          5
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design and implement RuleDefinition record structure",
+            "description": "Create a strongly-typed C# RuleDefinition record that captures all rule attributes from PowerShell PvssRules.ps1 including Id, Group, Label, Scope, Pattern (Regex), BucketBy specifications, Measure aggregations, Sample configuration, SampleSlot, FindingAt thresholds, and PatternGroup for legacy module cards.",
+            "dependencies": [],
+            "details": "Define RuleDefinition as a sealed record with properties: string Id, string Group, string Label, string? Scope, Regex Pattern, Dictionary<string, BucketSpec>? BucketBy, Dictionary<string, MeasureSpec>? Measure, bool Sample, string? SampleSlot, int? FindingAt, string? PatternGroup. Create supporting types: BucketSpec (supports capture group index, variable names like '$component'/'$area'/'$severity', and TrimEnd modifiers via either an int Group field or string variable field, plus optional char[] TrimEnd), and MeasureSpec (int Group, string Agg with values 'Sum' or 'Max'). Ensure the structure mirrors the PowerShell hashtable format while providing compile-time type safety and null safety for optional fields.",
+            "status": "pending",
+            "testStrategy": "Write unit tests that instantiate RuleDefinition instances with various combinations of required and optional fields, verifying that the record accepts valid configurations (e.g., with/without Scope, with/without BucketBy containing both capture-group and variable specs, with/without Measure containing Sum/Max aggregations) and that the type system enforces required fields at compile time."
+          },
+          {
+            "id": 2,
+            "title": "Port all 40+ rule definitions from PvssRules.ps1 to C# data structures",
+            "description": "Translate each of the 40+ PowerShell rule hashtables from PvssRules.ps1 (lines 22-154) into C# RuleDefinition instances, preserving all regex patterns, scope filters, bucket specifications, measure configurations, sample settings, and FindingAt thresholds with exact semantic equivalence to 0.4.0.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create a Rules.cs or RuleDefinitions.cs file containing a static class that exposes an IReadOnlyList<RuleDefinition> property named PvssRules. For each rule in the PowerShell array (CNS rules: cns.resolveNodes, cns.reducedFunction, cns.icns, cns.tryRenew; Apogee rules: apogeeDrv.trendOverflow with complex BucketBy including TrimEnd, apogeeDrv.trendSeq, apogeeDrv.alertId, apogeeDrv.queryTimeout, apogeeDrv.getDataFail; Platform: state.unexpected; Trending: trend.dataLoss, trend.seqLess; Driver: driver.errorCode, driver.offline, driver.readFile; Alarms: alarm.alertIdUnknown, alarm.getSummaryFail; Devices: device.cptFailed, device.aesDecrypt; Framework: afw.traceRepetition with dual measures, afw.covBurst with dual measures, afw.serverSideException, afw.retainedInvocations), compile the regex patterns using RegexOptions.Compiled for performance and translate BucketBy/Measure hashtables into strongly-typed dictionaries. Preserve the curated groups list ('BACnet', 'CNS', 'CoHo', 'Apogee') as a static readonly HashSet<string> CuratedGroups.",
+            "status": "pending",
+            "testStrategy": "Create unit tests that verify the ported rule count matches the PowerShell count (40+ rules), that each rule's Id, Group, Label, and Scope match the original definitions, that all regex patterns compile successfully with RegexOptions.Compiled, and that complex rules like apogeeDrv.trendOverflow and afw.traceRepetition have correctly structured BucketBy and Measure dictionaries with proper TrimEnd and aggregation settings."
+          },
+          {
+            "id": 3,
+            "title": "Implement data-driven RuleEngine processing LogEntry events",
+            "description": "Build a RuleEngine class that consumes an IReadOnlyList<RuleDefinition> and processes LogEntry events against the rule table, applying pattern matching, scope filtering, and accumulating hits into an AnalysisState structure that tracks Hits, HitSevs, HitTime, HitSample, HitBuckets, and HitMeasures dictionaries.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Implement RuleEngine with a constructor accepting IReadOnlyList<RuleDefinition> and a Process(LogEntry entry, AnalysisState state) method. Introduce AnalysisState as a class with dictionaries: Hits (Dictionary<string, int>), HitSevs (Dictionary<string, Dictionary<string, int>>), HitTime (Dictionary<string, TimeSpan>), HitSample (Dictionary<string, string>), HitBuckets (Dictionary<string, Dictionary<string, Dictionary<string, int>>>), HitMeasures (Dictionary<string, Dictionary<string, double>>). In Process, iterate through _rules, apply Pattern.IsMatch(entry.Message), check Scope filter using entry.Component.IndexOf(rule.Scope, StringComparison.OrdinalIgnoreCase) >= 0 if Scope is not null, and on match call a private AddRuleHit method. Implement RuleSetCache as a Dictionary<string, RuleDefinition[]> to cache component-filtered rule subsets (mirroring PowerShell Register-RuleSet function at lines 194-205). Set RuleBucketCap constant to 2000 to prevent unbounded bucket growth.",
+            "status": "pending",
+            "testStrategy": "Develop unit tests that instantiate RuleEngine with a small set of synthetic rules (e.g., one scoped, one unscoped, one with BucketBy, one with Measure) and process mock LogEntry instances, asserting that AnalysisState.Hits increments correctly, that scoped rules only fire for matching components, that unscoped rules fire for all entries, and that the RuleSetCache correctly filters rules by component on first access and reuses the cached ruleset on subsequent accesses."
+          },
+          {
+            "id": 4,
+            "title": "Implement compiled Regex initialization for all pattern-based rules",
+            "description": "Ensure all RuleDefinition Pattern fields are compiled Regex instances initialized at rule definition time using RegexOptions.Compiled | RegexOptions.CultureInvariant to reduce runtime overhead and reuse them across the process lifetime, matching PowerShell's [regex] type casting behavior.",
+            "dependencies": [
+              2
+            ],
+            "details": "When constructing each RuleDefinition in the ported Rules.cs, instantiate Regex with new Regex(pattern, RegexOptions.Compiled | RegexOptions.CultureInvariant) for all pattern strings. Verify that case-insensitive patterns in PowerShell (e.g., '(?i)ResolveNodes', '(?i)Trend buffer overflow') are correctly translated using RegexOptions.IgnoreCase in addition to Compiled and CultureInvariant. Store the compiled Regex instances directly in the RuleDefinition record's Pattern property so that every call to Pattern.IsMatch or Pattern.Match in the RuleEngine reuses the pre-compiled state machine, avoiding per-match compilation costs.",
+            "status": "pending",
+            "testStrategy": "Write unit tests that measure the performance difference between compiled and non-compiled regex patterns on a representative sample of 1000+ log lines, confirming that compiled patterns provide measurable speedup. Add tests that verify case-insensitive patterns (e.g., 'ResolveNodes' matching 'resolvenodes') work correctly with RegexOptions.IgnoreCase, and that culture-invariant matching behaves consistently across different system locales."
+          },
+          {
+            "id": 5,
+            "title": "Implement BucketBy logic with capture groups, variables, and TrimEnd modifiers",
+            "description": "Build the GetRuleBucketValue and AddRuleHit logic that extracts bucket keys from regex Match objects using capture group indices, supports variable substitution for '$component', '$area', '$severity', applies TrimEnd character trimming, and populates AnalysisState.HitBuckets dictionaries while enforcing the RuleBucketCap limit.",
+            "dependencies": [
+              3
+            ],
+            "details": "Implement a private GetRuleBucketValue(BucketSpec spec, Match match, string component, string area, string severity) method in RuleEngine that handles three cases: (1) spec contains a string variable ('$component', '$area', '$severity') and returns the corresponding LogEntry field; (2) spec contains an integer Group and extracts match.Groups[Group].Value.Trim(); (3) spec contains TrimEnd char[] and applies val.TrimEnd(spec.TrimEnd) after extraction. In AddRuleHit, iterate rule.BucketBy entries, call GetRuleBucketValue for each bucket name, and populate state.HitBuckets[ruleId][bucketName][value]++ while checking bm.Count < RuleBucketCap before adding new keys (mirroring PowerShell logic at lines 260-274). Set capped flag when bucket reaches cap.",
+            "status": "pending",
+            "testStrategy": "Create unit tests for GetRuleBucketValue that exercise all three extraction modes: (1) variable substitution returning component/area/severity from LogEntry; (2) capture group extraction from regex Match with successful and unsuccessful groups; (3) TrimEnd modifier removing trailing characters (e.g., '.' from 'Device123.'). Test AddRuleHit with rules having single and multiple bucket dimensions, verifying that distinct values are counted correctly and that the RuleBucketCap prevents unbounded growth when presented with 2000+ distinct values."
+          },
+          {
+            "id": 6,
+            "title": "Build Measure aggregation with Sum and Max operations",
+            "description": "Implement Measure metric extraction and aggregation logic that parses numeric values from regex capture groups and applies Sum or Max aggregation operations as specified in MeasureSpec, populating AnalysisState.HitMeasures dictionaries to support rules like afw.traceRepetition and afw.covBurst with dual measures.",
+            "dependencies": [
+              3
+            ],
+            "details": "In the AddRuleHit method, add logic to process rule.Measure dictionary: for each measure name, extract the numeric value from match.Groups[spec.Group].Value using double.TryParse, and apply aggregation based on spec.Agg: if 'Sum' then state.HitMeasures[ruleId][measureName] += num, if 'Max' then state.HitMeasures[ruleId][measureName] = Math.Max(current, num), initializing to zero or the first value as appropriate (mirroring PowerShell logic at lines 277-294). Ensure that rules with multiple measures (e.g., afw.traceRepetition has 'repeats' Sum and 'worstRun' Max) are handled correctly by iterating all measure specs.",
+            "status": "pending",
+            "testStrategy": "Develop unit tests that define rules with Sum and Max measures, process LogEntry sequences with varying numeric capture values, and assert that Sum measures accumulate correctly (e.g., processing '10', '20', '30' yields 60) and Max measures retain the highest value (e.g., processing '10', '30', '20' yields 30). Test the afw.traceRepetition and afw.covBurst dual-measure rules with synthetic log entries to verify both aggregations run in parallel."
+          },
+          {
+            "id": 7,
+            "title": "Add Sample and SampleSlot tracking for first-match capture",
+            "description": "Implement Sample and SampleSlot logic that captures the first matching log line for each rule (or shared slot) and stores it in AnalysisState.HitSample, supporting use cases where multiple rules share a single sample slot (e.g., apogeeDrv.trendOverflow and apogeeDrv.trendSeq sharing 'apogeeDrv.trend').",
+            "dependencies": [
+              3
+            ],
+            "details": "In AddRuleHit, check if rule.Sample is true; if so, determine the slot key using rule.SampleSlot ?? rule.Id (mirroring PowerShell lines 252-256), and set state.HitSample[slot] = entry.RawLine only if the slot is not already populated (first match wins). Ensure that when multiple rules share a SampleSlot (e.g., 'apogeeDrv.trend'), the first rule to fire captures the sample and subsequent rules reuse that slot without overwriting. Add accessor method GetRuleSample(AnalysisState state, string id) that looks up state.HitSample[id] or returns null if no sample was captured.",
+            "status": "pending",
+            "testStrategy": "Write unit tests that create rules with Sample=true and varying SampleSlot configurations: (1) rule with no SampleSlot uses Id as slot; (2) two rules sharing a SampleSlot capture only the first matching line; (3) processing multiple matches for a single rule does not overwrite the initial sample. Verify GetRuleSample returns the correct sample string or null for rules that have not fired."
+          },
+          {
+            "id": 8,
+            "title": "Implement FindingAt threshold evaluation and scoring logic",
+            "description": "Build the FindingAt threshold evaluation, rate calculation, severity weighting, and score computation logic that ranks detections by intensity (rate * severity weight) rather than volume, producing the 'over', 'rate', and 'score' fields used for sorting in Build-DetectionsObject equivalent C# payload builder.",
+            "dependencies": [
+              3,
+              5,
+              6,
+              7
+            ],
+            "details": "Implement logic that, for each rule with hits, computes: (1) 'over' = count / FindingAt if FindingAt > 0 else 0; (2) 'spanSec' = Max(RuleMinSpanSec=60, (lastTimestamp - firstTimestamp).TotalSeconds) using state.HitTime[ruleId].First and .Last; (3) 'rate' = count / spanSec * 3600.0 (hits per hour); (4) 'sevW' = weighted average of severities from state.HitSevs[ruleId] using RuleSevWeight map (FATAL=4.0, SEVERE=3.0, ERROR=2.0, WARNING=1.0, INFO=0.25); (5) 'score' = rate * sevW (mirroring PowerShell lines 404-437). Add constants: RuleMinSpanSec=60, RuleSevOrder=['FATAL','SEVERE','ERROR','WARNING','INFO'], RuleSevWeight as above. Store first/last timestamps in state.HitTime as DateTime values parsed from entry.Timestamp.",
+            "status": "pending",
+            "testStrategy": "Create unit tests that process LogEntry sequences with known timestamps and severities, then verify computed metrics: (1) a burst rule (e.g., 10 hits in 10 seconds) scores higher than sustained rule (10 hits in 10 minutes); (2) FATAL-severity rule scores higher than INFO-severity with same rate; (3) 'over' correctly reflects count/FindingAt ratio; (4) spanSec enforces 60-second minimum floor. Test edge cases like single-hit rules (spanSec=60) and rules with hits at identical timestamps."
+          },
+          {
+            "id": 9,
+            "title": "Enforce single-scope semantics with dev gate configuration toggle",
+            "description": "Implement single-scope enforcement restricting rules to match only one component scope (identical to 0.4.0 behavior) and add a configuration toggle (e.g., EnableMultiScope boolean in Config.cs) that will gate future multi-scope and BACnet-specific extensions, keeping it disabled for the 0.5.0 dev gate release.",
+            "dependencies": [
+              3
+            ],
+            "details": "In the RuleEngine.Process method, enforce that each rule's Scope filter is treated as a single substring match using component.IndexOf(scope, StringComparison.OrdinalIgnoreCase) >= 0, exactly as PowerShell does at line 199. Add a Config property EnableMultiScope (default false) that is checked but not used in 0.5.0, documenting in comments that future tasks will introduce multi-scope logic gated by this flag (e.g., Scope could become string[] and require ANY match). Ensure hand-written analysis for BACnet flips, project lifecycle cycles, and Apogee orchestration families (referenced in PRD but not yet implemented) are stubbed as helper methods with TODO comments indicating they will be enabled post-dev-gate. Add internal instrumentation (e.g., logging or counters) that tracks rule hits per scope to support parity verification.",
+            "status": "pending",
+            "testStrategy": "Write unit tests that verify single-scope semantics: (1) a rule with Scope='GmsBACnet' fires for component='GmsBACnet_Manager' but not 'ApogeeDrv'; (2) a rule with no Scope fires for all components; (3) EnableMultiScope flag exists in Config.cs and defaults to false. Add integration tests that compare RuleEngine output against PowerShell baseline on a small corpus subset, confirming identical hit counts and bucket distributions for all rules under single-scope mode."
+          }
+        ]
+      },
+      {
+        "id": 7,
+        "title": "ReportWriter.cs and SnapshotBuilder.cs: HTML, text, and JSON renderers with parity gate",
+        "description": "Implement snapshot building and report rendering for HTML, text, and JSON formats, achieving byte-identical outputs against 0.4.0 under the dev gate and providing an extensible foundation for later multi-scope and BACnet changes.",
+        "details": "Create a SnapshotBuilder class that consumes AnalysisState and RuleEngine outputs and constructs a structured snapshot object representing the entire analysis, including sections for overview metrics, per-driver and per-module statistics, findings, detections, performance health, and any meta data such as tool version and generation timestamps. Then implement a ReportWriter that can render this snapshot into HTML, text, and JSON formats, honoring the -Format switch options Text, Html, and Both, and producing dashboard snapshot JSON in the same shape used by the existing UI. HTML output should follow the structure of the 0.4.0 reports, including headings, tables, and styling hooks expected by the dashboard, while text output should match plain-text formatting used in prior report modes. Use a tolerant comparison allowlist for meta fields such as meta.generated, tool/version banners, and perf.health URLs when running parity tests, but otherwise keep content byte-identical under the dev gate.\n```csharp\npublic sealed class Snapshot\n{\n    public MetaSection Meta { get; init; } = default!;\n    public OverviewSection Overview { get; init; } = default!;\n    public IReadOnlyList<FindingSection> Findings { get; init; } = Array.Empty<FindingSection>();\n    // other sections...\n}\n\npublic sealed class ReportWriter\n{\n    public void WriteHtml(Snapshot snapshot, string outputPath)\n    {\n        using var writer = new StreamWriter(outputPath);\n        // emit HTML markup based on snapshot\n    }\n\n    public void WriteText(Snapshot snapshot, string outputPath)\n    {\n        using var writer = new StreamWriter(outputPath);\n        // emit text report based on snapshot\n    }\n\n    public string ToJson(Snapshot snapshot) => JsonSerializer.Serialize(snapshot);\n}\n```\nIntegrate ReportWriter with the report-mode pipeline, ensuring that window selection, rule application, and snapshot building flow together to produce final outputs, and respect -OutPath and -NoPause semantics. Keep ReportWriter independent of HttpServer so that the same rendering logic can be reused for dashboard snapshots and report files. Document the dev gate process: run the C# pipeline with single-scope rules and compare HTML, text, and JSON snapshots against 0.4.0 outputs on a fixed corpus, only tolerating differences listed in an allowlist and failing on unexpected discrepancies.",
+        "testStrategy": "Create integration tests that drive the entire report-mode pipeline for selected static logs, generating HTML, text, and JSON outputs and comparing them byte-for-byte against 0.4.0 reference outputs under the dev gate, allowing differences only for meta fields explicitly permitted. Use table-based assertions to confirm that section counts, headings, detection listings, and ranking orders match, documenting any expected differences once multi-scope and BACnet enhancements are later enabled. Add unit tests for SnapshotBuilder that validate construction of snapshot objects from synthetic AnalysisState and RuleEngine results, ensuring that nulls and empty collections are handled gracefully. For ReportWriter, create tests that confirm proper handling of -Format options, generation of files in expected locations under -OutPath, and correct exit codes in case of write failures. Additionally, verify JSON shape against the dashboard’s existing /api/snapshot contract so that HttpServer can rely on consistent snapshot structures.",
+        "priority": "medium",
+        "dependencies": [
+          5,
+          6
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design Snapshot class structure with Meta, Overview, Findings, Detections, and module sections",
+            "description": "Define the complete Snapshot type hierarchy mirroring PowerShell Build-SnapshotObject output, including MetaSection, OverviewSection, FindingSection, DetectionSection, DriverSection, ModuleSection, and PerformanceSection classes with all necessary properties for dashboard API compatibility and report rendering.",
+            "dependencies": [],
+            "details": "Create a sealed Snapshot record with init-only properties for Meta (tool version, generated timestamp, author), Overview (total events, window span, severity distribution, area distribution, top-level metrics), Findings (IReadOnlyList<FindingSection> with Id, Group, Label, Scope, Hits, Measure, Samples, Threshold), Detections (pattern hits grouped by category), DriverSection (per-driver statistics and lifecycle events), ModuleSection (module load/unload tracking), and PerformanceSection (health status, startup time, performance categories). Ensure all types are serializable to JSON and match the shape expected by the existing ui\\ dashboard code that consumes /api/snapshot. Reference Watch-PvssLog.ps1 lines 2757+ (Build-SnapshotObject) to understand the exact property names, nesting structure, and data types used in the PowerShell version. Document any intentional deviations from 0.4.0 schema.",
+            "status": "pending",
+            "testStrategy": "Create unit tests that instantiate Snapshot objects with representative data and serialize to JSON, comparing the resulting JSON shape against captured 0.4.0 /api/snapshot payloads to verify structural compatibility. Use JsonSerializer with consistent options (camelCase naming policy) and validate that all required fields are present and typed correctly for dashboard consumption."
+          },
+          {
+            "id": 2,
+            "title": "Implement SnapshotBuilder consuming AnalysisState and RuleEngine outputs",
+            "description": "Create SnapshotBuilder class that transforms AnalysisState aggregates and RuleEngine detection results into a fully populated Snapshot object, applying all business logic for metrics calculation, ranking, TopN selection, and sample formatting.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement a SnapshotBuilder with a Build method that accepts AnalysisState (containing parsed events, per-minute buckets, module tracking, driver lifecycle, performance metrics) and RuleEngine results (pattern hits, bucket measures, findings, samples) and constructs the complete Snapshot hierarchy. Apply TopN ranking for patterns and modules using the same logic as PowerShell (sort by hit count descending, then lexicographically by pattern/module name). Format timestamps consistently using ISO 8601 or the exact format used in 0.4.0 reports. Populate Meta.Generated with current UTC timestamp, Meta.ToolVersion from VERSION.txt, and Meta.Author from configuration. Calculate Overview statistics by aggregating event counts across severity levels, areas, drivers, and time buckets. Transform RuleEngine FindingResult objects into FindingSection records with proper threshold formatting and sample truncation per SampleMaxChars configuration. Ensure SnapshotBuilder is stateless and can be called multiple times for dashboard refresh or different report configurations.",
+            "status": "pending",
+            "testStrategy": "Write integration tests that feed synthetic AnalysisState and RuleEngine results representing known scenarios (specific pattern counts, module sequences, findings above thresholds) and assert that the resulting Snapshot contains expected counts, rankings, and sections. Compare computed Overview metrics against hand-calculated values. Verify that TopN selection matches PowerShell behavior by running both engines on identical input and comparing ranked lists."
+          },
+          {
+            "id": 3,
+            "title": "Build HTML renderer matching 0.4.0 report structure, headings, tables, and styling",
+            "description": "Implement ReportWriter.WriteHtml method that generates HTML output byte-identical to 0.4.0 reports, preserving exact structure, CSS class names, table layouts, and heading hierarchy for dashboard and field continuity.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create WriteHtml method in ReportWriter that accepts a Snapshot and output path, emitting HTML markup matching the structure produced by Write-ReportSummary in Watch-PvssLog.ps1 line 5048+. Preserve DOCTYPE, meta tags, title format, inline CSS or stylesheet references, heading hierarchy (H1 for report title, H2 for sections like Overview, Findings, Detections, Modules), and table structures with correct column headers and data cell formatting. Use string interpolation or a lightweight templating approach (StringBuilder or StreamWriter with direct writes) rather than a heavy HTML generation library to maintain control over byte-exact output. Include all sections: Meta banner (tool version, generated timestamp), Overview summary table, Findings section with threshold-exceeded rules, Detections organized by Group/Label/Scope, per-Driver statistics, per-Module events, and Performance health summary. Apply CSS class names and IDs that the existing ui\\ dashboard expects if HTML is served inline or if styling must match historical field reports. Handle -Organize switch (All, Severity, Driver) to adjust section grouping. Emit empty section placeholders or omit sections based on PowerShell precedent.",
+            "status": "pending",
+            "testStrategy": "Generate HTML reports from test Snapshots and compare against reference 0.4.0 HTML outputs using byte-identical diff (allowing only meta.generated timestamps and version banners per the allowlist). Validate that all required sections appear, tables are well-formed, and CSS class names match. Use an HTML validator to confirm markup correctness. Manually review rendered HTML in a browser to verify visual parity with 0.4.0 reports."
+          },
+          {
+            "id": 4,
+            "title": "Implement text format renderer for plain-text reports",
+            "description": "Create ReportWriter.WriteText method that produces plain-text report output matching the formatting, column alignment, and section structure of 0.4.0 text reports for command-line and log file compatibility.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Implement WriteText method that renders Snapshot as formatted plain text with consistent column widths, heading underlines, and whitespace alignment matching PowerShell text output. Use fixed-width formatting or tab-delimited columns as appropriate for readability in console and text editors. Include all sections: Meta header (tool version, generated timestamp, author), Overview summary with labeled metrics, Findings list with rule ID/Group/Label/Scope/Hits/Measure/Threshold, Detections organized by category with pattern and hit count, per-Driver lifecycle and statistics, per-Module load/unload events, and Performance health. Apply text-mode line wrapping for long messages (sample lines) respecting SampleMaxChars. Ensure consistent line ending style (CRLF on Windows) and encoding (UTF-8 with BOM or ASCII) matching 0.4.0 convention. Handle -Organize switch to adjust section grouping in text as in HTML.",
+            "status": "pending",
+            "testStrategy": "Generate text reports from test Snapshots and compare against reference 0.4.0 text outputs using byte-identical diff (allowing only meta fields per allowlist). Verify that column alignment is consistent, headings are underlined correctly, and no extraneous whitespace or formatting differences exist. Test with wide and narrow terminal widths to confirm wrapping behavior if applicable. Validate UTF-8 encoding and line endings."
+          },
+          {
+            "id": 5,
+            "title": "Add JSON serializer producing dashboard-compatible snapshot payloads",
+            "description": "Implement ReportWriter.ToJson and WriteJson methods that serialize Snapshot to JSON in the exact schema expected by the dashboard /api/snapshot endpoint and batch report JSON output.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Create ToJson method returning a JSON string and WriteJson method writing to a file path, both using System.Text.Json.JsonSerializer with options configured for camelCase property naming (or exact casing used by 0.4.0 /api/snapshot), indented formatting for report files, and any custom converters needed for enums or timestamps. Ensure the JSON schema matches the shape consumed by ui\\ dashboard code: top-level 'meta', 'overview', 'findings', 'detections', 'drivers', 'modules', and 'performance' properties with nested objects and arrays matching PowerShell ConvertTo-Json output. Handle null or empty collections gracefully (emit empty arrays rather than null where expected by dashboard). Test round-trip serialization/deserialization to confirm schema stability. Use consistent timestamp formatting (ISO 8601 UTC) across all JSON fields.",
+            "status": "pending",
+            "testStrategy": "Serialize test Snapshots to JSON and compare against reference 0.4.0 /api/snapshot payloads and JSON report files using structural JSON diff (allowing only meta.generated and version fields per allowlist). Parse serialized JSON back into Snapshot objects to verify round-trip fidelity. Validate JSON syntax with a linter. Load JSON in the existing ui\\ dashboard to confirm runtime compatibility and correct rendering of all sections."
+          },
+          {
+            "id": 6,
+            "title": "Integrate -Format switch handling for Text/Html/Both options",
+            "description": "Wire ReportWriter into the report-mode pipeline to honor the -Format CLI switch (Text, Html, Both), generating the appropriate output files with correct naming conventions and ensuring both formats are produced when -Format Both is specified.",
+            "dependencies": [
+              3,
+              4,
+              5
+            ],
+            "details": "Extend Program.cs or Cli.cs report-mode execution path to call SnapshotBuilder.Build after rule application and then invoke ReportWriter.WriteHtml, WriteText, or both based on the -Format parameter value. When -Format is Text, generate only .txt output; when Html, generate only .html output; when Both (default), generate both .txt and .html files with consistent base names derived from -OutPath or default naming convention (e.g., 'PVSS_II_Report_<timestamp>.txt' and '.html'). Ensure JSON snapshot is also written if requested (implicit for dashboard mode /api/snapshot; explicit for batch report JSON output). Apply file path resolution and directory creation as needed. Emit console progress messages matching PowerShell verbosity ('Writing HTML report...', 'Writing text report...'). Respect -NoPause switch to skip the final 'Press any key to continue' prompt after report generation.",
+            "status": "pending",
+            "testStrategy": "Run report mode with each -Format option (Text, Html, Both) and verify that the expected output files are created with correct extensions and content. Test -OutPath with explicit file paths, directory paths, and default (current directory) to confirm naming and placement logic. Verify that -NoPause suppresses the pause prompt. Compare file timestamps and sizes against expectations. Run end-to-end tests on representative log files and validate that all three formats are generated correctly when -Format Both is used."
+          },
+          {
+            "id": 7,
+            "title": "Implement -OutPath and -NoPause semantics",
+            "description": "Ensure report-mode output respects the -OutPath parameter for custom file placement and directory creation, and that -NoPause correctly suppresses the post-report pause prompt in batch scenarios.",
+            "dependencies": [
+              6
+            ],
+            "details": "Implement -OutPath logic in Program.cs or ReportWriter to accept either a directory path (generate default-named files in that directory) or a full file path with base name (append .txt/.html extensions as appropriate). Create the target directory if it does not exist, with error handling for permission issues or invalid paths. Resolve relative paths against the current working directory. Apply the same auto-naming convention used in PowerShell (include timestamp or log file name in generated report names). Implement -NoPause by conditionally skipping Console.ReadKey() or equivalent pause after report generation completes; ensure pause is shown by default in interactive scenarios (to allow user review of console output) but suppressed when -NoPause is specified or when running in non-interactive contexts (redirected stdin). Emit a final console message indicating the output path(s) of generated reports for user confirmation.",
+            "status": "pending",
+            "testStrategy": "Test -OutPath with various input patterns: directory only, full file path, relative path, absolute path, non-existent directory (confirm auto-creation), invalid path (confirm error message). Verify that generated files appear at the specified location with correct names. Test -NoPause in both interactive console and batch script contexts (simulated non-interactive stdin) to confirm the pause is correctly suppressed. Check console output for file path confirmation messages."
+          },
+          {
+            "id": 8,
+            "title": "Establish parity testing infrastructure with byte-identical comparison and allowlist",
+            "description": "Create automated parity tests that compare C# pipeline outputs (HTML, text, JSON) against reference 0.4.0 PowerShell outputs on a fixed corpus, using a diff allowlist for tolerated meta field differences and failing on unexpected discrepancies.",
+            "dependencies": [
+              3,
+              4,
+              5,
+              6,
+              7
+            ],
+            "details": "Set up a test harness that runs both the PowerShell 0.4.0 Watch-PvssLog.ps1 -Report pipeline and the C# DesigoLogWatcher.exe -Report pipeline on a curated set of representative log files (covering various driver types, severity distributions, detection scenarios, and edge cases like startup plumes, manager ranges, empty windows). Capture HTML, text, and JSON outputs from both pipelines. Implement a diff comparison tool (or integrate a library) that performs byte-identical comparison for text and HTML, and structural comparison for JSON, applying an allowlist of known acceptable differences: meta.generated timestamps (always different), tool version banners (may differ in format), author/branding lines, and performance health URLs (if they include runtime-specific tokens). Define the allowlist as a configuration file or code-based exclusion rules. Fail the test if any line or JSON field differs outside the allowlist, emitting a detailed diff report. Run parity tests as part of CI or pre-release validation for the dev gate (single-scope, no BACnet rules) and document expected deltas for the ship gate (multi-scope and BACnet exceptions enabled). Maintain reference outputs in a test fixtures directory under version control or generate them on-demand from the PowerShell baseline.",
+            "status": "pending",
+            "testStrategy": "Execute the parity test suite on the fixed corpus and confirm that all tests pass under dev gate configuration (single-scope rules only). Manually review diff reports for any allowlisted differences to verify they are legitimate (timestamps, version strings). Introduce intentional regressions (e.g., change a section heading, alter a metric calculation) and confirm that parity tests fail as expected with clear error messages. Document the allowlist rules and test corpus in project documentation for maintainability."
+          }
+        ]
+      },
+      {
+        "id": 8,
+        "title": "Enable §2.1 exceptions: multi-scope rules, BACnet-scoped families, and manager range prompts",
+        "description": "Extend the rule system and CLI to support multi-scope rules and BACnet-specific families while enabling interactive manager pick range syntax, documenting expected report deltas versus 0.4.0 at the ship gate.",
+        "details": "Augment RuleDefinition and RuleEngine to allow Scope to be either a string or a list of scopes, enabling multi-scope rules that can operate across dual-driver scenarios per the PRD’s §2.1 upgrade. Implement BACnet-scoped rule families for the four Apogee-shaped drivers without widening existing Apogee scopes, ensuring that these new rules are clearly tagged and accounted for in detection counts and sections. Introduce configuration toggles or build-time constants that separate dev-gate behavior (single-scope only, no BACnet extras) from ship-gate behavior where multi-scope and BACnet rules are active; this separation allows parity validation before enabling enhancements. On the CLI side, ensure that interactive manager selection fully supports range syntax such as \"1-3,10\", parsing and validating ranges so that operators can easily select multiple managers for analysis as part of -Interactive prompts.\n```csharp\npublic sealed record RuleDefinition(\n    string Id,\n    string Group,\n    string Label,\n    IReadOnlyList<string> Scopes,\n    Regex Pattern,\n    Func<LogEntry, bool> BucketBy,\n    Func<AnalysisState, double> Measure,\n    Func<double, bool> FindingAt);\n\npublic static IReadOnlyList<int> ParseManagerRange(string input)\n{\n    var result = new List<int>();\n    foreach (var token in input.Split(','))\n    {\n        var trimmed = token.Trim();\n        if (trimmed.Contains('-'))\n        {\n            var parts = trimmed.Split('-', 2);\n            int start = int.Parse(parts[0]);\n            int end = int.Parse(parts[1]);\n            for (int i = start; i <= end; i++) result.Add(i);\n        }\n        else\n        {\n            result.Add(int.Parse(trimmed));\n        }\n    }\n    return result.Distinct().OrderBy(i => i).ToList();\n}\n```\nUpdate snapshot expectations and PROGRESS-V0.5 documentation to record known report deltas introduced by multi-scope and BACnet-scoped rules, and adjust ship-gate tests so that expected differences in detection counts and sections are treated as successes while unexpected diffs still fail. Maintain clear separation between Apogee and BACnet scopes to avoid conflating driver families. Ensure that manager range prompts integrate smoothly with the rest of the interactive CLI flow, presenting selected managers back to the operator for confirmation before analysis runs.",
+        "testStrategy": "Create targeted tests for multi-scope rules that feed synthetic logs representing dual-driver scenarios, verifying that rules operate across all configured scopes and produce combined detections without double-counting or scope leakage. For BACnet-scoped rules, use fixtures containing BACnet-specific traces and Apogee traces, asserting that new rules fire only under BACnet scopes and that existing Apogee behaviors remain unchanged. Adjust regression tests from the dev gate to produce updated expectations under the ship gate, documenting expected differences in PROGRESS-V0.5 and ensuring that any unexpected divergence triggers test failures. For manager range prompts, introduce unit tests that parse inputs such as \"1\", \"2-4\", and \"1-3,10\" and confirm that the resulting selection lists are correct and stable, and run interactive integration tests to ensure that prompts and confirmations behave as described. Finally, re-run full pipeline tests with the §2.1 exceptions enabled, confirming that snapshot outputs align with updated expectations and that CLI behavior still matches operator workflows.",
+        "priority": "medium",
+        "dependencies": [
+          3,
+          6,
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Augment RuleDefinition to support multi-scope as string or list",
+            "description": "Modify RuleDefinition record to allow Scope field to accept either a single string or IReadOnlyList of strings for multi-scope rule support.",
+            "dependencies": [],
+            "details": "Update the RuleDefinition sealed record to change the Scope property from a single string to support both string and IReadOnlyList of string types. Implement proper type handling so existing single-scope rules continue to work without modification while new multi-scope rules can specify multiple scopes as a list.",
+            "status": "pending",
+            "testStrategy": "Create unit tests that instantiate RuleDefinition with both single-scope string and multi-scope list inputs, verifying that both formats are accepted and properly stored."
+          },
+          {
+            "id": 2,
+            "title": "Update RuleEngine to evaluate multi-scope rules across all configured scopes",
+            "description": "Extend RuleEngine logic to iterate over all scopes defined in multi-scope rules, ensuring rules evaluate correctly across dual-driver scenarios without double-counting.",
+            "dependencies": [
+              1
+            ],
+            "details": "Modify the RuleEngine evaluation logic to check if a rule has multiple scopes and iterate through each scope during rule matching. Implement safeguards to prevent double-counting when a log entry matches multiple scopes within the same rule.",
+            "status": "pending",
+            "testStrategy": "Develop targeted tests using synthetic logs representing dual-driver scenarios with entries that fall under multiple scopes. Verify that multi-scope rules trigger correctly for each applicable scope without double-counting."
+          },
+          {
+            "id": 3,
+            "title": "Implement BACnet-scoped rule families for four Apogee-shaped drivers",
+            "description": "Create BACnet-specific rule definitions for the four Apogee-shaped drivers without widening existing Apogee scopes, ensuring clear tagging and accounting in detection counts.",
+            "dependencies": [
+              1,
+              2
+            ],
+            "details": "Define four new BACnet-scoped rule families that mirror Apogee driver patterns but operate exclusively within BACnet scope boundaries. Research and document the specific driver patterns for BACnet that align with the four Apogee-shaped families mentioned in the PRD section 2.1.",
+            "status": "pending",
+            "testStrategy": "Use test fixtures containing BACnet-specific log patterns that match the four driver families. Verify that BACnet rules trigger only on BACnet-scoped entries and not on Apogee entries, confirming scope isolation."
+          },
+          {
+            "id": 4,
+            "title": "Add configuration toggles for dev-gate vs ship-gate behavior separation",
+            "description": "Introduce build-time constants or configuration toggles that control whether multi-scope and BACnet rules are active, enabling dev-gate parity validation before ship-gate enhancements.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Create a configuration mechanism that separates dev-gate behavior (single-scope only, no BACnet extras) from ship-gate behavior (multi-scope and BACnet rules active). Implement a GateMode or similar setting that can be toggled to switch between modes.",
+            "status": "pending",
+            "testStrategy": "Run the analyzer in dev-gate mode against the 50 MB corpus and compare output byte-for-byte with 0.4.0 baseline to verify parity. Then switch to ship-gate mode and verify that multi-scope and BACnet rules become active."
+          },
+          {
+            "id": 5,
+            "title": "Enhance CLI manager range prompt parsing with validation for range syntax",
+            "description": "Implement and integrate the ParseManagerRange function to support comma-separated range syntax like 1-3,10 in interactive manager selection prompts, with full input validation and error handling.",
+            "dependencies": [],
+            "details": "Implement the ParseManagerRange function as specified in the task details, supporting both individual manager numbers and hyphenated ranges. Add robust input validation to handle malformed input such as invalid characters, reversed ranges, non-numeric tokens, and empty input.",
+            "status": "pending",
+            "testStrategy": "Unit test ParseManagerRange with various inputs: valid single numbers, valid ranges, comma-separated combinations, mixed ranges and singles, invalid inputs, and edge cases. Integration tests should verify that the interactive prompt correctly uses this function."
+          },
+          {
+            "id": 6,
+            "title": "Document expected report deltas in PROGRESS-V0.5 for multi-scope and BACnet",
+            "description": "Create comprehensive documentation in PROGRESS-V0.5.md recording the known differences in detection counts and report sections introduced by multi-scope rules and BACnet-scoped rule families versus 0.4.0.",
+            "dependencies": [
+              3,
+              4
+            ],
+            "details": "Create or update PROGRESS-V0.5.md to include a dedicated section documenting expected report deltas versus the 0.4.0 baseline. For each multi-scope rule and BACnet rule family introduced, document the specific detection count changes, new report sections, and scope-specific findings.",
+            "status": "pending",
+            "testStrategy": "Review the documentation against actual test runs in both dev-gate and ship-gate modes to verify that all documented deltas are accurate and complete. Ensure that any unexpected differences between documented and actual output are investigated."
+          },
+          {
+            "id": 7,
+            "title": "Adjust ship-gate tests to expect documented deltas and fail on unexpected differences",
+            "description": "Update ship-gate test expectations to treat documented detection count and section differences as passing while maintaining failure detection for any unexpected deviations from expected behavior.",
+            "dependencies": [
+              6
+            ],
+            "details": "Modify the ship-gate test suite to incorporate the documented deltas from PROGRESS-V0.5 as expected outcomes. Implement test assertions that verify the specific multi-scope and BACnet detection counts and section additions documented in subtask 6 are present in ship-gate output.",
+            "status": "pending",
+            "testStrategy": "Run the complete ship-gate test suite against the 50 MB corpus and verify that all tests pass with the section 2.1 enhancements active. Introduce intentional deviations and confirm that tests correctly fail."
+          }
+        ]
+      },
+      {
+        "id": 9,
+        "title": "HttpServer.cs: embedded 127.0.0.1 listener, static ui serving, and /api/* routes",
+        "description": "Implement an embedded HTTP server bound to 127.0.0.1 that serves static ui assets and exposes all required /api/* routes for the dashboard, following the API inventory defined in phase 5A.",
+        "details": "Develop an HttpServer class that uses HttpListener or a lightweight C# web framework to bind a local port on 127.0.0.1 and serve both static UI files from the \"Watch\\ui\\\" directory and JSON responses for the dashboard’s API routes. Configure the server to serve static files under a known root path, similar in concept to how frameworks such as Serverito map a static root URL to an on-disk path for serving assets, choosing an appropriate encoding for HTML, CSS, and JavaScript content[17]. Implement all /api/* routes inventoried in phase 5A, including endpoints such as /api/health, /api/pulse, /api/section, /api/manager, /api/snapshot, and control routes for start, pause, resume, and restart, backed by the SnapshotBuilder and AnalysisState so that data rendered in the dashboard matches 0.4.0’s structure.\n```csharp\npublic sealed class HttpServer : IDisposable\n{\n    private readonly HttpListener _listener = new();\n\n    public void Start(string prefix)\n    {\n        _listener.Prefixes.Add(prefix); // e.g. \"http://127.0.0.1:5000/\"\n        _listener.Start();\n        Task.Run(() => ListenLoop());\n    }\n\n    private async Task ListenLoop()\n    {\n        while (_listener.IsListening)\n        {\n            var context = await _listener.GetContextAsync();\n            // route based on context.Request.Url\n        }\n    }\n}\n```\nStatic file serving should map URL paths to files under \"ui\\\", returning 404 when files are missing and setting appropriate content-type headers and charset per file type. API routes should respond with JSON serialized snapshots and health data, using the same keys and types that the existing dashboard expects, including any Detections, modules, window descriptors, and perf metrics. Ensure that the server binds only to localhost and does not expose external network surfaces, satisfying the safety requirement that the analyzer bind 127.0.0.1 only in dashboard mode. Integrate HttpServer with Program and Cli so that dashboard mode starts the server, enters catch-up and tail loops, and shuts down cleanly on exit.",
+        "testStrategy": "Create integration tests that start HttpServer on an ephemeral localhost port, request static UI files and API endpoints, and verify that responses have correct status codes, headers, and payloads. For /api/health and /api/pulse, assert that JSON structures include expected fields and types, and for /api/snapshot and /api/section, confirm that payloads align with snapshot shapes produced by SnapshotBuilder and are compatible with the existing dashboard’s expectations. Use contract tests to compare the JSON schema of each API route against 0.4.0’s responses on fixed fixtures, detecting any structural drift. Add tests that simulate repeated start, pause, and restart calls to ensure that HttpServer handles control flows without resource leaks, and confirm that the server always binds to 127.0.0.1 and closes its listener on application exit. Additionally, perform manual browser-based smoke tests with the UI assets to verify that the dashboard renders correctly and interacts with the APIs as designed.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          3,
+          4,
+          5,
+          7
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Design HttpServer class with HttpListener and port binding logic",
+            "description": "Create the HttpServer.cs class using HttpListener bound to 127.0.0.1 with configurable port, implementing fallback port tries and clean lifecycle management.",
+            "dependencies": [],
+            "details": "Implement HttpServer class using System.Net.HttpListener to bind exclusively to 127.0.0.1 (localhost) with a configurable port from watch-config.txt. Add port fallback logic that tries MaxPortTries sequential ports if the preferred port is unavailable, mirroring PowerShell behavior. Implement Start(prefix), Stop(), and Dispose() methods with proper lifecycle management. Include async ListenLoop() that calls GetContextAsync() to handle incoming requests. Add thread-safe state tracking for IsRunning and BoundPort properties. Ensure the server binds only to localhost and never exposes external network surfaces, satisfying the security requirement. Include proper exception handling for port binding failures and graceful shutdown semantics.",
+            "status": "pending",
+            "testStrategy": "Unit tests verify HttpServer can start on specified port, fallback to next port when unavailable, and bind only to 127.0.0.1. Integration tests confirm lifecycle methods (Start/Stop/Dispose) work correctly and that external network access is blocked."
+          },
+          {
+            "id": 2,
+            "title": "Implement static file serving from Watch/ui/ directory",
+            "description": "Add static file serving functionality to HttpServer that maps URL paths to files under ui/ directory with content-type detection and 404 handling.",
+            "dependencies": [
+              1
+            ],
+            "details": "Implement ServeStaticFile() method that maps HTTP request paths to physical files under Watch/ui/ directory. Add content-type detection based on file extension (.html -> text/html; charset=utf-8, .css -> text/css; charset=utf-8, .js -> application/javascript; charset=utf-8, .svg -> image/svg+xml, .png -> image/png, etc.). Handle missing files with proper 404 responses including appropriate status codes and error messages. Implement path traversal protection to prevent access outside ui/ directory. Set appropriate response headers including Content-Type with charset, Content-Length, and Cache-Control. Support index.html as default document for root path requests. Use async file I/O with proper stream handling and disposal.",
+            "status": "pending",
+            "testStrategy": "Unit tests verify content-type headers are correct for each file type (.html, .css, .js, .svg). Integration tests confirm 404 responses for missing files, path traversal attempts are blocked, and index.html is served for root path. Performance tests ensure async file I/O handles concurrent requests."
+          },
+          {
+            "id": 3,
+            "title": "Inventory and document all /api/* routes from PowerShell implementation",
+            "description": "Create comprehensive inventory of all API endpoints from Watch-PvssLog.ps1 including routes, query parameters, response schemas, and behavioral requirements.",
+            "dependencies": [],
+            "details": "Document all /api/* endpoints from existing PowerShell implementation: /api/health (GET, returns ok, version, logPath, fileLength, lastError), /api/pulse (GET with query params: window, lastMinutes, severities, areas, sinceGeneration; returns generation, window, loading, loadProgressPct, loadMessage, paused, tailRunning, rotated, lastError, findings, severityCounts, moduleHeadlines, topManagers, series, projectLifecycle), /api/section (GET with name, severities, areas query params), /api/manager (GET with name, severities, areas query params), /api/snapshot (GET, returns full snapshot JSON with all data structures). Document JSON schema for each response including field names, types, nested structures, and null handling to ensure 0.4.0 dashboard compatibility. Note that control endpoints (start/pause/resume/restart) are not currently implemented in PowerShell but are part of phase requirements.",
+            "status": "pending",
+            "testStrategy": "Review existing PowerShell code to extract complete API contracts. Cross-reference with ui/app.js client code to verify all expected fields. Create JSON schema documents for each endpoint response that can be used for validation in later implementation."
+          },
+          {
+            "id": 4,
+            "title": "Implement /api/health and /api/pulse endpoints with JSON responses",
+            "description": "Develop /api/health and /api/pulse endpoints that return JSON responses matching the existing PowerShell API contract and dashboard expectations.",
+            "dependencies": [
+              1,
+              3
+            ],
+            "details": "Implement /api/health endpoint (GET) that returns JSON with ok (bool), version (string), logPath (string), fileLength (long), lastError (string or null). Implement /api/pulse endpoint (GET) that accepts query parameters (window, lastMinutes, severities, areas, sinceGeneration) and returns comprehensive JSON including generation counter, window descriptor, loading state, loadProgressPct (0-100), loadMessage, paused flag, tailRunning flag, rotated flag, lastError, findings array, severityCounts dictionary, moduleHeadlines (bacnet, cns, coho, apogee), topManagers array, series (granularity, byMinute array with timestamps and metrics), and projectLifecycle object. Use System.Text.Json for serialization with camelCase property naming to match JavaScript expectations. Implement query string parsing for severities (comma-separated: FATAL,SEVERE,ERROR,WARNING,INFO) and areas (comma-separated: SYS,IMPL,CTRL,PARAM,OTHER). Handle sinceGeneration to support incremental updates where generation hasn't changed. Set proper Content-Type: application/json headers.",
+            "status": "pending",
+            "testStrategy": "Unit tests verify JSON serialization produces correct structure and field names matching PowerShell output. Integration tests confirm query parameter parsing handles comma-separated lists, missing parameters use defaults, and sinceGeneration optimization works. Validate responses against JSON schemas from task 3."
+          },
+          {
+            "id": 5,
+            "title": "Add /api/section and /api/manager data endpoints backed by SnapshotBuilder",
+            "description": "Implement section and manager detail endpoints that query SnapshotBuilder and AnalysisState to return filtered detection data for specific rule groups and manager components.",
+            "dependencies": [
+              1,
+              3,
+              4
+            ],
+            "details": "Implement /api/section endpoint (GET) that requires 'name' query parameter (e.g., 'bacnet', 'cns', 'apogee') and optional severities/areas filters, returning JSON with section name, window descriptor, detections array (each with id, group, label, hits, measure, buckets, samples, finding), and aggregated metrics. Implement /api/manager endpoint (GET) that requires 'name' query parameter (manager component name) and filters, returning JSON with manager name, window descriptor, log line count, severity distribution, timeline series, and sample log lines. Integrate with SnapshotBuilder to access aggregated detection state and use RuleEngine results to populate responses. Apply severity and area filters to returned data. Handle unknown section/manager names with 400 Bad Request responses. Ensure JSON keys and structure match 0.4.0 PowerShell output exactly so dashboard renders correctly without modification.",
+            "status": "pending",
+            "testStrategy": "Integration tests verify /api/section returns correct detection data for each rule group (bacnet, cns, coho, apogee) with proper filtering. Tests for /api/manager confirm manager-specific log data is aggregated correctly. Validate that missing 'name' parameter returns 400. Compare JSON output structure against PowerShell responses for compatibility."
+          },
+          {
+            "id": 6,
+            "title": "Implement /api/snapshot endpoint returning full snapshot JSON",
+            "description": "Create /api/snapshot endpoint that serializes complete AnalysisState and SnapshotBuilder data into full snapshot JSON matching the report structure expected by the dashboard.",
+            "dependencies": [
+              1,
+              3,
+              4,
+              5
+            ],
+            "details": "Implement /api/snapshot endpoint (GET) that returns comprehensive JSON snapshot including all fields from /api/pulse plus complete detections data for all sections, full manager list with health metrics (starts, stops, restarts, blocking, unblocked), detailed projectLifecycle with cycles array, hourly aggregations, and all samples. Serialize using SnapshotBuilder.BuildSnapshot() method to gather data from AnalysisState, ensuring consistency with batch report output format. Include metadata like generation timestamp, version, author, and window configuration. Ensure response size is manageable (apply capping limits as in PowerShell: 200 project events, samples per pattern limit). Set proper Content-Type and consider Content-Encoding: gzip for large responses. Handle case where no log session is active (return 400 with appropriate error message).",
+            "status": "pending",
+            "testStrategy": "Integration tests verify /api/snapshot returns complete JSON structure with all expected top-level fields. Validate against full snapshot schema from task 3. Test with various window configurations (entire log, last N minutes, absolute date ranges) to ensure all data paths are exercised. Confirm response size is reasonable and capping limits are applied."
+          },
+          {
+            "id": 7,
+            "title": "Add control endpoints for start/pause/resume/restart with state management",
+            "description": "Implement control API endpoints (/api/start, /api/pause, /api/resume, /api/restart) that manage log parser lifecycle and state transitions, integrating with Program and AnalysisState.",
+            "dependencies": [
+              1,
+              3,
+              4
+            ],
+            "details": "Implement /api/start endpoint (POST) that initiates log parsing session with optional window configuration parameters, validates log path exists, and begins catch-up or tailing. Implement /api/pause endpoint (POST) that halts log processing while maintaining state, setting paused flag in AnalysisState. Implement /api/resume endpoint (POST) that resumes paused session from current position. Implement /api/restart endpoint (POST) that reloads watch-config.txt, re-applies CLI overrides, resets AnalysisState, and restarts catch-up from beginning or configured window, mirroring PowerShell Apply-WatchConfig -Runtime behavior. All endpoints should return JSON with success status and updated state. Implement thread-safe state transitions using locks or concurrent collections. Handle invalid state transitions (e.g., pause when not running) with 400 Bad Request. Integrate with Program.cs dashboard mode pipeline so control commands properly orchestrate Parser, RuleEngine, and SnapshotBuilder lifecycle.",
+            "status": "pending",
+            "testStrategy": "Integration tests verify each control endpoint transitions state correctly: start initiates parsing, pause halts processing, resume continues, and restart reloads config and resets state. Test invalid transitions return appropriate errors. Verify restart applies config changes from watch-config.txt while preserving CLI overrides. Confirm thread-safety with concurrent control requests."
+          },
+          {
+            "id": 8,
+            "title": "Integrate HttpServer with Program.cs for dashboard mode and ensure security",
+            "description": "Wire HttpServer into Program.cs dashboard mode pipeline, implement request routing, ensure localhost-only binding, and add comprehensive error handling and logging.",
+            "dependencies": [
+              1,
+              2,
+              4,
+              5,
+              6,
+              7
+            ],
+            "details": "Integrate HttpServer into Program.cs so that dashboard mode (CLI flag -dashboard or config setting) instantiates HttpServer, binds to configured port with fallback logic, starts catch-up/tail pipeline, and handles shutdown on exit. Implement central request routing in HttpServer.ListenLoop() that dispatches to appropriate handlers based on request path (static files for /*, API handlers for /api/*). Add proper HTTP method validation (GET for data endpoints, POST for control endpoints). Implement comprehensive error handling with try-catch around all request processing, logging errors while returning appropriate HTTP status codes (400 for client errors, 500 for server errors). Add request logging (excluding noisy /api/pulse and /api/health) to console. Verify localhost-only binding by testing that external network connections are rejected. Implement graceful shutdown that stops HttpListener, completes in-flight requests, and disposes resources. Ensure integration with Config.cs for port configuration and CLI overrides. Add startup message showing bound URL (e.g., 'Dashboard listening on http://127.0.0.1:8787/').",
+            "status": "pending",
+            "testStrategy": "Integration tests verify dashboard mode starts HttpServer on configured port, serves both static files and API endpoints, and shuts down cleanly on exit. Security tests confirm external network access is blocked and only 127.0.0.1 bindings work. Test port fallback logic when preferred port is unavailable. Verify error handling for malformed requests, missing files, and server errors returns appropriate status codes. Load tests confirm concurrent request handling works correctly."
+          }
+        ]
+      },
+      {
+        "id": 10,
+        "title": "Dashboard catch-up, tailing, restart behavior, and config reload integration",
+        "description": "Integrate log catch-up and tailing behavior with the dashboard’s HttpServer, implementing progress percentage, restart semantics, and configuration reload so that UI workflows mirror 0.4.0.",
+        "details": "Extend the dashboard-mode pipeline so that, upon startup, the analyzer performs an Entire or selected window catch-up over PVSS_II.log, computing and exposing progress percentages based on file position and total size as the dashboard expects. After catch-up, transition into a tailing loop that continuously reads appended log lines, updates AnalysisState, RuleEngine, and snapshots, and periodically emits pulse updates via /api/pulse. Implement restart semantics such that, when the dashboard user triggers a restart, the analyzer re-reads watch-config.txt, applies any new configuration values, and reinitializes window selection and analysis state as appropriate while keeping HttpServer bound to localhost. Ensure that catch-up and tailing logic integrate seamlessly with HttpServer’s API routes so that the UI can reflect live progress, updated detections, and refreshed snapshots without requiring page reloads.\n```csharp\npublic async Task RunDashboardAsync(WatchConfig config)\n{\n    using var parser = new LogParser(config.LogPath!);\n    var state = new AnalysisState();\n    var rules = RuleEngineFactory.Create(config);\n    // catch-up phase\n    await parser.CatchUpAsync(state, rules);\n    // enter tail phase\n    await parser.TailAsync(state, rules, cancellationToken);\n}\n```\nImplement progress reporting by tracking bytes read versus total file length, and surface this information via /api/health or /api/pulse so that the dashboard can render catch-up percentages and convey when the analyzer has transitioned into live tailing. For restart behavior, gracefully cancel the current tail loop, reload configuration via Config.Load, update state or reset where necessary, and re-run catch-up plus tail; ensure that LogPath updates in the dashboard mode still write back to watch-config.txt as described in the PRD while report mode never modifies LogPath. Keep concurrency concerns in mind, coordinating log reading, state updates, and HTTP request handling so that snapshots reflect a consistent view of the analysis.",
+        "testStrategy": "Develop integration tests that run the dashboard pipeline on a fixed log fixture, exercising catch-up and tail phases and verifying that progress percentages move from 0 to 100 during catch-up and stabilize in tailing while new lines are appended. For restart tests, simulate a configuration change by editing watch-config.txt during runtime, trigger a restart via an API call, and confirm that the analyzer reloads configuration, adjusts its behavior accordingly, and resumes analysis without leaving HttpServer in an inconsistent state. Validate that LogPath is written back to watch-config.txt when the dashboard selects a new log and that report mode does not write LogPath. Additionally, verify that repeated restarts do not leak resources or leave orphaned tail loops, and ensure that snapshot data presented via APIs accurately reflects the state of analysis both during catch-up and tailing. Finally, compare dashboard behavior against 0.4.0’s workflows, noting any intentional differences only where §2.1 enhancements apply.",
+        "priority": "medium",
+        "dependencies": [
+          2,
+          4,
+          5,
+          6,
+          7,
+          9
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Implement catch-up phase with progress percentage tracking",
+            "description": "Build the initial catch-up phase that parses PVSS_II.log from start (or selected window start) to current EOF, tracking file position versus total size to compute and expose progress percentages.",
+            "dependencies": [],
+            "details": "Extend LogParser with a CatchUpAsync method that reads through the log file from the beginning (or window start position) to the current end-of-file, processing each line through the RuleEngine and updating AnalysisState. Track bytesRead versus total file length to calculate progress percentage (0-100%). Expose this progress via a property or callback that HttpServer can poll. Use FileStream with FileAccess.Read and FileShare.ReadWrite to safely read while PVSS continues writing. Handle window selection (Entire, LastHours, LastMinutes, From/To) by seeking to the appropriate starting position. Ensure state accumulation matches 0.4.0 behavior during this phase.",
+            "status": "pending",
+            "testStrategy": "Unit test CatchUpAsync with a fixed 1MB log fixture, verifying progress moves from 0% to 100% as bytes are consumed. Integration test with ~10MB corpus ensuring window selections start at correct file positions and progress calculations are accurate within 1%."
+          },
+          {
+            "id": 2,
+            "title": "Expose catch-up progress via /api/health or /api/pulse endpoints",
+            "description": "Integrate catch-up progress percentage into the HttpServer API so the dashboard UI can display real-time progress during the initial log scan.",
+            "dependencies": [
+              1
+            ],
+            "details": "Add a progress field to the /api/health or /api/pulse response that returns the current catch-up percentage (0-100) and a phase indicator (e.g., 'catching-up' vs 'tailing'). Ensure the HttpServer can safely read the progress value from LogParser without blocking the analysis thread. Consider using a thread-safe property or concurrent data structure. The dashboard expects to poll this endpoint every 1-2 seconds during catch-up, so ensure the response is lightweight and does not interfere with log parsing performance.",
+            "status": "pending",
+            "testStrategy": "Integration test launching dashboard mode with a 5MB log, polling /api/pulse every 500ms, and verifying that progress values are monotonically increasing from 0 to 100 and that the phase transitions from 'catching-up' to 'tailing' once catch-up completes."
+          },
+          {
+            "id": 3,
+            "title": "Build seamless transition from catch-up to tailing loop",
+            "description": "Implement the transition from catch-up mode to continuous tailing mode, where the analyzer monitors the log file for new appended lines and processes them in real-time.",
+            "dependencies": [
+              1
+            ],
+            "details": "After CatchUpAsync reaches EOF, transition into TailAsync mode that continuously monitors the log file for new bytes. Use a polling loop (e.g., check every 500ms-1s) or FileSystemWatcher to detect new content. When new lines are available, read and process them through RuleEngine and update AnalysisState incrementally. Ensure no lines are lost during the catch-up-to-tail transition by remembering the file position. Handle log rotation scenarios gracefully (file shrinks, gets replaced). Keep the tail loop responsive to cancellation tokens for clean shutdown and restart behavior. Ensure state updates during tailing are consistent with catch-up phase behavior.",
+            "status": "pending",
+            "testStrategy": "Integration test that runs catch-up on a 1MB log, transitions to tail mode, then appends 100 new lines to the log file and verifies all 100 lines are detected and processed within 2 seconds. Verify no duplicate or missed lines at the transition boundary."
+          },
+          {
+            "id": 4,
+            "title": "Add periodic pulse updates during tailing for live dashboard refresh",
+            "description": "Implement periodic emission of pulse updates via /api/pulse during the tailing phase so the dashboard UI can reflect live detections, updated metrics, and new snapshots without requiring page reloads.",
+            "dependencies": [
+              3
+            ],
+            "details": "During TailAsync, after processing each batch of new lines (or on a timer every 2-5 seconds), trigger an internal pulse event that updates the snapshot available to /api/pulse and /api/snapshot. Ensure SnapshotBuilder is invoked to reflect the latest AnalysisState and RuleEngine results. The pulse response should include updated detection counts, top patterns, severity distributions, and other dashboard-critical metrics. Coordinate timing to balance responsiveness (dashboard sees updates quickly) versus overhead (don't rebuild snapshots too frequently). Ensure thread-safe access to snapshots so HTTP handlers never see partial or inconsistent state.",
+            "status": "pending",
+            "testStrategy": "Integration test that runs tail mode while appending batches of 20 lines every 3 seconds to the log, polling /api/pulse every 2 seconds, and verifying that detection counts and pattern lists are updated within one poll cycle after each batch is written."
+          },
+          {
+            "id": 5,
+            "title": "Implement restart semantics with watch-config.txt reload and state reinitialization",
+            "description": "Build restart logic that allows the dashboard to trigger a full re-analysis: reload watch-config.txt, apply new configuration values, reset AnalysisState, and re-run catch-up and tail without unbinding HttpServer.",
+            "dependencies": [
+              1,
+              3
+            ],
+            "details": "Add a restart handler callable from the dashboard's /api/restart endpoint (or equivalent). When triggered: (1) cancel the current TailAsync loop via CancellationTokenSource; (2) call Config.Load to re-read watch-config.txt and parse new LogPath, window settings, port, etc.; (3) validate new config values and self-correct as needed; (4) create a fresh AnalysisState and RuleEngine instance based on updated config; (5) re-run CatchUpAsync followed by TailAsync with the new configuration. HttpServer remains bound to localhost throughout the restart. Ensure any in-flight HTTP requests complete gracefully during the restart transition. Handle errors (e.g., invalid config after reload) by retaining old state or reporting failure to the dashboard.",
+            "status": "pending",
+            "testStrategy": "Integration test that starts dashboard mode, modifies watch-config.txt to change window from Entire to LastHours=2, triggers restart via API, and verifies that the new analysis reflects only the last 2 hours of log data. Confirm HttpServer remains responsive and bound to the same port throughout."
+          },
+          {
+            "id": 6,
+            "title": "Ensure LogPath write-back to config on dashboard Start, prevent in report mode",
+            "description": "Implement the rule that dashboard mode writes the user-selected LogPath back to watch-config.txt when the Start action is triggered, while report mode never modifies the config file.",
+            "dependencies": [
+              5
+            ],
+            "details": "In dashboard mode, when the user selects a LogPath via the UI and clicks Start, update watch-config.txt by rewriting the LogPath= line (preserving other keys and comments). Use the same self-correcting config write logic as the PowerShell version. In report mode, load the config read-only and never write back changes, even if -LogPath CLI override is used. Ensure the write operation is atomic (write to temp file, then rename) to avoid corrupting the config if the process is interrupted. Validate that only LogPath is updated during Start; other config changes require explicit restart.",
+            "status": "pending",
+            "testStrategy": "Unit test for Config.WriteLogPath that modifies a temp watch-config.txt, verifies LogPath line is updated while other keys remain unchanged. Integration test for dashboard Start action that selects a new LogPath, starts analysis, and confirms watch-config.txt reflects the new path. Report mode test verifying config file is never modified even with -LogPath override."
+          },
+          {
+            "id": 7,
+            "title": "Coordinate concurrency between log reading, state updates, and HTTP handlers",
+            "description": "Implement thread-safe coordination so that log parsing/tailing, AnalysisState updates, snapshot generation, and HTTP request handling do not produce race conditions or inconsistent views.",
+            "dependencies": [
+              2,
+              4
+            ],
+            "details": "Use appropriate concurrency primitives (locks, ReaderWriterLockSlim, ConcurrentCollections, or immutable snapshots) to ensure that: (1) AnalysisState is not modified while SnapshotBuilder reads it; (2) HTTP handlers serving /api/pulse and /api/snapshot see a consistent snapshot even if new lines are being processed concurrently; (3) restart operations cleanly cancel and replace the tail loop without leaving orphaned threads or partial state. Prefer lock-free approaches where possible (e.g., atomic snapshot swaps) to minimize blocking. Document concurrency model in comments. Ensure that high-frequency tailing updates do not starve HTTP request threads or vice versa.",
+            "status": "pending",
+            "testStrategy": "Concurrency stress test that runs tail mode while simultaneously hammering /api/pulse with 10 concurrent requests per second for 30 seconds, verifying no deadlocks, crashes, or inconsistent snapshot data (e.g., detection counts that don't match pattern lists). Unit tests for snapshot swap atomicity."
+          },
+          {
+            "id": 8,
+            "title": "Handle window selection changes and re-analysis without restarting HttpServer",
+            "description": "Support dynamic window changes (e.g., switching from Entire to LastHours=4) via the dashboard UI, re-running analysis without tearing down and rebinding HttpServer.",
+            "dependencies": [
+              5,
+              7
+            ],
+            "details": "Extend restart logic to allow window parameter updates via the dashboard. When the user changes window selection (Entire, relative, or absolute From/To), treat it as a restart trigger: cancel current tail, reload config or accept UI-provided window params, reset AnalysisState, re-run catch-up with new window, transition to tailing. Ensure HttpServer port binding remains unchanged. Provide feedback to the UI during the re-analysis phase (progress percentage, phase indicator). Validate that window changes apply immediately and that stale data from the old window is fully cleared from snapshots.",
+            "status": "pending",
+            "testStrategy": "Integration test that starts dashboard in Entire mode, switches to LastHours=1 via UI, and verifies that the snapshot reflects only the last hour of data within 5 seconds. Confirm HttpServer remains on the same port and that progress percentage restarts from 0% during re-analysis."
+          },
+          {
+            "id": 9,
+            "title": "Validate resource cleanup and prevent leaked tail loops on repeated restarts",
+            "description": "Ensure that repeated restart cycles cleanly dispose of file handles, cancel tail loops, release snapshots, and do not leak memory or threads over the lifetime of the dashboard session.",
+            "dependencies": [
+              5,
+              7,
+              8
+            ],
+            "details": "Implement proper IDisposable patterns for LogParser, FileStreams, and any other resources. Ensure CancellationTokenSource is created fresh for each restart and that old tokens are disposed. Verify that FileStream handles to PVSS_II.log are closed before reopening on restart. Use weak references or periodic GC monitoring in tests to detect memory leaks. Ensure that repeated restart cycles (e.g., 50 restarts in a row) do not increase memory usage, thread count, or leave orphaned tail loops running. Profile with a memory/thread monitoring tool during multi-restart scenarios.",
+            "status": "pending",
+            "testStrategy": "Stress test that triggers 50 consecutive restarts via /api/restart, monitoring process memory, handle count, and thread count. Verify metrics remain stable (within 10% variance) across all restarts. Unit tests for Dispose patterns ensuring FileStreams and CancellationTokenSources are released. Check that no ObjectDisposedException is thrown during or after restart cycles."
+          }
+        ]
+      },
+      {
+        "id": 11,
+        "title": "Build, publish, launcher integration, and field package layout for 0.5.0",
+        "description": "Configure build and publish processes, update launchers to call DesigoLogWatcher.exe, and finalize the field package layout so that operators can use the C# runtime with unchanged workflows and without requiring PowerShell or a global .NET install.",
+        "details": "Finalize the DesigoLogWatcher.csproj build settings for single-file, self-contained Windows deployment, ensuring that PublishSingleFile and SelfContained are enabled and that the RuntimeIdentifier is set to win-x64 to produce the correct binary for field machines[15]. Document the publish recipe in docs and changelog, using a command such as \"dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\\" to place the runtime payload into the Watch folder while keeping source and development assets under src and docs as per the PRD’s package layout[15]. Update Run-Watch.cmd, Run-Report.cmd, and Run-Report-Interactive.cmd to invoke \"Watch\\DesigoLogWatcher.exe\" with the same forwarded arguments they previously passed to \"powershell.exe -File Watch-PvssLog.ps1\", preserving CLI semantics and user workflows. Remove the PowerShell host from the field package after cutover, and ensure that readMe.txt and CHANGELOG.txt explain the runtime change, highlighting that the new engine is faster and no longer requires PowerShell while maintaining the same usage.\n```cmd\n@echo off\nset EXE=Watch\\DesigoLogWatcher.exe\n\"%EXE%\" %*\n```\nConfirm that the final zip package for field deployment includes the Watch folder with DesigoLogWatcher.exe, VERSION.txt set to 0.5.0, watch-config.txt, and ui assets, along with root-level launchers and docs, and excludes the src folder for production distributions. Ensure that the operator-facing exe name is DesigoLogWatcher.exe and that repo naming differences do not affect field usage.",
+        "testStrategy": "Perform end-to-end tests by building and publishing the project, constructing a field zip, and deploying it to a clean Windows machine that lacks both PowerShell and a pre-installed .NET runtime to confirm that the single-file self-contained executable runs successfully[15]. Invoke dashboard and report modes via the updated launchers, verifying that CLI arguments and interactive prompts behave exactly as before, that logs are discovered and opened correctly, and that report outputs are written to expected locations. Validate that the package layout matches the PRD’s diagram, that VERSION.txt reports 0.5.0, and that readMe.txt and CHANGELOG.txt accurately describe the runtime change and §2.1 detection upgrades. Additionally, run basic smoke tests across different Windows versions in the supported OS matrix to confirm compatibility with net10.0-windows and that no unexpected dependencies are introduced.",
+        "priority": "medium",
+        "dependencies": [
+          1,
+          3,
+          7,
+          9,
+          10
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Configure DesigoLogWatcher.csproj for single-file self-contained deployment",
+            "description": "Set up the .csproj file with all required properties for producing a self-contained, single-file Windows executable that bundles the .NET runtime and native libraries.",
+            "dependencies": [],
+            "details": "Edit DesigoLogWatcher.csproj to enable PublishSingleFile=true, SelfContained=true, RuntimeIdentifier=win-x64, and IncludeNativeLibrariesForSelfExtract=true. Ensure OutputType is set to Exe and TargetFramework is appropriate (e.g., net8.0 or net9.0). Add any necessary PackageReference elements for HttpListener or other dependencies. Verify that the configuration produces a single DesigoLogWatcher.exe that can run on Windows machines without requiring a separate .NET runtime installation.",
+            "status": "pending",
+            "testStrategy": "Build the project using 'dotnet build src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release' and verify successful compilation. Then publish using 'dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -r win-x64 --self-contained' to confirm a single executable is produced with all dependencies bundled."
+          },
+          {
+            "id": 2,
+            "title": "Configure dotnet publish command and Watch/ output directory structure",
+            "description": "Establish the publish workflow that outputs DesigoLogWatcher.exe and required assets to the Watch/ directory, ensuring ui/ assets are included and the directory structure matches field deployment requirements.",
+            "dependencies": [
+              1
+            ],
+            "details": "Create or document the publish command 'dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\' that places the self-contained executable into the Watch folder. Ensure that ui/ assets (HTML, CSS, JS for the dashboard) are either included in the publish output automatically via .csproj settings (e.g., CopyToOutputDirectory) or copied manually post-publish. Verify that watch-config.txt template is present in Watch/ directory. Confirm the output structure matches: Watch/DesigoLogWatcher.exe, Watch/ui/, Watch/watch-config.txt.",
+            "status": "pending",
+            "testStrategy": "Execute 'dotnet publish src\\DesigoLogWatcher\\DesigoLogWatcher.csproj -c Release -o Watch\\' and inspect the Watch/ directory to confirm DesigoLogWatcher.exe is present, ui/ folder contains dashboard assets, and watch-config.txt exists. Run DesigoLogWatcher.exe manually to verify it launches without errors."
+          },
+          {
+            "id": 3,
+            "title": "Update launcher batch scripts to invoke DesigoLogWatcher.exe with argument forwarding",
+            "description": "Modify Run-Watch.cmd, Run-Report.cmd, and Run-Report-Interactive.cmd to call Watch\\DesigoLogWatcher.exe instead of powershell.exe, preserving all CLI argument forwarding and usage semantics.",
+            "dependencies": [
+              2
+            ],
+            "details": "Edit Run-Watch.cmd, Run-Report.cmd, and Run-Report-Interactive.cmd to replace the existing 'powershell.exe -File Watch-PvssLog.ps1' invocations with 'Watch\\DesigoLogWatcher.exe %*' to forward all command-line arguments. Ensure the batch script structure remains simple and readable, using a pattern like: @echo off\\nset EXE=Watch\\DesigoLogWatcher.exe\\n\"%EXE%\" %*. Verify that all existing CLI flags (e.g., --window, --port, --log-path) continue to work identically to the PowerShell implementation. Preserve any environment variable settings or error handling present in the original scripts.",
+            "status": "pending",
+            "testStrategy": "Test each launcher script by invoking it with various argument combinations (e.g., 'Run-Watch.cmd --window Today', 'Run-Report.cmd --window Week') and confirm that DesigoLogWatcher.exe receives and processes the arguments correctly. Compare output and behavior against documented 0.4.x workflows to ensure parity."
+          },
+          {
+            "id": 4,
+            "title": "Update VERSION.txt to 0.5.0 and revise documentation for runtime transition",
+            "description": "Set VERSION.txt to 0.5.0 and update readMe.txt and CHANGELOG.txt to document the PowerShell-to-C# runtime transition, emphasizing performance improvements and unchanged operator workflows.",
+            "dependencies": [
+              3
+            ],
+            "details": "Edit VERSION.txt to set the version string to '0.5.0'. Update readMe.txt to explain that v0.5.0 replaces the PowerShell engine with a self-contained C# runtime (DesigoLogWatcher.exe) that no longer requires PowerShell or a separate .NET installation, while maintaining identical CLI usage and dashboard functionality. Highlight performance improvements (e.g., faster parsing and analysis compared to ~8-minute PowerShell baseline). Update CHANGELOG.txt with a v0.5.0 section detailing: runtime engine change, performance enhancements, removal of PowerShell dependency, and confirmation that all existing watch-config.txt settings and launcher workflows remain compatible. Ensure documentation is operator-friendly and emphasizes continuity.",
+            "status": "pending",
+            "testStrategy": "Review updated readMe.txt and CHANGELOG.txt for clarity, completeness, and accuracy. Verify VERSION.txt reads '0.5.0'. Have a second reviewer or operator persona read the documentation to confirm it clearly communicates the changes without causing confusion about usage."
+          },
+          {
+            "id": 5,
+            "title": "Assemble field deployment zip package with correct inclusions and exclusions",
+            "description": "Create the field-ready zip package containing Watch/, launchers, VERSION.txt, readMe.txt, CHANGELOG.txt, and watch-config.txt, while excluding src/, docs/, and development-only files.",
+            "dependencies": [
+              4
+            ],
+            "details": "Construct a zip archive for field deployment named 'PVSII_Log_v0.5.0.zip' (or similar) that includes: Watch/ folder with DesigoLogWatcher.exe and ui/ assets, VERSION.txt, watch-config.txt, readMe.txt, CHANGELOG.txt, and the three launcher batch scripts (Run-Watch.cmd, Run-Report.cmd, Run-Report-Interactive.cmd) in the root. Explicitly exclude the src/ directory, docs/ directory, .git/, .taskmaster/, and any other development or internal files. Verify the archive structure matches the PRD's prescribed field layout so operators receive only runtime and usage files. Document the packaging procedure (manual or scripted) for repeatable builds.",
+            "status": "pending",
+            "testStrategy": "Extract the zip archive to a temporary directory and verify the contents match expected inclusions (Watch/DesigoLogWatcher.exe, ui/, launchers, docs) and exclusions (no src/, no .git/). Confirm the directory structure is clean and operator-ready."
+          },
+          {
+            "id": 6,
+            "title": "Validate deployment on clean Windows machine without .NET runtime or PowerShell",
+            "description": "Perform end-to-end acceptance testing by deploying the field zip to a fresh Windows system that lacks PowerShell and .NET runtime, confirming the self-contained executable runs successfully for dashboard and report modes.",
+            "dependencies": [
+              5
+            ],
+            "details": "Extract the field zip package (created in subtask 5) onto a clean Windows machine (physical or VM) that does not have PowerShell available and does not have a .NET runtime pre-installed. Execute Run-Watch.cmd to launch dashboard mode and verify the dashboard UI is accessible via browser at the configured port. Execute Run-Report.cmd to generate a static HTML report and confirm the report is written successfully. Test CLI argument forwarding by running launchers with various flags (e.g., --window, --log-path). Verify that DesigoLogWatcher.exe operates without errors, dependencies are fully bundled, and operator workflows are identical to 0.4.x. Document any issues encountered and confirm resolution before release.",
+            "status": "pending",
+            "testStrategy": "On a clean Windows test environment, run all three launcher scripts with representative arguments and log fixtures. Verify dashboard startup, /api/pulse endpoint, report generation, and HTML output quality. Confirm no missing DLL errors, no PowerShell not found errors, and no .NET runtime missing errors. Compare behavior and output against 0.4.0 baseline to ensure parity and performance improvements."
+          }
+        ]
+      },
+      {
+        "id": 12,
+        "title": "Performance measurement, parity verification, and optional Entire-window cache decision",
+        "description": "Measure performance on the ~50 MB corpus, verify parity against 0.4.0 under dev and ship gates, and decide whether to implement an Entire-window cache for dashboard mode based on real cold-parse numbers.",
+        "details": "Using the same ~50 MB static PVSS_II.log corpus used for 0.4.0 timing notes, run the C# analyzer in report mode and dashboard mode, recording entire-file scan and HTML write times and comparing them to the original ~8-minute PowerShell baseline. Aim to document performance improvements in PROGRESS-V0.5.md, noting that aspirations such as under 5 seconds and stretch goals under 1 second on warm disks are informative but not hard release criteria. Employ profiling tools and instrumentation to identify any hotspots, focusing on line parsing, rule evaluation, and snapshot rendering, and leverage span-based parsing and compiled regexes to ensure that per-line allocations remain minimal[13][14][16]. Evaluate cold Entire parse for dashboard mode specifically, determining whether re-parse on window flips is noticeable; if cold Entire parse is already effectively instant (for example under around 0.5–1 second), skip implementing an Entire-window cache for 0.5.0 per the PRD’s guidance, otherwise plan and implement a cache late in the phase that clones analysis state after catch-up and reuses it when revisiting Entire, ensuring that cache saving does not block the host and that results are served before caching.\n```csharp\npublic sealed class PerfMetrics\n{\n    public TimeSpan ReportEntireDuration { get; set; }\n    public TimeSpan DashboardColdEntireDuration { get; set; }\n}\n\npublic void MeasureAndDecideCache()\n{\n    var metrics = RunPerfMeasurements();\n    if (metrics.DashboardColdEntireDuration > TimeSpan.FromSeconds(1))\n    {\n        ImplementEntireCache();\n    }\n}\n```\nIn parallel, perform parity verification against 0.4.0 outputs under the dev gate by comparing snapshot HTML, text, and JSON outputs for static logs, allowing only documented meta differences and failing on unexpected content changes. After enabling §2.1 exceptions, adjust tests to expect known count and section differences for multi-scope and BACnet rules while still failing on unexpected diffs, and validate dashboard API contracts, config behavior, and launchers to ensure that all acceptance criteria are met. Record all findings and decisions in PROGRESS-V0.5.md, especially the rationale for implementing or skipping the Entire-window cache in 0.5.0.",
+        "testStrategy": "Execute performance tests on representative hardware and the ~50 MB PVSS_II.log corpus, capturing timing metrics for report-mode entire-file scan plus HTML write and dashboard cold Entire parse, and compare these against the 0.4.0 PowerShell baseline, confirming that any substantial reduction constitutes a successful rewrite even without meeting stretch goals. Perform dev-gate parity tests by running both 0.4.0 and the C# analyzer with single-scope rules on static logs, diffing HTML, text, and JSON outputs and allowing only predefined meta differences; any unexpected mismatch should fail tests and prompt investigation. After enabling multi-scope and BACnet rules, update expectations to treat known deltas as successes and continue failing on unanticipated differences, ensuring that rule Ids still fire and counts align with the documented exceptions. Verify dashboard API contracts by comparing JSON schemas for pulse, section, manager, and health endpoints against 0.4.0 responses on fixtures, and confirm that config behavior and launcher usage meet all acceptance checklist items. Finally, if an Entire-window cache is implemented, add tests that validate cache correctness, invalidation triggers, and user experience, confirming that results are served before caching and that any caching progress indicators behave as expected.",
+        "priority": "medium",
+        "dependencies": [
+          4,
+          5,
+          6,
+          7,
+          8,
+          9,
+          10,
+          11
+        ],
+        "status": "pending",
+        "subtasks": [
+          {
+            "id": 1,
+            "title": "Establish performance test harness for ~50MB PVSS_II.log corpus",
+            "description": "Create a dedicated performance testing harness that measures entire-file scan and HTML write times for the ~50MB PVSS_II.log corpus, providing instrumentation hooks for timing critical operations in both report and dashboard modes.",
+            "dependencies": [],
+            "details": "Implement a PerfMetrics class with properties for ReportEntireDuration, DashboardColdEntireDuration, ScanDuration, HTMLWriteDuration, and other key metrics. Create a performance test runner that loads the static PVSS_II.log corpus from docs/PVSS_II_Examples/, executes the analyzer in both report and dashboard modes with timing instrumentation wrapped around critical sections (file scan, line parsing, rule evaluation, snapshot rendering, HTML generation), and captures high-resolution timestamps using System.Diagnostics.Stopwatch. The harness should support multiple test runs to calculate average and median times, handle warm-up runs to eliminate cold-start bias, and output structured results (JSON or CSV) that can be compared against the 0.4.0 baseline. Include fixtures for the ~50MB corpus and ensure the test can run in CI or manually on developer machines.",
+            "status": "pending",
+            "testStrategy": "Validate the harness by running it against a small synthetic log file with known line counts, verifying that timing measurements are captured correctly and results are written to the expected output format. Confirm that the harness can successfully load and process the full ~50MB PVSS_II.log corpus without errors."
+          },
+          {
+            "id": 2,
+            "title": "Run report mode timing tests comparing against 8-minute PowerShell baseline",
+            "description": "Execute the performance harness in report mode on the ~50MB corpus, measure entire-file scan and HTML write times, and compare results against the documented 8-minute PowerShell baseline to verify the target improvement of under 5 seconds.",
+            "dependencies": [
+              1
+            ],
+            "details": "Using the harness from subtask 1, run the DesigoLogWatcher analyzer in report mode (equivalent to Run-Report.cmd workflow) against the full ~50MB PVSS_II.log corpus, capturing end-to-end timing from log file open to final HTML report write. Document the original 0.4.0 PowerShell baseline as ~8 minutes (480 seconds) and record the new C# analyzer timings with multiple runs to ensure consistency. Calculate the speedup ratio (baseline / new timing) and verify whether the aspirational target of under 5 seconds is achieved. If the target is not met, identify the top 3 hotspots using the instrumentation data (line parsing, regex matching, rule evaluation, HTML rendering) and note them for profiling in subtask 9. Record all measurements in a structured format (timestamp, run number, duration, speedup factor) that will be documented in PROGRESS-V0.5.md. The test should run on representative hardware (typical field machine specs) to ensure realistic numbers.",
+            "status": "pending",
+            "testStrategy": "Execute at least 5 test runs in report mode, calculating mean and standard deviation to verify consistency. Compare the measured times against the 8-minute baseline and confirm that the speedup is documented. If results vary significantly between runs, investigate and document potential causes (disk caching, background processes)."
+          },
+          {
+            "id": 3,
+            "title": "Measure dashboard cold Entire parse to inform cache decision",
+            "description": "Specifically measure the cold Entire window parse duration in dashboard mode to determine whether implementing an Entire-window cache is necessary, using the threshold of 0.5-1 second as the decision point.",
+            "dependencies": [
+              1
+            ],
+            "details": "Extend the performance harness to launch the DesigoLogWatcher in dashboard mode, perform a cold Entire window catch-up parse on the ~50MB corpus (simulating the first dashboard load or a restart with Entire window selected), and measure the DashboardColdEntireDuration from file open through final AnalysisState snapshot generation. The test should clear any existing cache state before each run to ensure a true cold parse measurement. Run multiple iterations on both warm disk (after recent file access) and cold disk (after clearing OS file cache using tools like RAMMap or a system reboot) to understand the range of performance. Record whether the cold Entire parse exceeds the 0.5-1 second threshold specified in the PRD for cache implementation. Document the decision rationale: if cold Entire parse is under ~0.5 seconds consistently, skip the cache per PRD guidance; if it exceeds ~1 second, plan to implement the cache in subtask 8. Store all measurements with metadata (disk state, run number, duration) for inclusion in PROGRESS-V0.5.md.",
+            "status": "pending",
+            "testStrategy": "Execute at least 3 cold-disk runs and 3 warm-disk runs, recording minimum, maximum, and average times for each scenario. Verify that the decision threshold (0.5-1 second) is clearly documented along with the measured values. Test that cache state can be reliably cleared between runs."
+          },
+          {
+            "id": 4,
+            "title": "Run dev-gate parity tests comparing outputs against 0.4.0 with meta allowlist",
+            "description": "Perform byte-for-byte comparison of HTML, text, and JSON snapshot outputs between the new C# analyzer and 0.4.0 PowerShell version under dev-gate conditions, allowing only documented meta differences while failing on unexpected content changes.",
+            "dependencies": [
+              2
+            ],
+            "details": "Create a parity test suite that runs both the 0.4.0 PowerShell analyzer (Watch-PvssLog.ps1 in report mode) and the new DesigoLogWatcher C# analyzer on the same static PVSS_II.log corpus, captures the HTML report, text snapshot, and JSON output from each, and performs byte-for-byte comparison using file hashing (SHA256) or text diff tools. Establish a meta differences allowlist that documents expected variations such as timestamp formats in headers, version strings (0.4.0 vs 0.5.0), generator tool names, and any other PRD-approved cosmetic changes. The test should fail with a detailed diff report if any unexpected content differences are detected (different rule counts, missing sections, altered priority classifications, changed line numbers). Store baseline outputs from 0.4.0 in a fixtures directory and implement the comparison logic as an automated test that can run in CI. The dev-gate test assumes §2.1 exceptions are not yet enabled, so rule counts and section structures should match 0.4.0 exactly at this stage.",
+            "status": "pending",
+            "testStrategy": "Run the parity test suite with known identical inputs and verify that only allowlisted meta differences are reported. Introduce a deliberate content change (e.g., modify a rule output) and confirm that the test correctly fails with a detailed diff. Validate that the test can run on both developer machines and CI infrastructure."
+          },
+          {
+            "id": 5,
+            "title": "Enable §2.1 exceptions and update ship-gate expectations for rule deltas",
+            "description": "Enable the §2.1 exception features (multi-scope and BACnet rules) in the C# analyzer and update ship-gate parity tests to expect and validate the documented count and section differences while still catching unexpected regressions.",
+            "dependencies": [
+              4
+            ],
+            "details": "Activate the §2.1 exception implementation completed in prior tasks (tasks 4, 5, 6) within the analyzer configuration, ensuring that multi-scope rules and BACnet-specific rules are enabled and producing the expected additional detections. Update the ship-gate parity test suite to expect known deltas relative to 0.4.0: specific rule count increases (e.g., N additional multi-scope detections, M additional BACnet rule hits), new or expanded report sections for these rule categories, and updated summary statistics reflecting the enhanced coverage. Document the expected deltas in a ship-gate allowlist or delta specification file that serves as the acceptance criteria. The updated tests should still fail on unexpected differences outside the documented §2.1 changes, such as regressions in existing rule detection, altered line numbers for non-§2.1 rules, or missing baseline sections. Run the ship-gate suite on the same ~50MB corpus and validate that all expected §2.1 deltas are present and that no other changes have been introduced. Record the delta counts and validation results for PROGRESS-V0.5.md documentation.",
+            "status": "pending",
+            "testStrategy": "Execute the ship-gate parity tests with §2.1 enabled and verify that the documented deltas (rule count increases, new sections) are detected and accepted. Introduce a regression (e.g., disable an existing 0.4.0 rule) and confirm that the test correctly fails. Validate that the delta specification is comprehensive and maintainable."
+          },
+          {
+            "id": 6,
+            "title": "Validate all API contracts by comparing JSON schemas for dashboard endpoints",
+            "description": "Compare JSON response schemas for /api/pulse, /api/section, /api/manager, /api/health, and other dashboard endpoints against 0.4.0 API responses to ensure backward compatibility and contract adherence.",
+            "dependencies": [
+              3
+            ],
+            "details": "Launch the DesigoLogWatcher dashboard mode and the 0.4.0 PowerShell dashboard (if still available) side-by-side on the same log corpus, capture JSON responses from all documented API endpoints (/api/pulse for progress and tailing status, /api/section for window snapshots, /api/manager for manager-specific data, /api/health for system status), and perform schema validation to ensure that response structures are identical or strictly backward-compatible. Use JSON schema comparison tools or custom validators to check that all required fields are present with correct types, that field names match exactly (case-sensitive), and that array structures and nesting levels are preserved. Document any intentional API enhancements (additional optional fields for §2.1 data, for example) in an API changelog and verify that clients consuming the 0.4.0 API will not break when pointed at the 0.5.0 endpoints. Create API contract tests as automated fixtures that can be run in CI, using sample log data to populate realistic responses. Include tests for edge cases (empty sections, zero progress, health check failures) to ensure robust contract coverage.",
+            "status": "pending",
+            "testStrategy": "Develop automated API contract tests using sample requests and expected response fixtures, asserting that JSON schemas match between 0.4.0 and 0.5.0 for all endpoints. Validate that the tests catch schema breaks by intentionally removing a required field and confirming test failure. Run the tests against both the C# dashboard and the 0.4.0 PowerShell dashboard if available."
+          },
+          {
+            "id": 7,
+            "title": "Test config behavior, launcher integration, and CLI semantics against acceptance checklist",
+            "description": "Validate configuration file loading, self-correction behavior, launcher integration (Run-Watch.cmd, Run-Report.cmd), and CLI argument semantics to ensure they match 0.4.0 workflows and acceptance criteria.",
+            "dependencies": [
+              2,
+              6
+            ],
+            "details": "Execute a comprehensive acceptance test suite covering config subsystem behavior (task 2 deliverables), launcher scripts (task 11 deliverables), and CLI semantics. Test config loading by providing valid, invalid, and edge-case watch-config.txt files and verifying that the Config class parses valid settings, self-corrects invalid ones with appropriate console warnings, and respects CLI overrides (e.g., --port, --window arguments). Test launcher integration by invoking Run-Watch.cmd and Run-Report.cmd on a clean machine and confirming that they launch DesigoLogWatcher.exe with correct arguments, that the dashboard starts on the configured port, and that report mode generates output files in expected locations. Validate CLI semantics by testing all documented arguments (log path, window selection, dashboard mode vs report mode, config file override) and ensuring they behave identically to 0.4.0 PowerShell scripts. Cross-check against the acceptance checklist documented in the PRD or task specifications, marking each criterion as pass/fail. Record any deviations or issues discovered during testing for resolution before release.",
+            "status": "pending",
+            "testStrategy": "Create integration tests that simulate end-user workflows: launching from cmd scripts, modifying config files, passing CLI arguments, and verifying expected behavior. Test on a machine without PowerShell installed to confirm self-contained .exe operation. Document test results against the acceptance checklist in a test report."
+          },
+          {
+            "id": 8,
+            "title": "Implement optional Entire-window cache with clone/serve/background-save",
+            "description": "If dashboard cold Entire parse exceeds the 0.5-1 second threshold (determined in subtask 3), implement an Entire-window cache that clones AnalysisState after catch-up, serves cached results on window flips, and saves cache in the background without blocking the host.",
+            "dependencies": [
+              3
+            ],
+            "details": "Based on the decision from subtask 3, conditionally implement the Entire-window cache mechanism. If cold Entire parse is measured above ~1 second, design a caching layer that: (1) detects when Entire window catch-up completes during dashboard initialization or restart, (2) creates a deep clone of the final AnalysisState (including RuleEngine state, all snapshots, and metadata) and stores it in memory or on disk with a version key tied to log file size and modification time, (3) on subsequent Entire window requests (e.g., user flips from another window back to Entire), checks cache validity and serves the cached snapshot immediately if valid, avoiding re-parse, (4) performs cache serialization and write operations on a background thread or task so that the dashboard remains responsive and cached results are available before the save completes. The cache should invalidate automatically if the log file grows (tailing appends new lines), ensuring that stale data is never served. If cold Entire parse is under ~0.5 seconds per subtask 3 measurements, skip this implementation entirely and document the decision rationale in PROGRESS-V0.5.md. Include unit tests for cache clone correctness, invalidation logic, and background save behavior if implemented.",
+            "status": "pending",
+            "testStrategy": "If cache is implemented, test that switching away from and back to Entire window reuses cached state without re-parsing, verify that cache invalidates correctly when new log lines are appended, and confirm that background save does not block the dashboard UI. If cache is not implemented, document the decision and verify that repeated Entire window requests still perform acceptably with measured cold parse times."
+          },
+          {
+            "id": 9,
+            "title": "Profile and optimize hotspots using instrumentation to achieve performance goals",
+            "description": "Use profiling tools (dotTrace, PerfView, Visual Studio Profiler) and existing instrumentation data to identify and optimize the top performance hotspots, targeting the aspirational goal of under 5 seconds for report mode and under 1 second stretch goal.",
+            "dependencies": [
+              2,
+              3
+            ],
+            "details": "Analyze the performance measurement data from subtasks 2 and 3 to identify the slowest components: line parsing (ReadOnlySpan usage, allocation patterns), regex matching (compiled regexes in RuleEngine), rule evaluation (per-line rule iteration, condition checks), snapshot rendering (SnapshotWriter logic), and HTML generation (template rendering, string building). Use a .NET profiler such as JetBrains dotTrace, Microsoft PerfView, or Visual Studio Profiler to capture CPU and memory profiles during a full report-mode run and dashboard cold Entire parse, focusing on methods with high inclusive time or allocation counts. Prioritize optimizations that address the top 3 hotspots by cumulative time, applying techniques such as: reducing allocations by leveraging Span<char> and ArrayPool, optimizing regex patterns or replacing them with span-based parsing where feasible, batching rule evaluations to reduce overhead, caching frequently computed values (e.g., parsed timestamps, manager names), and parallelizing independent operations if safe. After each optimization, re-run the performance tests from subtasks 2 and 3 to measure impact and ensure no regressions. Continue iterating until the aspirational target of under 5 seconds for report mode is achieved or until diminishing returns are reached. Document all optimizations, profiling findings, and performance gains in PROGRESS-V0.5.md.",
+            "status": "pending",
+            "testStrategy": "Capture before-and-after performance profiles for each optimization, comparing execution time and memory allocation metrics. Run the full performance test suite after optimizations to confirm improvements and detect any regressions. Validate that optimizations do not break parity tests from subtasks 4 and 5."
+          },
+          {
+            "id": 10,
+            "title": "Document all findings, decisions, and measurements in PROGRESS-V0.5.md",
+            "description": "Compile comprehensive documentation of all performance measurements, parity test results, API validation outcomes, cache implementation decisions, profiling findings, and acceptance test results into PROGRESS-V0.5.md as the final quality gate for 0.5.0 release.",
+            "dependencies": [
+              2,
+              3,
+              4,
+              5,
+              6,
+              7,
+              8,
+              9
+            ],
+            "details": "Create or update PROGRESS-V0.5.md with structured sections covering: (1) Performance Results – table of report mode and dashboard cold Entire parse timings, speedup ratios vs 0.4.0 baseline, hardware specs, and comparison to aspirational targets; (2) Cache Decision – cold Entire parse measurements, threshold analysis, and rationale for implementing or skipping the Entire-window cache with code references if implemented; (3) Parity Verification – dev-gate and ship-gate test results, allowlisted meta differences, documented §2.1 deltas, and any issues resolved; (4) API Contract Validation – endpoint-by-endpoint schema comparison results, backward compatibility confirmation, and changelog of any API enhancements; (5) Acceptance Testing – config behavior, launcher integration, CLI semantics test results with pass/fail status for each criterion; (6) Profiling and Optimization – hotspot analysis, optimizations applied, before-and-after performance data, and remaining known bottlenecks; (7) Outstanding Issues – any known bugs, limitations, or deferred work for future phases. Ensure the document is well-formatted with tables, code snippets, and links to relevant source files, providing a complete audit trail of the validation process. This document serves as the final sign-off artifact for stakeholders and the basis for release notes.",
+            "status": "pending",
+            "testStrategy": "Review PROGRESS-V0.5.md for completeness, ensuring that all subtask findings are documented with sufficient detail for reproducibility. Cross-check that all acceptance criteria from the PRD are addressed. Have a peer or stakeholder review the document to confirm it meets release documentation standards."
+          }
+        ]
+      }
+    ],
+    "metadata": {
+      "created": "2026-09-13T03:38:25.766Z",
+      "updated": "2026-09-13T03:42:08.117Z",
+      "description": "Tasks for master context"
+    }
+  }
+}

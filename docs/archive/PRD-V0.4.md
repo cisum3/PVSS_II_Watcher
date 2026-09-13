@@ -682,7 +682,7 @@ The same comparison applies to `format=text` and `format=json`.
 | **4D** | `Convert-SnapshotToText` (including detections); accept `format=text` at 3654-3669; expand-in-place format buttons on Snapshot (§6.4). Text is now testable from the dashboard before batch mode exists. |
 | **4E** | Batch mode: `-Report` branch, path-validation extraction, `Resolve-LogPath`, absolute `-From`/`-To`, new param block + config precedence, full V1.3 prompt set (§7.3), both launchers. |
 | **4F** | Verification per §10 — the §10.1 equivalence check lands as a `Test-WatchSelf.ps1` phase. |
-| **4G** | Delete `OfflineAnalyze\`; rewrite root `readMe.txt` (no OfflineAnalyze mention); `CHANGELOG.txt`; `VERSION.txt` → 0.4.0; update `BACKLOG.md` + `docs/README_docs.txt`. |
+| **4G** | Delete `OfflineAnalyze\`; rewrite root `readMe.txt` (no OfflineAnalyze mention); `CHANGELOG.txt`; `VERSION.txt` → 0.4.0; update `BACKLOG.md` + `docs/README.md`. |
 
 4A through 4D only add to the dashboard and are shippable-safe at any point. The
 irreversible step is 4G, gated on 4F.

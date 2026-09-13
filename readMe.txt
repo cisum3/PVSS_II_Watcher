@@ -1,11 +1,11 @@
-PVSS / WinCC OA Log Analyzer
-============================
+Siemens Desigo CC PVSS_II Log Analyzer
+======================================
 Version: 0.4.0
 Author: Cisum
 
 What this is
 ------------
-A Windows-only triage toolkit for large PVSS_II.log files (WinCC OA / GMS).
+A Windows-only triage toolkit for large Siemens Desigo CC PVSS_II.log files.
 
 One tool, two modes:
 
@@ -34,7 +34,7 @@ Requirements
 
 Package layout
 --------------
-Keep this folder outside the WinCC OA project log directory.
+Keep this folder outside the Desigo CC project log directory.
 
   Run-Watch.cmd              Double-click to start the live dashboard
   Run-Report.cmd             Double-click to write an HTML report and exit
@@ -183,5 +183,5 @@ Important notes
     the dashboard; report mode leaves it alone).
   - Large logs take a while. A 50 MB log is several minutes on a typical
     laptop; the console prints progress while it scans.
-  - This is a triage aid, not a substitute for Siemens GMS / WinCC OA support.
+  - This is a triage aid, not a substitute for Siemens Desigo CC support.
   - Current version: 0.4.0. See CHANGELOG.txt for what changed in each release.

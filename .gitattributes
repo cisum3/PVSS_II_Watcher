@@ -1,5 +1,7 @@
-# Exclude internal dev docs and tracking files from generated ZIP archives
+# Exclude internal / GitHub-only files from generated ZIP archives
+README.md export-ignore
 PRD-*.md export-ignore
 PROGRESS-*.md export-ignore
 docs/ export-ignore
+src/ export-ignore
 .github/ export-ignore

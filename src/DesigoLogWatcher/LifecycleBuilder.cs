@@ -217,7 +217,9 @@ public static class LifecycleBuilder
 
     public static List<Dictionary<string, object?>> CountNameTop(
         IReadOnlyDictionary<string, int> map, string nameKey, int n) =>
-        map.OrderByDescending(kv => kv.Value).Take(n)
+        map.OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(n)
             .Select(kv => new Dictionary<string, object?> { [nameKey] = kv.Key, ["count"] = kv.Value })
             .ToList();
 }

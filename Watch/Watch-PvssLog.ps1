@@ -1783,11 +1783,23 @@ function script:Read-TailBytes {
     }
 }
 
+function script:Sort-CountDescThenKey {
+    # Stable top-N ordering: count descending, key ascending (parity with C# TopByCount).
+    param([Parameter(ValueFromPipeline = $true)]$InputObject)
+    begin { $items = New-Object System.Collections.Generic.List[object] }
+    process { if ($null -ne $InputObject) { [void]$items.Add($InputObject) } }
+    end {
+        $items | Sort-Object `
+            @{ Expression = { $_.Value }; Descending = $true }, `
+            @{ Expression = { [string]$_.Key } }
+    }
+}
+
 function script:Get-TopPatterns {
     param([hashtable]$CountMap, [hashtable]$SampleMap, [hashtable]$TimeMap, [int]$N)
     $out = @()
     if ($null -eq $CountMap -or $CountMap.Count -eq 0) { return $out }
-    $sorted = @($CountMap.GetEnumerator() | Sort-Object { $_.Value } -Descending | Select-Object -First $N)
+    $sorted = @($CountMap.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First $N)
     foreach ($e in $sorted) {
         $first = $null; $last = $null
         if ($null -ne $TimeMap -and $TimeMap.ContainsKey($e.Key)) {
@@ -1834,13 +1846,13 @@ function script:Build-Findings {
         [void]$findings.Add(("BACnet object-list warnings: {0:N0} events across {1:N0} devices." -f $d.BacObjectList, $d.BacObjectListByDevice.Count))
     }
     if ($d.BacCollectTrend -ge 100) {
-        $topCode = ($d.BacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+        $topCode = ($d.BacCollectTrendByCode.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 1)
         $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
         [void]$findings.Add(("BACnetCollectTrend failures: {0:N0} across {1:N0} properties{2}." -f `
             $d.BacCollectTrend, $d.BacCollectTrendByProp.Count, $codeNote))
     }
     if ($d.BacTimeSync -ge 100) {
-        $topCode = ($d.BacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 1)
+        $topCode = ($d.BacTimeSyncByCode.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 1)
         $codeNote = if ($topCode) { (" top error {0} x{1:N0}" -f $topCode.Key, $topCode.Value) } else { '' }
         [void]$findings.Add(("BACnetTimeSync failures: {0:N0} across {1:N0} properties{2}." -f `
             $d.BacTimeSync, $d.BacTimeSyncByProp.Count, $codeNote))
@@ -1882,12 +1894,12 @@ function script:Build-Findings {
         [void]$findings.Add($line)
     }
     if ($d.PmonMgrRestart -ge 1) {
-        $topRr = ($d.PmonRestartByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+        $topRr = ($d.PmonRestartByComp.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
         [void]$findings.Add(("pmon auto-restarted managers: {0:N0} event(s){1}." -f `
             $d.PmonMgrRestart, $(if ($topRr) { " ($topRr)" } else { '' })))
     }
     if ($d.BlockingDetected -ge 1) {
-        $topBl = ($d.BlockingByComp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
+        $topBl = ($d.BlockingByComp.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 3 | ForEach-Object { ("{0} x{1}" -f $_.Key, $_.Value) }) -join ', '
         [void]$findings.Add(("pmon blocking (no heartbeat): {0:N0} detection(s), {1:N0} cleared{2}." -f `
             $d.BlockingDetected, $d.BlockingCleared, $(if ($topBl) { " ($topBl)" } else { '' })))
     }
@@ -2002,7 +2014,7 @@ function script:Get-FilteredTopManagers {
     param($Data, $AreaFilter, [int]$N = 20)
     if (Test-AreaFilterAllOn -AreaFilter $AreaFilter) {
         return @(
-            $Data.Components.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $N | ForEach-Object {
+            $Data.Components.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First $N | ForEach-Object {
                 [ordered]@{ name = $_.Key; count = [int]$_.Value }
             }
         )
@@ -2016,7 +2028,7 @@ function script:Get-FilteredTopManagers {
         }
     }
     return @(
-        $acc.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $N | ForEach-Object {
+        $acc.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First $N | ForEach-Object {
             [ordered]@{ name = $_.Key; count = [int]$_.Value }
         }
     )
@@ -2071,7 +2083,7 @@ function script:Get-AreaCountsPayload {
     }
     $others = @()
     if ($Data.AreaOtherNames) {
-        foreach ($e in @($Data.AreaOtherNames.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20)) {
+        foreach ($e in @($Data.AreaOtherNames.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 20)) {
             $others += [ordered]@{ name = [string]$e.Key; count = [int]$e.Value }
         }
     }
@@ -2569,7 +2581,7 @@ function script:Build-SectionObject {
             $endedOk = @($d.BacLastStatus.GetEnumerator() | Where-Object { $_.Value -eq 'OK' }).Count
             $flappers = @($d.BacFlipByDevice.GetEnumerator() | Where-Object { $_.Value -ge $script:BacFlapMin }).Count
             $activity = @(
-                $d.BacFailedByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                $d.BacFailedByDevice.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 20 | ForEach-Object {
                     $id = $_.Key
                     $oc = if ($d.BacOkByDevice.ContainsKey($id)) { $d.BacOkByDevice[$id] } else { 0 }
                     $fl = if ($d.BacFlipByDevice.ContainsKey($id)) { $d.BacFlipByDevice[$id] } else { 0 }
@@ -2584,32 +2596,32 @@ function script:Build-SectionObject {
                     $oc = if ($d.BacOkByDevice.ContainsKey($id)) { $d.BacOkByDevice[$id] } else { 0 }
                     $fl = if ($d.BacFlipByDevice.ContainsKey($id)) { $d.BacFlipByDevice[$id] } else { 0 }
                     [pscustomobject]@{ device = $id; failed = [int]$fc; ok = [int]$oc; flips = [int]$fl }
-                } | Sort-Object failed -Descending | Select-Object -First 20 | ForEach-Object {
+                } | Sort-Object @{ Expression = 'failed'; Descending = $true }, @{ Expression = 'device' } | Select-Object -First 20 | ForEach-Object {
                     [ordered]@{ device = $_.device; failed = $_.failed; ok = $_.ok; flips = $_.flips }
                 }
             )
             $objTop = @(
-                $d.BacObjectListByDevice.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                $d.BacObjectListByDevice.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 20 | ForEach-Object {
                     [ordered]@{ device = $_.Key; count = [int]$_.Value }
                 }
             )
             $ctCodes = @(
-                $d.BacCollectTrendByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 | ForEach-Object {
+                $d.BacCollectTrendByCode.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 10 | ForEach-Object {
                     [ordered]@{ code = $_.Key; count = [int]$_.Value }
                 }
             )
             $ctProps = @(
-                $d.BacCollectTrendByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                $d.BacCollectTrendByProp.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 20 | ForEach-Object {
                     [ordered]@{ property = $_.Key; count = [int]$_.Value }
                 }
             )
             $tsCodes = @(
-                $d.BacTimeSyncByCode.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 10 | ForEach-Object {
+                $d.BacTimeSyncByCode.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 10 | ForEach-Object {
                     [ordered]@{ code = $_.Key; count = [int]$_.Value }
                 }
             )
             $tsProps = @(
-                $d.BacTimeSyncByProp.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First 20 | ForEach-Object {
+                $d.BacTimeSyncByProp.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First 20 | ForEach-Object {
                     [ordered]@{ property = $_.Key; count = [int]$_.Value }
                 }
             )
@@ -2646,7 +2658,7 @@ function script:Build-SectionObject {
         }
         'coho' {
             $names = @(
-                $d.CohoStuckNames.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $TopN | ForEach-Object {
+                $d.CohoStuckNames.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First $TopN | ForEach-Object {
                     [ordered]@{ name = $_.Key; count = [int]$_.Value }
                 }
             )
@@ -2661,7 +2673,7 @@ function script:Build-SectionObject {
         }
         'apogee' {
             $ppcl = @(
-                $d.ApogeePpcl.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $TopN | ForEach-Object {
+                $d.ApogeePpcl.GetEnumerator() | Sort-CountDescThenKey | Select-Object -First $TopN | ForEach-Object {
                     [ordered]@{ name = $_.Key; count = [int]$_.Value }
                 }
             )
@@ -2694,7 +2706,7 @@ function script:Build-SectionObject {
         'perf' {
             $perf = @()
             if ($d.PerfCats -and $d.PerfCats.Count -gt 0) {
-                foreach ($e in @($d.PerfCats.GetEnumerator() | Sort-Object { $_.Value } -Descending)) {
+                foreach ($e in @($d.PerfCats.GetEnumerator() | Sort-CountDescThenKey)) {
                     $perf += [pscustomobject]@{ name = [string]$e.Key; count = [int]$e.Value }
                 }
             }

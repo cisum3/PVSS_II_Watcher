@@ -341,7 +341,9 @@ function script:Get-RuleTopBucket {
     $map = Get-RuleBucketMap -Data $Data -Id $Id -Name $Name
     if ($map.Count -eq 0) { return @() }
     return @(
-        $map.GetEnumerator() | Sort-Object Value -Descending | Select-Object -First $N | ForEach-Object {
+        $map.GetEnumerator() | Sort-Object `
+            @{ Expression = { $_.Value }; Descending = $true }, `
+            @{ Expression = { [string]$_.Key } } | Select-Object -First $N | ForEach-Object {
             [ordered]@{ $KeyName = $_.Key; count = [int]$_.Value }
         }
     )

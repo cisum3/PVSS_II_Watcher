@@ -49,13 +49,13 @@ public sealed class SnapshotBuilder
             findings.Add($"BACnet object-list warnings: {d.BacObjectList:N0} events across {d.BacObjectListByDevice.Count:N0} devices.");
         if (d.BacCollectTrend >= 100)
         {
-            var topCode = d.BacCollectTrendByCode.OrderByDescending(kv => kv.Value).FirstOrDefault();
+            var topCode = ApiBuilders.TopByCount(d.BacCollectTrendByCode, 1).FirstOrDefault();
             var codeNote = topCode.Key is not null ? $" top error {topCode.Key} x{topCode.Value:N0}" : "";
             findings.Add($"BACnetCollectTrend failures: {d.BacCollectTrend:N0} across {d.BacCollectTrendByProp.Count:N0} properties{codeNote}.");
         }
         if (d.BacTimeSync >= 100)
         {
-            var topCode = d.BacTimeSyncByCode.OrderByDescending(kv => kv.Value).FirstOrDefault();
+            var topCode = ApiBuilders.TopByCount(d.BacTimeSyncByCode, 1).FirstOrDefault();
             var codeNote = topCode.Key is not null ? $" top error {topCode.Key} x{topCode.Value:N0}" : "";
             findings.Add($"BACnetTimeSync failures: {d.BacTimeSync:N0} across {d.BacTimeSyncByProp.Count:N0} properties{codeNote}.");
         }
@@ -94,13 +94,13 @@ public sealed class SnapshotBuilder
         }
         if (d.PmonMgrRestart >= 1)
         {
-            var topRr = string.Join(", ", d.PmonRestartByComp.OrderByDescending(kv => kv.Value).Take(3)
+            var topRr = string.Join(", ", ApiBuilders.TopByCount(d.PmonRestartByComp, 3)
                 .Select(kv => $"{kv.Key} x{kv.Value}"));
             findings.Add($"pmon auto-restarted managers: {d.PmonMgrRestart:N0} event(s){(topRr.Length > 0 ? $" ({topRr})" : "")}.");
         }
         if (d.BlockingDetected >= 1)
         {
-            var topBl = string.Join(", ", d.BlockingByComp.OrderByDescending(kv => kv.Value).Take(3)
+            var topBl = string.Join(", ", ApiBuilders.TopByCount(d.BlockingByComp, 3)
                 .Select(kv => $"{kv.Key} x{kv.Value}"));
             findings.Add($"pmon blocking (no heartbeat): {d.BlockingDetected:N0} detection(s), {d.BlockingCleared:N0} cleared{(topBl.Length > 0 ? $" ({topBl})" : "")}.");
         }
@@ -125,7 +125,7 @@ public sealed class SnapshotBuilder
                 var bname = bb.Keys.OrderBy(k => k).First();
                 if (d.HitBuckets.TryGetValue(rule.Id, out var idb) && idb.TryGetValue(bname, out var map))
                 {
-                    var top = string.Join(", ", map.OrderByDescending(kv => kv.Value).Take(3)
+                    var top = string.Join(", ", ApiBuilders.TopByCount(map, 3)
                         .Select(kv => $"{kv.Key} x{kv.Value:N0}"));
                     if (top.Length > 0) line += $" Top {bname}: {top}.";
                 }
@@ -191,9 +191,10 @@ public sealed class SnapshotBuilder
                 ["drivers"] = Array.Empty<string>(),
                 ["topN"] = _topN,
                 ["samplePerPattern"] = 1,
+                ["bacFlapMin"] = _bacFlapMin,
                 ["window"] = windowEntire ? "entire" : "minutes",
                 ["lastMinutes"] = lastMinutes,
-                ["format"] = format.ToString().ToLowerInvariant()
+                ["format"] = FormatLabel(format)
             },
             ["window"] = new Dictionary<string, object?>
             {
@@ -220,7 +221,7 @@ public sealed class SnapshotBuilder
             ["detections"] = ApiBuilders.BuildDetectionsObject(_data, _rules.Rules, _topN),
             ["perf"] = new Dictionary<string, object?>
             {
-                ["perfCategories"] = _data.PerfCats.OrderByDescending(kv => kv.Value)
+                ["perfCategories"] = ApiBuilders.TopByCount(_data.PerfCats, int.MaxValue)
                     .Select(kv => new Dictionary<string, object?> { ["name"] = kv.Key, ["count"] = kv.Value }).ToArray(),
                 ["unparsedLines"] = _data.UnparsedLines
             },
@@ -260,6 +261,7 @@ public sealed class SnapshotBuilder
                 ["trendOverflow"] = RuleEngine.GetRuleCount(_data, "apogeeDrv.trendOverflow"),
                 ["trendSeq"] = RuleEngine.GetRuleCount(_data, "apogeeDrv.trendSeq"),
                 ["alertId"] = RuleEngine.GetRuleCount(_data, "apogeeDrv.alertId"),
+                ["queryTimeout"] = RuleEngine.GetRuleCount(_data, "apogeeDrv.queryTimeout"),
                 ["getDataFail"] = RuleEngine.GetRuleCount(_data, "apogeeDrv.getDataFail")
             }
         };
@@ -280,78 +282,22 @@ public sealed class SnapshotBuilder
         };
     }
 
+    private static string FormatLabel(ReportFormat format) => format switch
+    {
+        ReportFormat.Text => "text",
+        ReportFormat.Html => "html",
+        ReportFormat.Json => "json",
+        ReportFormat.Both => "both",
+        _ => format.ToString().ToLowerInvariant()
+    };
+
 }
 
 /// <summary>HTML / text / JSON report renderers.</summary>
 public sealed class ReportWriter
 {
-    public string ToText(Dictionary<string, object?> snap, string author = "Cisum")
-    {
-        var sb = new System.Text.StringBuilder();
-        var meta = (Dictionary<string, object?>)snap["meta"]!;
-        var win = (Dictionary<string, object?>)snap["window"]!;
-        var opt = (Dictionary<string, object?>)snap["options"]!;
-        void W(string t = "") => sb.AppendLine(t);
-
-        W("================================================================================");
-        W(" PVSS / WinCC OA Log Analysis Report");
-        W("================================================================================");
-        W($"Tool      : {meta["tool"]} v{meta["version"]} by {author}");
-        W($"Generated : {meta["generated"]}");
-        W($"Log file  : {meta["logPath"]}");
-        var len = Convert.ToInt64(meta["fileLength"]);
-        W($"Size      : {len / (1024.0 * 1024.0):N2} MB");
-        W($"Lines     : {Convert.ToInt32(meta["parsedLines"]):N0} analyzed (WinCC OA header, in window)");
-        W($"Time span : {win["first"]}  -->  {win["last"]}");
-        W();
-        W("--- Options used ---");
-        W($" Organize      : {opt["organize"]}");
-        W($" Severities    : {string.Join(", ", (string[])opt["severities"]!)}");
-        W($" Areas         : {string.Join(", ", (string[])opt["areas"]!)}");
-        W($" TopN          : {opt["topN"]}");
-        W($" Time mode     : {opt["window"]}");
-        W($" Format        : {opt["format"]}");
-        W();
-        W("--- Findings ---");
-        foreach (var f in (List<string>)snap["findings"]!)
-            W($" * {f}");
-        W();
-        W("--- Severity counts ---");
-        var sev = (Dictionary<string, int>)snap["severityCounts"]!;
-        foreach (var s in new[] { "FATAL", "SEVERE", "ERROR", "WARNING", "INFO" })
-            W($" {sev.GetValueOrDefault(s),8:N0}  {s}");
-        W();
-        W("--- Area counts ---");
-        var areas = (Dictionary<string, int>)snap["areaCounts"]!;
-        foreach (var a in new[] { "SYS", "IMPL", "CTRL", "PARAM", "OTHER" })
-            W($" {areas.GetValueOrDefault(a),8:N0}  {a}");
-        W();
-        var mh = (Dictionary<string, object?>)snap["moduleHeadlines"]!;
-        var bac = (Dictionary<string, object?>)mh["bacnet"]!;
-        var cns = (Dictionary<string, object?>)mh["cns"]!;
-        var coho = (Dictionary<string, object?>)mh["coho"]!;
-        var apo = (Dictionary<string, object?>)mh["apogee"]!;
-        W("--- Module headlines ---");
-        W($" BACnet : Failed={bac["failed"]:N0} OK={bac["ok"]:N0} endedFailed={bac["endedFailed"]:N0} endedOK={bac["endedOk"]:N0} flappers={bac["flappers"]:N0} objectList={bac["objectList"]:N0} CollectTrend={bac["collectTrend"]:N0} TimeSync={bac["timeSync"]:N0}");
-        W($" CNS    : ResolveNodes={cns["resolveNodes"]:N0} ReducedFunction={cns["reducedFunction"]:N0} TryRenewSession={cns["tryRenew"]:N0}");
-        W($" CoHo   : stuck/drop={coho["stuck"]:N0}");
-        W($" Apogee : events={apo["events"]:N0} UpdatePoints={apo["updatePoints"]:N0} | Drv overflow={apo["trendOverflow"]:N0} seq={apo["trendSeq"]:N0} AlertID={apo["alertId"]:N0} getData={apo["getDataFail"]:N0}");
-        W();
-        W("--- Detections (non-curated) ---");
-        foreach (var g in (List<Dictionary<string, object?>>)snap["detections"]!)
-        {
-            W($" [{g["group"]}] total={g["total"]:N0}");
-            if (g["rules"] is List<Dictionary<string, object?>> rules)
-                foreach (var row in rules)
-                    W($"   {row["label"]}: {row["count"]:N0}");
-            else if (g["rules"] is object[] arr)
-                foreach (var o in arr.OfType<Dictionary<string, object?>>())
-                    W($"   {o["label"]}: {o["count"]:N0}");
-        }
-        W();
-        W("================================================================================");
-        return sb.ToString();
-    }
+    public string ToText(Dictionary<string, object?> snap, string author = "Cisum") =>
+        SnapshotText.Render(snap, author);
 
     public string ToHtml(Dictionary<string, object?> snap, string author = "Cisum") =>
         SnapshotHtml.Render(snap, author);
@@ -363,16 +309,16 @@ public sealed class ReportWriter
             DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull
         });
 
-    public (string? TextPath, string? HtmlPath) WriteFiles(
+    public (string? TextPath, string? HtmlPath, string? JsonPath) WriteFiles(
         Dictionary<string, object?> snap, string logPath, string? outPath, ReportFormat format)
     {
         string stem;
         if (string.IsNullOrWhiteSpace(outPath))
             stem = logPath + ".analysis";
         else
-            stem = System.Text.RegularExpressions.Regex.Replace(outPath, @"(?i)\.(txt|html?)$", "");
+            stem = System.Text.RegularExpressions.Regex.Replace(outPath, @"(?i)\.(txt|html?|json)$", "");
 
-        string? textPath = null, htmlPath = null;
+        string? textPath = null, htmlPath = null, jsonPath = null;
         if (format is ReportFormat.Text or ReportFormat.Both)
         {
             textPath = stem + ".txt";
@@ -383,6 +329,11 @@ public sealed class ReportWriter
             htmlPath = stem + ".html";
             File.WriteAllText(htmlPath, ToHtml(snap));
         }
-        return (textPath, htmlPath);
+        if (format is ReportFormat.Json)
+        {
+            jsonPath = stem + ".json";
+            File.WriteAllText(jsonPath, ToJson(snap));
+        }
+        return (textPath, htmlPath, jsonPath);
     }
 }

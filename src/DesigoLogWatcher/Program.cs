@@ -124,9 +124,10 @@ public static class Program
             lastMinutes: window.LastMinutes ?? config.Effective.DefaultWindowMinutes);
 
         var writer = new ReportWriter();
-        var (textPath, htmlPath) = writer.WriteFiles(snap, log, options.OutPath, options.Format);
+        var (textPath, htmlPath, jsonPath) = writer.WriteFiles(snap, log, options.OutPath, options.Format);
         if (textPath is not null) Console.WriteLine($"Wrote {textPath}");
         if (htmlPath is not null) Console.WriteLine($"Wrote {htmlPath}");
+        if (jsonPath is not null) Console.WriteLine($"Wrote {jsonPath}");
 
         if (!options.NoPause)
         {
@@ -150,9 +151,18 @@ public static class Program
 
         Console.WriteLine($"DesigoLogWatcher {Version} by Cisum");
         Console.WriteLine($"Listening: {server.ListeningUrl}");
+        if (server.BoundPort != config.Effective.PreferredPort)
+        {
+            Console.ForegroundColor = ConsoleColor.Yellow;
+            Console.WriteLine($"WARNING: PreferredPort {config.Effective.PreferredPort} was busy — bound {server.BoundPort} instead.");
+            Console.WriteLine($"         Another Watch/DesigoLogWatcher is probably still running on {config.Effective.PreferredPort}.");
+            Console.WriteLine($"         Use ONLY this URL (do not keep an old tab on :{config.Effective.PreferredPort}):");
+            Console.WriteLine($"         {server.ListeningUrl}");
+            Console.ResetColor();
+        }
         Console.WriteLine($"Config: {config.ConfigPath}  (refresh={config.Effective.RefreshSeconds}s, port prefer={config.Effective.PreferredPort})");
         Console.WriteLine("Log access: FileAccess.Read only (share allows WinCC to append).");
-        Console.WriteLine("Ctrl+C to stop.");
+        Console.WriteLine("Ctrl+C to stop (closing the window also releases the port).");
 
         if (config.Effective.OpenBrowser && !options.NoBrowser && server.ListeningUrl is not null)
         {
@@ -161,8 +171,25 @@ public static class Program
         }
 
         var exit = new ManualResetEventSlim(false);
-        Console.CancelKeyPress += (_, e) => { e.Cancel = true; exit.Set(); };
+        void RequestExit()
+        {
+            try { exit.Set(); } catch { /* ignore */ }
+        }
+
+        Console.CancelKeyPress += (_, e) =>
+        {
+            e.Cancel = true;
+            RequestExit();
+        };
+        // Console X-button / taskkill soft path — release http.sys URL before process death.
+        AppDomain.CurrentDomain.ProcessExit += (_, _) =>
+        {
+            try { server.Dispose(); } catch { /* ignore */ }
+            try { session.Dispose(); } catch { /* ignore */ }
+        };
+
         exit.Wait();
+        Console.WriteLine("Stopping… releasing port.");
         return 0;
     }
 

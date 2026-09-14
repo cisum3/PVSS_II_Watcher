@@ -7,7 +7,8 @@ public enum ReportFormat
 {
     Text,
     Html,
-    Both
+    Both,
+    Json
 }
 
 public enum OrganizeMode
@@ -109,7 +110,7 @@ public sealed class Cli
         Report:
           -Report                 Batch scan → write → exit (no port)
           -OutPath <path>         Output stem (default: <log>.analysis)
-          -Format Text|Html|Both  (default Both)
+          -Format Text|Html|Json|Both  (default Both)
           -Organize All|Severity|Driver
           -Driver <name|n>        Driver filter / list position
           -Interactive            Enter-defaulted prompts (manager ranges: 1-3,10)
@@ -329,8 +330,9 @@ public sealed class Cli
     {
         "text" => ReportFormat.Text,
         "html" => ReportFormat.Html,
+        "json" => ReportFormat.Json,
         "both" => ReportFormat.Both,
-        _ => throw new ArgumentException($"-Format must be Text, Html, or Both (got '{text}').")
+        _ => throw new ArgumentException($"-Format must be Text, Html, Json, or Both (got '{text}').")
     };
 
     private static OrganizeMode ParseEnumOrganize(string text) => text.Trim().ToLowerInvariant() switch

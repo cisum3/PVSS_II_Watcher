@@ -11,12 +11,14 @@ public sealed class HttpServer : IDisposable
 {
     private readonly string _uiRoot;
     private readonly Func<WatchSession> _session;
+    private int _disposed;
     private HttpListener? _listener;
     private CancellationTokenSource? _cts;
     private Task? _loop;
 
     public string? ListeningUrl { get; private set; }
     public int BoundPort { get; private set; }
+    public int PreferredPort { get; private set; }
 
     public HttpServer(string uiRoot, Func<WatchSession> session)
     {
@@ -26,6 +28,7 @@ public sealed class HttpServer : IDisposable
 
     public void Start(int preferredPort, int maxTries = 40)
     {
+        PreferredPort = preferredPort;
         if (maxTries < 1) maxTries = 1;
         Exception? last = null;
         for (var p = preferredPort; p < preferredPort + maxTries; p++)
@@ -54,10 +57,16 @@ public sealed class HttpServer : IDisposable
 
     public void Dispose()
     {
+        if (Interlocked.Exchange(ref _disposed, 1) != 0) return;
         try { _cts?.Cancel(); } catch { /* ignore */ }
         try { _listener?.Stop(); } catch { /* ignore */ }
+        // Wait for GetContextAsync to unwind so http.sys drops the URL group.
+        try { _loop?.Wait(TimeSpan.FromSeconds(3)); } catch { /* ignore */ }
         try { _listener?.Close(); } catch { /* ignore */ }
         _listener = null;
+        try { _cts?.Dispose(); } catch { /* ignore */ }
+        _cts = null;
+        _loop = null;
     }
 
     private async Task ListenLoop(CancellationToken ct)
@@ -128,7 +137,19 @@ public sealed class HttpServer : IDisposable
         }
         if (path == "/api/pulse" && method == "GET")
         {
-            WriteJson(ctx, session.BuildPulse(ctx.Request.QueryString));
+            // UI polls with sinceGeneration; 304 lets the status bar count "updated Xs ago"
+            // without resetting on every empty refresh (parity with Watch-PvssLog.ps1).
+            var since = ctx.Request.QueryString["sinceGeneration"];
+            if (!string.IsNullOrEmpty(since)
+                && since == session.Generation.ToString()
+                && !session.Loading)
+            {
+                ctx.Response.StatusCode = 304;
+                ctx.Response.Headers["ETag"] = $"\"{session.Generation}\"";
+                ctx.Response.Close();
+                return;
+            }
+            WriteJson(ctx, session.BuildPulse(ctx.Request.QueryString), etag: $"\"{session.Generation}\"");
             return;
         }
         if (path == "/api/section" && method == "GET")
@@ -171,12 +192,14 @@ public sealed class HttpServer : IDisposable
         WriteStatus(ctx, 404, "Not found");
     }
 
-    internal static void WriteJson(HttpListenerContext ctx, object obj, int code = 200)
+    internal static void WriteJson(HttpListenerContext ctx, object obj, int code = 200, string? etag = null)
     {
         var json = JsonSerializer.Serialize(obj);
         var bytes = Encoding.UTF8.GetBytes(json);
         ctx.Response.StatusCode = code;
         ctx.Response.ContentType = "application/json; charset=utf-8";
+        if (!string.IsNullOrEmpty(etag))
+            ctx.Response.Headers["ETag"] = etag;
         ctx.Response.ContentLength64 = bytes.Length;
         ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
         ctx.Response.Close();
@@ -259,7 +282,10 @@ public sealed class WatchSession : IDisposable
         LastMinutes = config.Effective.DefaultWindowMinutes;
     }
 
-    public void Dispose() => StopWorker(waitMs: 3000);
+    public void Dispose()
+    {
+        StopWorker(waitMs: 3000);
+    }
 
     public void BumpGeneration() => Generation++;
 
@@ -358,6 +384,7 @@ public sealed class WatchSession : IDisposable
                     ["trendOverflow"] = RuleEngine.GetRuleCount(Data, "apogeeDrv.trendOverflow"),
                     ["trendSeq"] = RuleEngine.GetRuleCount(Data, "apogeeDrv.trendSeq"),
                     ["alertId"] = RuleEngine.GetRuleCount(Data, "apogeeDrv.alertId"),
+                    ["queryTimeout"] = RuleEngine.GetRuleCount(Data, "apogeeDrv.queryTimeout"),
                     ["getDataFail"] = RuleEngine.GetRuleCount(Data, "apogeeDrv.getDataFail")
                 }
             };
@@ -430,7 +457,7 @@ public sealed class WatchSession : IDisposable
                 "perf" => new Dictionary<string, object?>
                 {
                     ["generation"] = Generation,
-                    ["perfCategories"] = Data.PerfCats.OrderByDescending(kv => kv.Value)
+                    ["perfCategories"] = ApiBuilders.TopByCount(Data.PerfCats, int.MaxValue)
                         .Select(kv => new Dictionary<string, object?> { ["name"] = kv.Key, ["count"] = kv.Value }).ToArray(),
                     ["unparsedLines"] = Data.UnparsedLines,
                     ["parsedLines"] = Data.ParsedLines
@@ -589,7 +616,12 @@ public sealed class WatchSession : IDisposable
                     return;
                 }
                 var fmt = (ctx.Request.QueryString["format"] ?? "html").ToLowerInvariant();
-                var reportFmt = fmt == "text" ? ReportFormat.Text : ReportFormat.Html;
+                var reportFmt = fmt switch
+                {
+                    "text" => ReportFormat.Text,
+                    "json" => ReportFormat.Json,
+                    _ => ReportFormat.Html
+                };
                 var sevFilter = ChartSeriesBuilder.ParseSevFilter(ctx.Request.QueryString);
                 var areaFilter = ChartSeriesBuilder.ParseAreaFilter(ctx.Request.QueryString);
                 var sevList = sevFilter.Where(kv => kv.Value).Select(kv => kv.Key).ToArray();

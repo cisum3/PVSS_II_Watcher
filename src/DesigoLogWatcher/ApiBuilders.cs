@@ -16,6 +16,13 @@ public static class ApiBuilders
     };
     private const int RuleMinSpanSec = 60;
 
+    /// <summary>Count desc, then key asc — stable tops for 0.4/0.5 compares.</summary>
+    public static IEnumerable<KeyValuePair<string, int>> TopByCount(
+        IEnumerable<KeyValuePair<string, int>> source, int n) =>
+        source.OrderByDescending(kv => kv.Value)
+            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
+            .Take(n);
+
     public static Dictionary<string, int> FilteredSeverityCounts(
         AnalysisState data, IReadOnlyDictionary<string, bool> areaFilter)
     {
@@ -55,7 +62,7 @@ public static class ApiBuilders
             source = acc;
         }
 
-        return source.OrderByDescending(kv => kv.Value).Take(n)
+        return TopByCount(source, n)
             .Select(kv => new Dictionary<string, object?>
             {
                 ["name"] = kv.Key,
@@ -147,7 +154,7 @@ public static class ApiBuilders
         int n)
     {
         if (countMap is null || countMap.Count == 0) return [];
-        return countMap.OrderByDescending(kv => kv.Value).Take(n)
+        return TopByCount(countMap, n)
             .Select(kv =>
             {
                 string? first = null, last = null;
@@ -291,9 +298,7 @@ public static class ApiBuilders
                     {
                         ["distinct"] = map.Count,
                         ["capped"] = map.Count >= RuleEngine.BucketCap,
-                        ["top"] = map.OrderByDescending(kv => kv.Value)
-                            .ThenBy(kv => kv.Key, StringComparer.Ordinal)
-                            .Take(topN)
+                        ["top"] = TopByCount(map, topN)
                             .Select(kv => new Dictionary<string, object?>
                             {
                                 ["value"] = kv.Key,
@@ -401,7 +406,7 @@ public static class ApiBuilders
         var endedFailed = data.BacLastStatus.Count(kv => kv.Value == "Failed");
         var endedOk = data.BacLastStatus.Count(kv => kv.Value == "OK");
         var flappers = data.BacFlipByDevice.Count(kv => kv.Value >= bacFlapMin);
-        var activity = data.BacFailedByDevice.OrderByDescending(kv => kv.Value).Take(20)
+        var activity = TopByCount(data.BacFailedByDevice, 20)
             .Select(kv =>
             {
                 var id = kv.Key;
@@ -428,6 +433,7 @@ public static class ApiBuilders
                 };
             })
             .OrderByDescending(r => Convert.ToInt32(r["failed"]))
+            .ThenBy(r => (string)r["device"]!, StringComparer.Ordinal)
             .Take(20)
             .ToArray();
         return new Dictionary<string, object?>
@@ -447,20 +453,20 @@ public static class ApiBuilders
             ["timeSyncProps"] = data.BacTimeSyncByProp.Count,
             ["collectTrendSample"] = data.BacCollectTrendSample,
             ["timeSyncSample"] = data.BacTimeSyncSample,
-            ["collectTrendCodes"] = data.BacCollectTrendByCode.OrderByDescending(kv => kv.Value).Take(10)
+            ["collectTrendCodes"] = TopByCount(data.BacCollectTrendByCode, 10)
                 .Select(kv => new Dictionary<string, object?> { ["code"] = kv.Key, ["count"] = kv.Value }).ToArray(),
-            ["collectTrendTop"] = data.BacCollectTrendByProp.OrderByDescending(kv => kv.Value).Take(20)
+            ["collectTrendTop"] = TopByCount(data.BacCollectTrendByProp, 20)
                 .Select(kv => new Dictionary<string, object?> { ["property"] = kv.Key, ["count"] = kv.Value }).ToArray(),
-            ["timeSyncCodes"] = data.BacTimeSyncByCode.OrderByDescending(kv => kv.Value).Take(10)
+            ["timeSyncCodes"] = TopByCount(data.BacTimeSyncByCode, 10)
                 .Select(kv => new Dictionary<string, object?> { ["code"] = kv.Key, ["count"] = kv.Value }).ToArray(),
-            ["timeSyncTop"] = data.BacTimeSyncByProp.OrderByDescending(kv => kv.Value).Take(20)
+            ["timeSyncTop"] = TopByCount(data.BacTimeSyncByProp, 20)
                 .Select(kv => new Dictionary<string, object?> { ["property"] = kv.Key, ["count"] = kv.Value }).ToArray(),
             ["failedSample"] = data.BacFailedSample,
             ["okSample"] = data.BacOkSample,
             ["objectListSample"] = data.BacObjectListSample,
             ["activity"] = activity,
             ["endedFailedList"] = endedList,
-            ["objectListTop"] = data.BacObjectListByDevice.OrderByDescending(kv => kv.Value).Take(20)
+            ["objectListTop"] = TopByCount(data.BacObjectListByDevice, 20)
                 .Select(kv => new Dictionary<string, object?> { ["device"] = kv.Key, ["count"] = kv.Value }).ToArray(),
             ["lifecycle"] = LifecycleBuilder.BuildLifecycleRows(data, "(?i)GmsBACnet|WCCOAGmsBACnet")
         };
@@ -482,7 +488,7 @@ public static class ApiBuilders
         {
             ["stuck"] = data.CohoStuck,
             ["sample"] = data.CohoSample,
-            ["topNames"] = data.CohoStuckNames.OrderByDescending(kv => kv.Value).Take(topN)
+            ["topNames"] = TopByCount(data.CohoStuckNames, topN)
                 .Select(kv => new Dictionary<string, object?> { ["name"] = kv.Key, ["count"] = kv.Value }).ToArray(),
             ["lifecycle"] = LifecycleBuilder.BuildLifecycleRows(data, "(?i)CoHo|GmsCoHo"),
             ["blockingSample"] = data.BlockingSample,
@@ -498,7 +504,7 @@ public static class ApiBuilders
             ["other"] = data.ApogeeOther,
             ["uniquePpcl"] = data.ApogeePpcl.Count,
             ["sample"] = data.ApogeeSample,
-            ["topPpcl"] = data.ApogeePpcl.OrderByDescending(kv => kv.Value).Take(topN)
+            ["topPpcl"] = TopByCount(data.ApogeePpcl, topN)
                 .Select(kv => new Dictionary<string, object?> { ["name"] = kv.Key, ["count"] = kv.Value }).ToArray(),
             ["drvLines"] = data.ApogeeDrvLines,
             ["trendOverflow"] = RuleEngine.GetRuleCount(data, "apogeeDrv.trendOverflow"),

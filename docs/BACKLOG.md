@@ -74,7 +74,15 @@ _In PRD ship scope — not optional “if cheap”:_
 
 ## Known bugs
 
-_None open outside 0.5.0 carry-ins / Parking lot._
+- **Stale browser tab + PreferredPort bump looks like “two backends on one port”.**
+  Reproduce: run `DesigoLogWatcher.exe`, Start a log in the UI, stop the host console
+  (especially by closing the window rather than a clean Ctrl+C), re-run the exe while
+  **keeping the original webpage open**. If the preferred port is still held (or a
+  second host is already up), the new instance binds `PreferredPort+1` (e.g. 8788) and
+  opens/prints that URL — the old tab keeps polling the previous port. KPIs/generations
+  flip when switching tabs (or when both are visible). 0.5.0 now warns loudly on port
+  bump and hardens dispose; still easy to confuse if an old tab is left open. Mitigate:
+  one host only; close old tabs; use the Listening URL the console prints.
 
 ---
 

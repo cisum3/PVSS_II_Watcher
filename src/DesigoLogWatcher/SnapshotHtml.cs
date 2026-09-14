@@ -564,16 +564,35 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         if (Int(apo, "events") + Int(apo, "drvLines") + Int(apo, "trendOverflow") + Int(apo, "alertId") + Int(apo, "getDataFail") > 0)
         {
             sb.AppendLine("<h3>CoHo / Orch Apogee</h3>");
+            var other = Int(apo, "other") > 0
+                ? string.Create(CultureInfo.InvariantCulture, $" &middot; Other: <strong>{Int(apo, "other"):N0}</strong>")
+                : "";
             sb.AppendLine(CultureInfo.InvariantCulture,
-                $"<p>Events: <strong>{Int(apo, "events"):N0}</strong> &middot; UpdatePoints: <strong>{Int(apo, "updatePoints"):N0}</strong> &middot; Trace repetitions: <strong>{Int(apo, "repetition"):N0}</strong> &middot; unique PPCL: <strong>{Int(apo, "uniquePpcl"):N0}</strong></p>");
+                $"<p>Events: <strong>{Int(apo, "events"):N0}</strong> &middot; UpdatePoints: <strong>{Int(apo, "updatePoints"):N0}</strong> &middot; Trace repetitions: <strong>{Int(apo, "repetition"):N0}</strong>{other} &middot; unique PPCL: <strong>{Int(apo, "uniquePpcl"):N0}</strong></p>");
+            if (!string.IsNullOrEmpty(Str(apo, "sample")))
+                sb.AppendLine($"<p class=\"muted mono\">{E(Str(apo, "sample"))}</p>");
+            var topPpcl = Rows(apo, "topPpcl");
+            if (topPpcl.Count > 0)
+            {
+                sb.AppendLine("<p class=\"meta\">Top PPCL programs by UpdatePoints</p>");
+                AppendCountName(sb, topPpcl, "name", "PPCL", "");
+            }
             sb.AppendLine("<h3>WCCOAApogeeDrv</h3>");
             sb.AppendLine(CultureInfo.InvariantCulture,
-                $"<p>Driver lines: <strong>{Int(apo, "drvLines"):N0}</strong> &middot; trend overflow: <strong>{Int(apo, "trendOverflow"):N0}</strong> &middot; sequence gaps: <strong>{Int(apo, "trendSeq"):N0}</strong></p>");
+                $"<p>Driver lines: <strong>{Int(apo, "drvLines"):N0}</strong> &middot; trend overflow: <strong>{Int(apo, "trendOverflow"):N0}</strong> ({Int(apo, "trendDevices"):N0} devices, {Int(apo, "trendNames"):N0} trends) &middot; sequence gaps: <strong>{Int(apo, "trendSeq"):N0}</strong></p>");
             sb.AppendLine(CultureInfo.InvariantCulture,
-                $"<p>AlertID: <strong>{Int(apo, "alertId"):N0}</strong> &middot; query timeout: <strong>{Int(apo, "queryTimeout"):N0}</strong> &middot; get-data fail: <strong>{Int(apo, "getDataFail"):N0}</strong></p>");
-            AppendCountName(sb, Rows(apo, "topTrendDevices"), "device", "Device", "Top trend-overflow devices");
-            AppendCountName(sb, Rows(apo, "topTrends"), "trend", "Trend", "Top trends");
-            AppendCountName(sb, Rows(apo, "topGetDataDevices"), "device", "Device", "Top get-data fail devices");
+                $"<p>AlertID: <strong>{Int(apo, "alertId"):N0}</strong> &middot; query timeout: <strong>{Int(apo, "queryTimeout"):N0}</strong> &middot; get-data fail: <strong>{Int(apo, "getDataFail"):N0}</strong> ({Int(apo, "getDataDevices"):N0} devices)</p>");
+            if (!string.IsNullOrEmpty(Str(apo, "trendSample")))
+                sb.AppendLine($"<p class=\"muted mono\">Trend example: {E(Str(apo, "trendSample"))}</p>");
+            if (!string.IsNullOrEmpty(Str(apo, "alertSample")))
+                sb.AppendLine($"<p class=\"muted mono\">AlertID example: {E(Str(apo, "alertSample"))}</p>");
+            if (!string.IsNullOrEmpty(Str(apo, "timeoutSample")))
+                sb.AppendLine($"<p class=\"muted mono\">Timeout example: {E(Str(apo, "timeoutSample"))}</p>");
+            if (!string.IsNullOrEmpty(Str(apo, "getDataSample")))
+                sb.AppendLine($"<p class=\"muted mono\">Get-data example: {E(Str(apo, "getDataSample"))}</p>");
+            AppendCountName(sb, Rows(apo, "topTrendDevices"), "device", "Device", "Top devices by trend overflow");
+            AppendCountName(sb, Rows(apo, "topTrends"), "trend", "Trend", "Top trends by overflow");
+            AppendCountName(sb, Rows(apo, "topGetDataDevices"), "device", "Device", "Top devices by get-data failure");
         }
         else sb.AppendLine("<p class=\"muted\">No Apogee data.</p>");
         AppendLifecycleTable(sb, Dict(apo, "lifecycle"), "ApogeeDrv manager health");

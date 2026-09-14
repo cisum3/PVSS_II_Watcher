@@ -35,19 +35,79 @@ public class SnapshotReportTests
             var text = writer.ToText(snap);
             Assert.Contains("PVSS / WinCC OA Log Analysis Report", text);
             Assert.Contains("Severity counts", text);
+            Assert.Contains("Project restarts (pmon)", text);
+            Assert.Contains("Manager health (pmon)", text);
+            Assert.Contains("Top patterns by severity", text);
+            Assert.Contains("--- Notes ---", text);
             Assert.Contains("ERROR", text);
+
+            var json = writer.ToJson(snap);
+            Assert.Contains("\"findings\"", json);
+            Assert.Contains("\"severityCounts\"", json);
+            Assert.Contains("\"bacnet\"", json);
+            Assert.Contains("\"detections\"", json);
+            Assert.Contains("\"patternsBySeverity\"", json);
+            Assert.Contains("\"projectLifecycle\"", json);
+            using (var doc = System.Text.Json.JsonDocument.Parse(json))
+            {
+                Assert.True(doc.RootElement.TryGetProperty("meta", out _));
+                Assert.True(doc.RootElement.TryGetProperty("options", out var opt));
+                Assert.Equal("both", opt.GetProperty("format").GetString());
+            }
 
             var html = writer.ToHtml(snap);
             Assert.Contains("<!DOCTYPE html>", html);
             Assert.Contains("Activity charts", html);
             Assert.Contains("siemens-petrol", html);
 
-            var (txt, htm) = writer.WriteFiles(snap, path, null, ReportFormat.Both);
+            var (txt, htm, _) = writer.WriteFiles(snap, path, null, ReportFormat.Both);
             Assert.True(File.Exists(txt));
             Assert.True(File.Exists(htm));
             File.Delete(txt!);
             File.Delete(htm!);
         }
         finally { File.Delete(path); }
+    }
+
+    [Fact]
+    public void JsonSnapshot_HasExpectedTopLevelKeysAndFormat()
+    {
+        var engine = new RuleEngine();
+        var state = new AnalysisState();
+        state.ProcessLine("WCCOAui, 2026.09.04 10:00:00.000, SYS, ERROR, boom timeout", rules: engine);
+        var snap = new SnapshotBuilder(state, engine).BuildSnapshot("t.log", 10, "0.5.0-test", format: ReportFormat.Json);
+        var json = new ReportWriter().ToJson(snap);
+        using var doc = System.Text.Json.JsonDocument.Parse(json);
+        var root = doc.RootElement;
+        foreach (var key in new[]
+                 {
+                     "meta", "options", "window", "findings", "severityCounts", "areaCounts",
+                     "series", "hourly", "topManagers", "managers", "patternsBySeverity",
+                     "moduleHeadlines", "projectLifecycle", "managerHealth",
+                     "bacnet", "cns", "coho", "apogee", "detections", "perf", "driverDeepDive"
+                 })
+            Assert.True(root.TryGetProperty(key, out _), $"missing JSON key: {key}");
+        Assert.Equal("json", root.GetProperty("options").GetProperty("format").GetString());
+        Assert.True(root.GetProperty("options").TryGetProperty("bacFlapMin", out _));
+    }
+
+    [Fact]
+    public void HtmlReport_ApogeeIncludesPpclTable()
+    {
+        var engine = new RuleEngine();
+        var state = new AnalysisState();
+        for (var i = 0; i < 2; i++)
+        {
+            state.ProcessLine(
+                $"WCCOAGmsCoHoMngr(100), 2026.08.28 11:05:2{i}.356, IMPL, SEVERE, 0, , GMSe,CoHo.ApogeeBACnet,,11:05:2{i}.356,^2:Function UpdatePoints: Panel instance number is:9219 PPCL Program Name: SW.B.AHUS1.RSTSystem.IndexOutOfRangeException: Index was outside the bounds of the array.",
+                rules: engine);
+        }
+
+        var snap = new SnapshotBuilder(state, engine).BuildSnapshot("t.log", 10, "0.5.0-test", format: ReportFormat.Html);
+        var html = new ReportWriter().ToHtml(snap);
+        Assert.Contains("id=\"apogee\"", html);
+        Assert.Contains("Top PPCL programs by UpdatePoints", html);
+        Assert.Contains("<th>PPCL</th>", html);
+        Assert.Contains("SW.B.AHUS1.RST", html);
     }
 }

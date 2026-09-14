@@ -126,25 +126,39 @@ public class ApiParityTests
     }
 
     [Fact]
-    public void HtmlReport_DetectionsIncludeBucketsAndSpan()
+    public void TopByCount_BreaksTiesByKeyAscending()
     {
-        var engine = new RuleEngine();
-        var state = new AnalysisState();
-        state.ProcessLine(
-            "WCCOAGmsCoHoMngr(7), 2026.09.04 10:00:00.000, IMPL, SEVERE, The Driver returned Error Code 70442 for Property \"x\" and Command \"BACnetTimeSync\"",
-            rules: engine);
-        for (var i = 0; i < 260; i++)
-            state.ProcessLine(
-                $"WCCOAGmsCoHoMngr(7), 2026.09.04 10:00:{(i % 60):D2}.000, IMPL, SEVERE, Command failed because Driver 1 is offline.",
-                rules: engine);
+        var map = new Dictionary<string, int>(StringComparer.Ordinal)
+        {
+            ["WCCOAGmsCoHoMngr(7)"] = 2,
+            ["WCCILdata(0)"] = 6,
+            ["WCCOActrl(253)"] = 2,
+            ["WCCOAHDBWriter(1)"] = 2
+        };
+        var top = ApiBuilders.TopByCount(map, 3).Select(kv => kv.Key).ToArray();
+        // Ordinal: ...Gms... < ...HDB... < ...ctrl...
+        Assert.Equal(["WCCILdata(0)", "WCCOAGmsCoHoMngr(7)", "WCCOAHDBWriter(1)"], top);
+    }
 
-        var snap = new SnapshotBuilder(state, engine).BuildSnapshot("t.log", 10, "0.5.0-test", format: ReportFormat.Html);
-        var html = new ReportWriter().ToHtml(snap);
-        Assert.Contains("<th>First</th><th>Last</th><th>Pattern</th><th>Example</th>", html);
-        Assert.Contains("Detections", html);
-        Assert.Contains("&times; threshold", html);
-        Assert.Contains("rule <span class=\"mono\">", html);
-        Assert.True(html.Contains("data kv") || html.Contains("All from"), "expected bucket table or single-value summary");
-        Assert.Equal("html", ((Dictionary<string, object?>)snap["options"]!)["format"]?.ToString()?.ToLowerInvariant());
+    [Fact]
+    public void Findings_BlockingTopUsesStableTieBreak()
+    {
+        var state = new AnalysisState();
+        // Six for WCCILdata, two each for three tied managers — order of ProcessLine must not affect top-3 text.
+        void Block(string mgr, int n)
+        {
+            for (var i = 0; i < n; i++)
+                state.ProcessLine(
+                    $"pmon, 2026.09.04 10:00:{i:D2}.000, SYS, SEVERE, Blocking Manager {mgr} detected. No heartbeat since 30 seconds");
+        }
+        Block("WCCOAGmsCoHoMngr(7)", 2);
+        Block("WCCOActrl(253)", 2);
+        Block("WCCILdata(0)", 6);
+        Block("WCCOAHDBWriter(1)", 2);
+
+        var findings = new SnapshotBuilder(state, new RuleEngine()).BuildFindings();
+        var line = Assert.Single(findings, f => f.StartsWith("pmon blocking", StringComparison.Ordinal));
+        Assert.Contains("WCCILdata(0) x6, WCCOAGmsCoHoMngr(7) x2, WCCOAHDBWriter(1) x2", line);
+        Assert.DoesNotContain("WCCOActrl(253)", line);
     }
 }

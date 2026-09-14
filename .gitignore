@@ -38,7 +38,7 @@ dev-debug.log
 # .NET build / publish outputs
 **/bin/
 **/obj/
-Watch/DesigoLogWatcher.exe
+# Keep Watch\DesigoLogWatcher.exe tracked (field runtime). Ignore publish junk only.
 Watch/DesigoLogWatcher.pdb
 Watch/*.deps.json
 Watch/*.runtimeconfig.json

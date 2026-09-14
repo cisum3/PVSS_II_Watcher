@@ -1,4 +1,4 @@
-﻿# Watch preferences (Watch-PvssLog.ps1)
+﻿# Watch preferences (DesigoLogWatcher.exe)
 # Edit values below. Lines starting with # are ignored.
 # CLI flags override these when you launch with -Port / -LogPath / etc.
 # Invalid values are rejected, logged in the host console, and reset to defaults.

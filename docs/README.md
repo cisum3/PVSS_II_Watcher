@@ -5,29 +5,25 @@ Not shipped in field packages.
 | Path | Purpose |
 |------|---------|
 | [`BACKLOG.md`](BACKLOG.md) | Living ideas / improvements (keep short) |
-| [`PRD-V0.5.md`](PRD-V0.5.md) | Spec for 0.5.0 C# single-file runtime rewrite (§9.2 gate rules) |
-| [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md) | Active 0.5.0 tracker + §9.2 verification checklist (pass/fail rows) |
-| [`INVENTORY-V0.5.md`](INVENTORY-V0.5.md) | 0.4→0.5 contract inventory (CLI/API/rules) |
-| [`Test-WatchSelf.ps1`](Test-WatchSelf.ps1) | Self-test harness; `-Phase All` / `Assets` / `Rules` / `Report` |
-| [`archive/`](archive/) | Frozen PRD + PROGRESS history + OfflineAnalyze 1.3 (do not extend) |
-| `PVSS_II_Examples\` | Sample / site logs for local testing only |
+| [`archive/`](archive/) | Frozen PRDs, progress trackers, prior releases |
+| `PVSS_II_Examples\` | Sample / site logs for local testing only (gitignored) |
 
-**Shipped baseline:** Watch **0.5.0** (2026-09-14) — C# single-file host; ~87× faster Entire reports vs 0.4.0 PowerShell.
+**Shipped baseline:** Watch **0.5.0** (2026-09-14) — `DesigoLogWatcher.exe` single-file host.
 
-**Prior:** Watch **0.4.0** (2026-09-12). Spec / tracker: [`PRD-V0.5.md`](PRD-V0.5.md) · [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md). See [`BACKLOG.md`](BACKLOG.md) for 0.5.1.
+**Next:** **0.5.1** items in [`BACKLOG.md`](BACKLOG.md).
 
-Spec / tracker for 0.4.0: [`archive/PRD-V0.4.md`](archive/PRD-V0.4.md) · [`archive/PROGRESS-V0.4.md`](archive/PROGRESS-V0.4.md).
-
-Frozen OfflineAnalyze 1.3: [`archive/OfflineAnalyze/`](archive/OfflineAnalyze/).
+Archived 0.5.0 spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) · [`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md) · [`archive/INVENTORY-V0.5.md`](archive/INVENTORY-V0.5.md).
 
 ## Field package (user-facing)
 
-Root of the repo (and field zip):
+Repo / field-zip root:
 
-- `Run-Watch.cmd` + `Run-Report.cmd` + `Run-Report-Interactive.cmd`
-- `readMe.txt` + `CHANGELOG.txt`
-- `Watch\` (ui, host, `PvssRules.ps1`)
+- `Run-Watch.cmd` · `Run-Report.cmd` · `Run-Report-Interactive.cmd`
+- `readMe.txt` · `CHANGELOG.txt`
+- `Watch\` → `DesigoLogWatcher.exe`, `VERSION.txt`, `watch-config.txt`, `ui\`
 
-No `OfflineAnalyze\` in the field package.
+No PowerShell host, no `src\`, no `docs\` in the field zip.
 
-Keep `readMe.txt` / `CHANGELOG.txt` operator-focused (no refs to `docs\` or the internal backlog). GitHub overview: root [`README.md`](../README.md) · [`CHANGELOG.md`](../CHANGELOG.md).
+Keep `readMe.txt` / `CHANGELOG.txt` operator-focused. GitHub: root [`README.md`](../README.md) · [`CHANGELOG.md`](../CHANGELOG.md).
+
+**Dev rebuild:** `dotnet publish src\DesigoLogWatcher\DesigoLogWatcher.csproj -c Release -o Watch\` then delete `Watch\DesigoLogWatcher.pdb` if present. Tests: `dotnet test src\DesigoLogWatcher.Tests\DesigoLogWatcher.Tests.csproj -c Release`.

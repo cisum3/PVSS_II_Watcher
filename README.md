@@ -1,8 +1,8 @@
 # Siemens Desigo CC PVSS_II Log Analyzer
 
-**Version:** 0.4.0 · **Author:** Cisum
+**Version:** 0.5.0 · **Author:** Cisum
 
-Windows-only triage toolkit for large Siemens Desigo CC `PVSS_II.log` files. PowerShell 5.1+ only — no Python or other installs.
+Windows-only triage toolkit for large Siemens Desigo CC `PVSS_II.log` files. Single-file self-contained host (`DesigoLogWatcher.exe`) — no separate .NET install, no PowerShell required for analysis.
 
 ## One tool, two modes
 
@@ -28,8 +28,7 @@ Both modes share the same analyzer. A report is a snapshot without opening the d
 
 ## Requirements
 
-- Windows
-- PowerShell 5.1 or later
+- Windows x64
 - A `PVSS_II.log` (or `.log.bak`) to analyze
 - A browser on the same PC for the live dashboard (not needed for reports)
 
@@ -39,21 +38,22 @@ Both modes share the same analyzer. A report is a snapshot without opening the d
 Run-Watch.cmd / Run-Report*.cmd   Field launchers
 readMe.txt                        Operator guide (ships in field zips)
 CHANGELOG.txt                     Release notes (ships in field zips)
-Watch\                            Runtime (host, rules, UI, config)
-docs\                             Dev docs, tests, archive (not in field zips)
+Watch\                            Runtime (exe, UI, config, VERSION)
+src\DesigoLogWatcher\             C# source (dev only)
+docs\                             Dev docs + archive (not in field zips)
 ```
 
 Field packages are operator-focused: use **[`readMe.txt`](readMe.txt)** for full setup, switches, detections, and config details. See **[`CHANGELOG.txt`](CHANGELOG.txt)** (or **[`CHANGELOG.md`](CHANGELOG.md)** on GitHub) for what changed per release.
 
 ## Development docs
 
-- [`docs/BACKLOG.md`](docs/BACKLOG.md) — living ideas
+- [`docs/BACKLOG.md`](docs/BACKLOG.md) — living ideas (0.5.1+)
 - [`docs/README.md`](docs/README.md) — what’s in `docs\`
-- [`docs/archive/`](docs/archive/) — frozen PRDs, progress trackers, prior releases
+- [`docs/archive/`](docs/archive/) — frozen PRDs / progress / prior field zip (0.4.0)
 
 ## Notes
 
 - The live log is opened read-only (`FileAccess.Read`); WinCC may keep appending.
 - The dashboard binds to `127.0.0.1` only. Report mode binds nothing.
-- Do not install or run these scripts inside the project log folder.
+- Do not install or run this toolkit inside the project log folder.
 - This is a triage aid, not a substitute for Siemens Desigo CC support.

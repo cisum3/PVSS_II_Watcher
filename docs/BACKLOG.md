@@ -1,90 +1,62 @@
 # Future backlog — PVSS Log Analyzer
 
-**Shipped baseline:** Watch **0.5.0** · Author: Cisum (2026-09-14)
-Prior: Watch **0.4.0** (2026-09-12). OfflineAnalyze **1.3** remains under
-[`archive/OfflineAnalyze/`](archive/OfflineAnalyze/). Spec / tracker for 0.5.0:
-[`PRD-V0.5.md`](PRD-V0.5.md) · [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md).
+**Shipped baseline:** Watch **0.5.0** · Author: Cisum (2026-09-14)  
+Prior: **0.4.0** (2026-09-12). Spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) ·
+[`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md). 0.4 field zip:
+[`archive/DesigoLogWatcher_v0.4.0.zip`](archive/DesigoLogWatcher_v0.4.0.zip).
 
-**Next patch:** **0.5.1** — API/`areaOtherNames` pulse parity + polish deferred from 0.5.0.
-
-**Rule:** Keep this file short — ideas as bullets, not specs. Active scope lives in a PRD
-(or the patch list here) and tracker; historical requirements in [`archive/`](archive/).
-Anything shipping to the field needs a **version bump** first (`VERSION.txt` + user-facing
-`readMe.txt` / `CHANGELOG.txt`). Keep root [`CHANGELOG.txt`](../CHANGELOG.txt)
-operator-focused — no docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELOG.md).
-
+**Rule:** Keep this short — bullets, not specs. Ship needs a version bump
+(`VERSION.txt` + `readMe.txt` / `CHANGELOG.txt`). Operator CHANGELOG stays free of
+docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELOG.md).
 
 ---
 
-## 0.5.0 intentional deltas (vs 0.4.0) — shipped
+## 0.5.1 (patch)
 
-- **Multi-scope** (`Scopes` list) — `trend.seqLess` → GmsBACnet + ApogeeDrv
-- **BACnetDrv** Apogee-shaped families (do not widen Apogee scopes)
-- **Interactive manager pick ranges** (`1-3,10`)
+_Parity leftovers, UX polish, and cheap mitigations — no new product modes._
 
-## 0.5.1
-
-- **`/api/pulse` `areaOtherNames`** — present in 0.4; tracked in AnalysisState but omitted from 0.5 pulse (UI unused today). Restore for API parity.
-- Formal automated API key/schema harness vs 0.4 (health/pulse/section/manager)
+- **`/api/pulse` `areaOtherNames`** — 0.4 had it; AnalysisState still tracks names; pulse
+  omits the key (UI unused). Restore for API parity.
+- Formal automated API key/schema checks vs 0.4 (health / pulse / section / manager)
 - **Detections UI leftovers:** sample line dominates; bucket labels unclear
 - **Host console catch-up %** feels inaccurate (throttle vs wrong %)
-- **Detections dual render** (HTML vs `app.js`)
+- **Detections dual render** (HTML snapshot vs `app.js`) — keep in sync or share one path
 
 ---
 
-## Ideas / improvements (post-0.5.0)
+## Later (feature / research — not a quiet patch)
 
-### Watch
-- **Absolute time window in the dashboard.** Report mode already has `-From` / `-To`
-  (and the seek path behind them). Dashboard only offers last-N-minutes and Entire.
-  Expose the same absolute bounds in the UI so an incident window can be loaded live
-  without dropping to report mode.
-- **Finer chart bar granularity.** Today only minute / hour / day. Prefer
-  **1m → 5m → 10m → 15m → 1h → 6h → 12h → 1d**, rolled up from existing minute buckets,
-  with thresholds tuned so bar count stays readable on live windows and Entire.
-- **Blazor / SPA dashboard (post-0.5.0).** 0.5.0 keeps the static `ui\` + `HttpListener`
-  contract. A later version could replace the front end with Blazor (or another SPA) for
-  richer UI — only after the C# host/API is stable.
+### Dashboard
+- **Absolute From/To in the dashboard** (report mode already has it)
+- **Finer chart granularity** — 1m → 5m → 10m → 15m → 1h → 6h → 12h → 1d from minute buckets
+- **Blazor / SPA front end** — only after the C# host/API stays stable; 0.5.0 keeps static `ui\`
 
-### Performance
-- ~~**Inline hot helpers in `Process-LogLine`**~~ → **superseded by 0.5.0** C# runtime.
-- ~~**Multi-scope (`Scope` as an array)**~~ → **in 0.5.0** PRD.
-
-### Detection / parsing
-- **Scale the Findings thresholds to the window.** Absolute counts serve both a 60-minute
-  dashboard window and a four-month batch report — only one scale can be “right.” Affects
-  ~19 hardcoded comparisons in `Build-Findings` plus rule `FindingAt` values. Critical-
-  severity finding is already %-of-parsed-lines (scale-free). Does not reorder Detections
-  (window factor cancels in ranking). Settle: rate vs presence vs cardinality; per-hour vs
-  per-1k-lines; clamps. Needs parity check + CHANGELOG.
-- **Relate severe / high-volume traffic to project startup.** Characterize bursts relative
-  to up / shutdown / stopped cycles (before / after / span). Corpus first for a “normal
-  startup plume,” then Findings or UI. Ties into Findings window-scaling.
-- Rule-engine extensions if the field asks: cross-line correlation; per-rule rate thresholds
-  in the rule table (declarative half of Findings scaling)
+### Findings / detections
+- **Scale Findings thresholds to the window** (60m vs multi-month Entire). Affects
+  hardcoded comparisons in `SnapshotBuilder.BuildFindings` plus rule `FindingAt`. Needs
+  a deliberate settle (rate vs presence vs cardinality) + CHANGELOG — behavior change.
+- **Relate severe / high-volume traffic to project startup** (plume vs up/stop cycles).
+  Corpus first; ties into Findings scaling.
+- Rule-engine extensions if the field asks: cross-line correlation; declarative per-rule
+  rate thresholds
 
 ---
 
-## Known bugs
+## Known bugs / residual quirks
 
-- **Stale browser tab + PreferredPort bump looks like “two backends on one port”.**
-  Reproduce: run `DesigoLogWatcher.exe`, Start a log in the UI, stop the host console
-  (especially by closing the window rather than a clean Ctrl+C), re-run the exe while
-  **keeping the original webpage open**. If the preferred port is still held (or a
-  second host is already up), the new instance binds `PreferredPort+1` (e.g. 8788) and
-  opens/prints that URL — the old tab keeps polling the previous port. KPIs/generations
-  flip when switching tabs (or when both are visible). 0.5.0 now warns loudly on port
-  bump and hardens dispose; still easy to confuse if an old tab is left open. Mitigate:
-  one host only; close old tabs; use the Listening URL the console prints.
+- **Stale browser tab still open after a host restart.** The old “two backends / port bump
+  looks like flipping KPIs” path was addressed in **0.5.0** (dispose wait, louder port-bump
+  warning). A leftover tab that happens to hit the **same** port again is still undefined —
+  close old tabs and use the Listening URL the console prints.
 
 ---
 
 ## Parking lot
 
-_Parked — not addressing yet. One-liners as they come up in the field:_
+_Not addressing yet — one-liners from the field:_
 
 - Keyword organize path (from V1)
 - Driver type-in search (picker is enough for most sites)
 - Fuller multi-line log reassembly (beyond single-header-line parse)
-- Snapshot download locked up once on a live server (not reproduced locally; if it
-  recurs: log size, window, host still printing tail activity)
+- Snapshot download locked up once on a live server (not reproduced; if it recurs: log
+  size, Format, whether host was still tailing)

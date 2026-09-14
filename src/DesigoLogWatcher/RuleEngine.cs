@@ -21,23 +21,16 @@ public sealed class MeasureSpec
     public MeasureAgg Agg { get; init; } = MeasureAgg.Sum;
 }
 
-/// <summary>§9.2 gate: DevGate = 0.4 single-scope parity; ShipGate = §2.1 exceptions on.</summary>
-public enum RuleGateMode
-{
-    DevGate,
-    ShipGate
-}
-
-/// <summary>One row from PvssRules.ps1 (Scope and/or Scopes for §2.1 multi-scope).</summary>
+/// <summary>One rule row (Scope and/or Scopes for multi-manager filters).</summary>
 public sealed class RuleDefinition
 {
     public required string Id { get; init; }
     public required string Group { get; init; }
     public required string Label { get; init; }
     public required Regex Re { get; init; }
-    /// <summary>Single component substring gate (0.4 Register-RuleSet).</summary>
+    /// <summary>Single component substring filter.</summary>
     public string? Scope { get; init; }
-    /// <summary>Multi-scope list; when set, replaces <see cref="Scope"/> for matching.</summary>
+    /// <summary>When set, replaces <see cref="Scope"/> — match if any entry is found in the component.</summary>
     public IReadOnlyList<string>? Scopes { get; init; }
     public Dictionary<string, BucketSpec>? BucketBy { get; init; }
     public Dictionary<string, MeasureSpec>? Measure { get; init; }
@@ -64,10 +57,7 @@ public sealed class RuleDefinition
     }
 }
 
-/// <summary>
-/// Data-driven rule engine (PvssRules.ps1 Add-RuleHit / Register-RuleSet).
-/// Default rule table is ShipGate (§2.1); pass DevGate rules for 0.4 parity runs.
-/// </summary>
+/// <summary>Data-driven rule engine (hit / bucket / measure / sample).</summary>
 public sealed class RuleEngine : IRuleHitSink
 {
     public const int BucketCap = 2000;
@@ -77,12 +67,7 @@ public sealed class RuleEngine : IRuleHitSink
 
     public RuleEngine(IReadOnlyList<RuleDefinition>? rules = null)
     {
-        _rules = rules ?? DesigoLogWatcher.Rules.RuleDefinitions.ForGate(RuleGateMode.ShipGate);
-    }
-
-    public RuleEngine(RuleGateMode gate)
-        : this(DesigoLogWatcher.Rules.RuleDefinitions.ForGate(gate))
-    {
+        _rules = rules ?? DesigoLogWatcher.Rules.RuleDefinitions.All;
     }
 
     public IReadOnlyList<RuleDefinition> Rules => _rules;

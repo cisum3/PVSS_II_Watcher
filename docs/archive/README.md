@@ -2,19 +2,21 @@
 
 Historical — do not extend.
 
-Shipped field baseline when this folder was last updated: Watch **0.4.0** (Cisum), 2026-09-12.
+**Shipped field baseline:** Watch **0.5.0** (Cisum), 2026-09-14 — C# single-file `DesigoLogWatcher.exe`.
 
 | Path | Notes |
 |------|--------|
-| [`PRD.md`](PRD.md) | V1 product requirements (frozen) |
-| [`PROGRESS.md`](PROGRESS.md) | V1 / OfflineAnalyze implementation tracker |
-| [`PRD-V2.md`](PRD-V2.md) | Live-dashboard requirements through early Watch (filename kept) |
-| [`PROGRESS-V2.md`](PROGRESS-V2.md) | Live-dashboard tracker through early Watch ship (filename kept) |
-| [`PRD-V0.4.md`](PRD-V0.4.md) | Rule engine + Watch absorbs OfflineAnalyze (locked; shipped 0.4.0) |
-| [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) | 0.4.0 build tracker (4A–4G complete) |
-| [`OfflineAnalyze/`](OfflineAnalyze/) | Frozen OfflineAnalyze **1.3** tree (removed from field package) |
-| `PVSS_II_Watcher_V0.3.0*` | Prior field zip / extract (0.3.0 baseline) |
+| [`PRD-V0.5.md`](PRD-V0.5.md) | 0.5.0 C# rewrite spec (locked; shipped) |
+| [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md) | 0.5.0 tracker + §9.2 checklist (complete) |
+| [`INVENTORY-V0.5.md`](INVENTORY-V0.5.md) | 0.4→0.5 contract inventory |
+| [`PRD-V0.4.md`](PRD-V0.4.md) | Rule engine + OfflineAnalyze absorb (shipped 0.4.0) |
+| [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) | 0.4.0 build tracker |
+| [`DesigoLogWatcher_v0.4.0.zip`](DesigoLogWatcher_v0.4.0.zip) | Frozen **0.4.0** field package (PS host + `PvssRules.ps1`) |
+| [`Test-WatchSelf-0.4.ps1`](Test-WatchSelf-0.4.ps1) | 0.4 PowerShell self-test harness (obsolete for 0.5+) |
+| [`OfflineAnalyze/`](OfflineAnalyze/) | Frozen OfflineAnalyze **1.3** tree |
+| [`PRD.md`](PRD.md) / [`PROGRESS.md`](PROGRESS.md) | V1 |
+| [`PRD-V2.md`](PRD-V2.md) / [`PROGRESS-V2.md`](PROGRESS-V2.md) | Early Watch |
 
 Living future ideas: [`../BACKLOG.md`](../BACKLOG.md).
 
-Field package: repo root `Run-Watch.cmd` + `Run-Report*.cmd` + `readMe.txt` + `Watch\`.
+**0.5.0 field package:** root `Run-*.cmd` + `readMe.txt` + `CHANGELOG.txt` + `Watch\DesigoLogWatcher.exe` + `ui\` + config/VERSION.

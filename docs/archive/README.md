@@ -11,6 +11,7 @@ Historical — do not extend.
 | [`INVENTORY-V0.5.md`](INVENTORY-V0.5.md) | 0.4→0.5 contract inventory |
 | [`PRD-V0.4.md`](PRD-V0.4.md) | Rule engine + OfflineAnalyze absorb (shipped 0.4.0) |
 | [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) | 0.4.0 build tracker |
+| [`DesigoLogWatcher_v0.5.0.zip`](DesigoLogWatcher_v0.5.0.zip) | Frozen **0.5.0** field package (exe + ui + launchers/docs; no `src\`) |
 | [`DesigoLogWatcher_v0.4.0.zip`](DesigoLogWatcher_v0.4.0.zip) | Frozen **0.4.0** field package (PS host + `PvssRules.ps1`) |
 | [`Test-WatchSelf-0.4.ps1`](Test-WatchSelf-0.4.ps1) | 0.4 PowerShell self-test harness (obsolete for 0.5+) |
 | [`OfflineAnalyze/`](OfflineAnalyze/) | Frozen OfflineAnalyze **1.3** tree |

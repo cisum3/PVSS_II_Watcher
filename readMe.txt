@@ -183,5 +183,9 @@ Important notes
   - Large logs are much faster than older PowerShell builds: a ~50 MB
     entire-file HTML report finishes in about 6 seconds on a typical laptop
     (was several minutes before).
-  - This is a triage aid, not a substitute for Siemens Desigo CC support.
+  - This is an independent triage aid. It is not Siemens software, not affiliated
+    with or endorsed by Siemens, and not a substitute for Desigo CC support.
+    Desigo CC / WinCC OA and related names are trademarks of their owners.
+  - Licensed under the MIT License (see LICENSE alongside this readMe, or in the
+    source repository).
   - Current version: 0.5.0. See CHANGELOG.txt for what changed in each release.

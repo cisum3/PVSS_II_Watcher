@@ -19,7 +19,7 @@ Archived 0.5.0 spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) · [`a
 Repo / field-zip root:
 
 - `Run-Watch.cmd` · `Run-Report.cmd` · `Run-Report-Interactive.cmd`
-- `readMe.txt` · `CHANGELOG.txt`
+- `readMe.txt` · `CHANGELOG.txt` · `LICENSE` (MIT)
 - `Watch\` → `DesigoLogWatcher.exe`, `VERSION.txt`, `watch-config.txt`, `ui\`
 
 No PowerShell host, no `src\`, no `docs\` in the field zip.

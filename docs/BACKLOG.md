@@ -2,7 +2,8 @@
 
 **Shipped baseline:** Watch **0.5.0** · Author: Cisum (2026-09-14)  
 Prior: **0.4.0** (2026-09-12). Spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) ·
-[`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md). 0.4 field zip:
+[`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md). Field zips:
+[`archive/DesigoLogWatcher_v0.5.0.zip`](archive/DesigoLogWatcher_v0.5.0.zip) ·
 [`archive/DesigoLogWatcher_v0.4.0.zip`](archive/DesigoLogWatcher_v0.4.0.zip).
 
 **Rule:** Keep this short — bullets, not specs. Ship needs a version bump
@@ -13,14 +14,18 @@ docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## 0.5.1 (patch)
 
-_Parity leftovers, UX polish, and cheap mitigations — no new product modes._
+_Parity leftovers, UX polish, and cheap mitigations — no new product modes.
+Visual-only UI tweaks (layout/CSS/copy that do not change analysis meaning) are in scope._
 
 - **`/api/pulse` `areaOtherNames`** — 0.4 had it; AnalysisState still tracks names; pulse
   omits the key (UI unused). Restore for API parity.
 - Formal automated API key/schema checks vs 0.4 (health / pulse / section / manager)
-- **Detections UI leftovers:** sample line dominates; bucket labels unclear
+- **Detections UI** — visual polish (sample line dominates; bucket labels unclear; any
+  other layout/CSS/copy fixes). Keep HTML snapshot vs `app.js` dual-render in sync.
 - **Host console catch-up %** feels inaccurate (throttle vs wrong %)
-- **Detections dual render** (HTML snapshot vs `app.js`) — keep in sync or share one path
+- **Confirm log truncate / rotation** — synthetic smoke: shorten/rewrite the open log
+  while the dashboard is running; expect reseek/restart path (unit covered; not
+  field-tested at 0.5.0 ship)
 
 ---
 

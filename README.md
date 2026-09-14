@@ -1,8 +1,10 @@
-# Siemens Desigo CC PVSS_II Log Analyzer
+# PVSS_II Log Analyzer (DesigoLogWatcher)
 
-**Version:** 0.5.0 · **Author:** Cisum
+**Version:** 0.5.0 · **Author:** Cisum · **License:** [MIT](LICENSE)
 
-Windows-only triage toolkit for large Siemens Desigo CC `PVSS_II.log` files. Single-file self-contained host (`DesigoLogWatcher.exe`) — no separate .NET install, no PowerShell required for analysis.
+Windows-only triage toolkit for large Desigo CC `PVSS_II.log` files. Single-file self-contained host (`DesigoLogWatcher.exe`) — no separate .NET install, no PowerShell required for analysis.
+
+**Independent project.** Not affiliated with, endorsed by, or supported by Siemens. Desigo CC, WinCC OA, and related names are trademarks of their respective owners. This tool only reads log files you already have; it does not include Siemens software.
 
 ## One tool, two modes
 
@@ -56,4 +58,5 @@ Field packages are operator-focused: use **[`readMe.txt`](readMe.txt)** for full
 - The live log is opened read-only (`FileAccess.Read`); WinCC may keep appending.
 - The dashboard binds to `127.0.0.1` only. Report mode binds nothing.
 - Do not install or run this toolkit inside the project log folder.
-- This is a triage aid, not a substitute for Siemens Desigo CC support.
+- Independent triage aid — not Siemens software, not a substitute for Desigo CC support, and not affiliated with Siemens.
+- Licensed under the [MIT License](LICENSE).

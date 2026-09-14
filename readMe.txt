@@ -1,6 +1,6 @@
 Siemens Desigo CC PVSS_II Log Analyzer
 ======================================
-Version: 0.4.0
+Version: 0.5.0
 Author: Cisum
 
 What this is
@@ -21,13 +21,13 @@ One tool, two modes:
 Both modes read the same log the same way and produce the same analysis --
 a report is simply a snapshot taken without opening the dashboard first.
 
-No Python or other installs. PowerShell 5.1+ only.
+No separate .NET runtime install and no PowerShell host required for analysis.
+The analyzer is a single-file Windows executable (DesigoLogWatcher.exe).
 
 
 Requirements
 ------------
-  - Windows
-  - PowerShell 5.1 or later (included with modern Windows)
+  - Windows (x64)
   - A PVSS_II.log (or .log.bak) to analyze
   - A browser on the same PC for the live dashboard (not needed for reports)
 
@@ -42,9 +42,8 @@ Keep this folder outside the Desigo CC project log directory.
   readMe.txt                 This file
   CHANGELOG.txt              What changed per version (newest first)
   Watch\                     Runtime payload
-    Watch-PvssLog.ps1        Host, analyzer, and report writer
-    PvssRules.ps1            Detection rules (see "Detections" below)
-    VERSION.txt              Version (0.4.0)
+    DesigoLogWatcher.exe     Host, analyzer, and report writer
+    VERSION.txt              Version (0.5.0)
     watch-config.txt         Defaults / preferences (edit this)
     ui\                      Dashboard (Siemens dark theme + Chart.js)
 
@@ -52,7 +51,6 @@ Keep this folder outside the Desigo CC project log directory.
 Quick start -- live dashboard
 -----------------------------
 1. Double-click Run-Watch.cmd
-   (or: powershell -NoProfile -ExecutionPolicy Bypass -File .\Watch\Watch-PvssLog.ps1)
 
 2. Browser opens to the local dashboard (127.0.0.1). If the preferred port
    is busy, the host picks the next free port and opens that URL.
@@ -110,11 +108,13 @@ then PVSS_II.log.bak, then the newest PVSS_II*.log / .bak it can find.
 Report mode never binds a network port, never opens a browser, and never
 changes your saved dashboard log path in watch-config.txt.
 
-Common switches (PowerShell, or appended to either .cmd):
+Common switches (appended to either .cmd, or passed to DesigoLogWatcher.exe):
 
   -LogPath "C:\...\PVSS_II.log"   Log to read (default: auto-discover)
   -OutPath "C:\...\report.html"   Where to write (default: next to the log)
-  -Format Text | Html | Both      Default Both; Run-Report.cmd uses Html
+  -Format Text | Html | Json | All
+                                  Default All (text+html+json); Run-Report.cmd
+                                  uses Html. Both is accepted as an alias for All.
   -Organize All | Severity | Driver
                                   All      = every section (default)
                                   Severity = top patterns per severity
@@ -142,13 +142,12 @@ Detections
 ----------
 Beyond the severity and pattern tables, the tool flags known problem
 signatures -- trend buffer loss, driver error codes, offline drivers,
-unknown AlertIDs, COV bursts, repeated traces, and more. These appear in
-the Detections view on the dashboard and in a Detections section of the
-report, grouped by area of the system.
+unknown AlertIDs, COV bursts, repeated traces, BACnet trend overflows, and
+more. These appear in the Detections view on the dashboard and in a
+Detections section of the report, grouped by area of the system.
 
-The signatures live in Watch\PvssRules.ps1 as a plain list. If your site
-sees a recurring message that is not being picked up, that file is where a
-new one is added -- send the log line along with a bug report.
+Signatures ship inside DesigoLogWatcher.exe. If your site sees a recurring
+message that is not being picked up, send the log line with a bug report.
 
 
 Watch config (Watch\watch-config.txt)
@@ -178,10 +177,11 @@ Important notes
   - The live log is opened FileAccess.Read only (WinCC may keep appending).
   - The dashboard binds to 127.0.0.1 only (same Windows session / browser).
     Report mode binds nothing at all.
-  - Do not install or run these scripts inside the project log folder.
+  - Do not install or run this toolkit inside the project log folder.
   - Preferences live in Watch\watch-config.txt (LogPath updated on Start by
     the dashboard; report mode leaves it alone).
-  - Large logs take a while. A 50 MB log is several minutes on a typical
-    laptop; the console prints progress while it scans.
+  - Large logs are much faster than older PowerShell builds: a ~50 MB
+    entire-file HTML report finishes in about 6 seconds on a typical laptop
+    (was several minutes before).
   - This is a triage aid, not a substitute for Siemens Desigo CC support.
-  - Current version: 0.4.0. See CHANGELOG.txt for what changed in each release.
+  - Current version: 0.5.0. See CHANGELOG.txt for what changed in each release.

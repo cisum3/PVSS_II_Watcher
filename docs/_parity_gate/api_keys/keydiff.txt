@@ -1,0 +1,72 @@
+==== health top-level ====
+0.5: author, defaults, fileLength, generation, lastError, listeningUrl, loading, loadMessage, loadProgressPct, logPath, ok, paused, port, preferredPort, prefillPath, refreshSeconds, tailRunning, version
+0.4: author, defaults, fileLength, generation, lastError, listeningUrl, loading, logPath, ok, paused, port, preferredPort, prefillPath, refreshSeconds, tailRunning, version
+only in 0.5: loadMessage, loadProgressPct
+only in 0.4: (none)
+
+==== pulse top-level ====
+0.5: areaCounts, fileLength, findings, generation, lastError, loading, loadMessage, loadProgressPct, logPath, moduleHeadlines, paused, projectLifecycle, rotated, series, severityCounts, tailRunning, topManagers, window
+0.4: areaCounts, areaOtherNames, fileLength, findings, generation, lastError, loading, loadMessage, loadProgressPct, logPath, moduleHeadlines, paused, projectLifecycle, rotated, series, severityCounts, tailRunning, topManagers, window
+only in 0.5: (none)
+only in 0.4: areaOtherNames
+
+==== section detections ====
+0.5 keys: detections, generation
+0.4 keys: detections, generation
+top-level MATCH
+  payload.detections 0.5: Count, IsFixedSize, IsReadOnly, IsSynchronized, Length, LongLength, Rank, SyncRoot
+  payload.detections 0.4: Count, IsFixedSize, IsReadOnly, IsSynchronized, Length, LongLength, Rank, SyncRoot
+  payload MATCH
+
+==== section bacnet ====
+0.5 keys: bacnet, generation
+0.4 keys: bacnet, generation
+top-level MATCH
+  payload.bacnet 0.5: activity, collectTrend, collectTrendCodes, collectTrendProps, collectTrendSample, collectTrendTop, endedFailed, endedFailedList, endedOk, failed, failedDevices, failedSample, flappers, lifecycle, objectList, objectListDevices, objectListSample, objectListTop, ok, okDevices, okSample, timeSync, timeSyncCodes, timeSyncProps, timeSyncSample, timeSyncTop
+  payload.bacnet 0.4: activity, collectTrend, collectTrendCodes, collectTrendProps, collectTrendSample, collectTrendTop, endedFailed, endedFailedList, endedOk, failed, failedDevices, failedSample, flappers, lifecycle, objectList, objectListDevices, objectListSample, objectListTop, ok, okDevices, okSample, timeSync, timeSyncCodes, timeSyncProps, timeSyncSample, timeSyncTop
+  payload MATCH
+
+==== section cns ====
+0.5 keys: cns, generation
+0.4 keys: cns, generation
+top-level MATCH
+  payload.cns 0.5: icns, lifecycle, patterns, reducedFunction, resolveNodes, tryRenew
+  payload.cns 0.4: icns, lifecycle, patterns, reducedFunction, resolveNodes, tryRenew
+  payload MATCH
+
+==== section coho ====
+0.5 keys: coho, generation
+0.4 keys: coho, generation
+top-level MATCH
+  payload.coho 0.5: blockingSample, lifecycle, sample, stuck, topNames, unblockingSample
+  payload.coho 0.4: blockingSample, lifecycle, sample, stuck, topNames, unblockingSample
+  payload MATCH
+
+==== section apogee ====
+0.5 keys: apogee, generation
+0.4 keys: apogee, generation
+top-level MATCH
+  payload.apogee 0.5: alertId, alertSample, drvLines, events, getDataDevices, getDataFail, getDataSample, lifecycle, other, queryTimeout, repetition, sample, timeoutSample, topGetDataDevices, topPpcl, topTrendDevices, topTrends, trendDevices, trendNames, trendOverflow, trendSample, trendSeq, uniquePpcl, updatePoints
+  payload.apogee 0.4: alertId, alertSample, drvLines, events, getDataDevices, getDataFail, getDataSample, lifecycle, other, queryTimeout, repetition, sample, timeoutSample, topGetDataDevices, topPpcl, topTrendDevices, topTrends, trendDevices, trendNames, trendOverflow, trendSample, trendSeq, uniquePpcl, updatePoints
+  payload MATCH
+
+==== section findings ====
+0.5 keys: error, generation
+0.4 keys: error, generation
+top-level MATCH
+
+==== section project ====
+0.5 keys: error, generation
+0.4 keys: error, generation
+top-level MATCH
+
+==== section managerHealth ====
+0.5 keys: error, generation
+0.4 keys: error, generation
+top-level MATCH
+
+==== manager (WCCOAGmsBACnet(1) / WCCOAGmsBACnet(1)) ====
+0.5: count, generation, lifecycle, name, patternsBySeverity, severities
+0.4: count, generation, lifecycle, name, patternsBySeverity, severities
+only 0.5: 
+only 0.4: 

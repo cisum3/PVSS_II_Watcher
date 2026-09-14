@@ -4,6 +4,36 @@ Newest first. The current version is also in Watch\VERSION.txt.
 
 
 ------------------------------------------------------------------------
+0.5.0 — 2026-09-14
+------------------------------------------------------------------------
+Author: Cisum
+
+Rewritten as a single-file Windows host (DesigoLogWatcher.exe) so large logs
+and live dashboards finish far faster than the PowerShell 0.4.0 runtime. Same
+field layout: unzip, run the launchers — no separate .NET install, no
+PowerShell host required for analysis.
+
+Upgrading: replace the previous Watch folder. Run-Watch.cmd, Run-Report.cmd,
+and Run-Report-Interactive.cmd now start the exe. Keep your watch-config.txt
+and ui\ folder; config keys are unchanged.
+
+- Faster engine. On a ~50 MB entire-file HTML report (same machine, same
+  log), PowerShell 0.4.0 took about 8.7 minutes; DesigoLogWatcher finished
+  in about 6 seconds (~87x). Large logs and dashboard catch-up that used
+  to take minutes typically complete in seconds.
+- Same workflows. Dashboard and one-shot reports, organize All / Severity /
+  Driver, interactive prompts, and browser open (Chrome / Edge / default /
+  custom path) behave as in 0.4.0.
+- New: -Format All writes text, HTML, and JSON together (-Format Both still
+  accepted as an alias).
+- New: interactive Driver selection accepts ranks like 1-3,10.
+- New detections (BACnet). Apogee-shaped BACnet driver signatures — trend
+  buffer overflow / sequence gap, AlertID, query timeout, get-data fail —
+  are called out when those lines appear under GmsBACnet. Sequence-number
+  "less than saved" is limited to BACnet and ApogeeDrv managers.
+
+
+------------------------------------------------------------------------
 0.4.0 — 2026-09-12
 ------------------------------------------------------------------------
 Author: Cisum

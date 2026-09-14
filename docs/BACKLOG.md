@@ -1,18 +1,11 @@
 # Future backlog — PVSS Log Analyzer
 
-**Shipped baseline:** Watch **0.4.0** · Author: Cisum (2026-09-12)
-OfflineAnalyze **1.3** is absorbed as report mode; frozen copy under
-[`archive/OfflineAnalyze/`](archive/OfflineAnalyze/). Spec / tracker for 0.4.0:
-[`archive/PRD-V0.4.md`](archive/PRD-V0.4.md) · [`archive/PROGRESS-V0.4.md`](archive/PROGRESS-V0.4.md).
+**Shipped baseline:** Watch **0.5.0** · Author: Cisum (2026-09-14)
+Prior: Watch **0.4.0** (2026-09-12). OfflineAnalyze **1.3** remains under
+[`archive/OfflineAnalyze/`](archive/OfflineAnalyze/). Spec / tracker for 0.5.0:
+[`PRD-V0.5.md`](PRD-V0.5.md) · [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md).
 
-**In progress:** **0.5.0** — C# single-file runtime rewrite.
-Spec: [`PRD-V0.5.md`](PRD-V0.5.md) · tracker: [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md)
-(§9.2 verification checklist lives in PROGRESS; gate rules in PRD §9.2).
-
-**Cancelled as a PowerShell patch:** former **0.4.1** — do not implement in PS first.
-
-**0.5.0 scope (see PRD §2.1):** direct port of **0.4.0** + multi-scope + BACnet-scoped rules
-+ manager pick ranges; Entire-cache per PRD §4.6. Other polish → **0.5.1**.
+**Next patch:** **0.5.1** — API/`areaOtherNames` pulse parity + polish deferred from 0.5.0.
 
 **Rule:** Keep this file short — ideas as bullets, not specs. Active scope lives in a PRD
 (or the patch list here) and tracker; historical requirements in [`archive/`](archive/).
@@ -23,21 +16,19 @@ operator-focused — no docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELO
 
 ---
 
-## 0.5.0 intentional deltas (vs 0.4.0)
+## 0.5.0 intentional deltas (vs 0.4.0) — shipped
 
-_In PRD ship scope — not optional “if cheap”:_
+- **Multi-scope** (`Scopes` list) — `trend.seqLess` → GmsBACnet + ApogeeDrv
+- **BACnetDrv** Apogee-shaped families (do not widen Apogee scopes)
+- **Interactive manager pick ranges** (`1-3,10`)
 
-- **Multi-scope** (`Scope` as string or list) — **T8** (after single-scope §9.2 checklist)
-- **BACnet-scoped rules** for four Apogee-shaped families (do not widen Apogee scopes) — **T8**
-- **Interactive manager pick ranges** (`1-3,10`) — implemented (absolute ranks in interactive Driver pick)
+## 0.5.1
 
-## 0.5.1 (deferred from former 0.4.1)
-
+- **`/api/pulse` `areaOtherNames`** — present in 0.4; tracked in AnalysisState but omitted from 0.5 pulse (UI unused today). Restore for API parity.
+- Formal automated API key/schema harness vs 0.4 (health/pulse/section/manager)
 - **Detections UI leftovers:** sample line dominates; bucket labels unclear
 - **Host console catch-up %** feels inaccurate (throttle vs wrong %)
 - **Detections dual render** (HTML vs `app.js`)
-- Entire-cache **UX** polish if cache is built in 0.5.0 §4.6/5H and still needs work
-- **`Browser` config (chrome / msedge / exe path):** parsed and validated in 0.5; host still opens via shell default — port Open-WatchBrowser behavior if still missing at ship
 
 ---
 

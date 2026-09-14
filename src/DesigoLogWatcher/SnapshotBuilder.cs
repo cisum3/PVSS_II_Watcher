@@ -85,6 +85,19 @@ public sealed class SnapshotBuilder
         if (apTimeout >= 50)
             findings.Add($"ApogeeDrv query timeouts: {apTimeout:N0}.");
 
+        var bnOverflow = RuleEngine.GetRuleCount(d, "bacnetDrv.trendOverflow");
+        var bnAlert = RuleEngine.GetRuleCount(d, "bacnetDrv.alertId");
+        var bnGetData = RuleEngine.GetRuleCount(d, "bacnetDrv.getDataFail");
+        var bnTimeout = RuleEngine.GetRuleCount(d, "bacnetDrv.queryTimeout");
+        if (bnOverflow >= 50)
+            findings.Add($"BACnetDrv trend buffer overflows: {bnOverflow:N0} across {RuleEngine.GetRuleBucketCount(d, "bacnetDrv.trendOverflow", "device"):N0} devices ({RuleEngine.GetRuleCount(d, "bacnetDrv.trendSeq"):N0} sequence-gap lines).");
+        if (bnAlert >= 50)
+            findings.Add($"BACnetDrv AlertID issues: {bnAlert:N0}.");
+        if (bnGetData >= 50)
+            findings.Add($"BACnetDrv get-data failures: {bnGetData:N0} across {RuleEngine.GetRuleBucketCount(d, "bacnetDrv.getDataFail", "device"):N0} devices.");
+        if (bnTimeout >= 50)
+            findings.Add($"BACnetDrv query timeouts: {bnTimeout:N0}.");
+
         if (d.ProjectUp >= 1 || d.ProjectStopped >= 1)
         {
             var upPreview = string.Join(", ", d.ProjectRestartEvents.Where(e => e.Kind == "up").Take(5).Select(e => e.T));

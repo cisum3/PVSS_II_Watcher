@@ -12,9 +12,9 @@ Not shipped in field packages.
 | [`archive/`](archive/) | Frozen PRD + PROGRESS history + OfflineAnalyze 1.3 (do not extend) |
 | `PVSS_II_Examples\` | Sample / site logs for local testing only |
 
-**Shipped baseline:** Watch **0.4.0** (2026-09-12) — one tool, two modes (dashboard + report); OfflineAnalyze absorbed.
+**Shipped baseline:** Watch **0.5.0** (2026-09-14) — C# single-file host; ~87× faster Entire reports vs 0.4.0 PowerShell.
 
-**In progress:** **0.5.0** — [`PRD-V0.5.md`](PRD-V0.5.md) · [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md). See [`BACKLOG.md`](BACKLOG.md).
+**Prior:** Watch **0.4.0** (2026-09-12). Spec / tracker: [`PRD-V0.5.md`](PRD-V0.5.md) · [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md). See [`BACKLOG.md`](BACKLOG.md) for 0.5.1.
 
 Spec / tracker for 0.4.0: [`archive/PRD-V0.4.md`](archive/PRD-V0.4.md) · [`archive/PROGRESS-V0.4.md`](archive/PROGRESS-V0.4.md).
 

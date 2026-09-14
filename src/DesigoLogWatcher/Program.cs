@@ -6,7 +6,7 @@
 /// </summary>
 public static class Program
 {
-    public const string Version = "0.5.0-dev";
+    public const string Version = "0.5.0";
 
     public static int Main(string[] args)
     {
@@ -212,10 +212,7 @@ public static class Program
         Console.WriteLine("Ctrl+C to stop (closing the window also releases the port).");
 
         if (config.Effective.OpenBrowser && !options.NoBrowser && server.ListeningUrl is not null)
-        {
-            try { System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(server.ListeningUrl) { UseShellExecute = true }); }
-            catch { /* ignore browser failures */ }
-        }
+            BrowserLauncher.Open(server.ListeningUrl, config.Effective.Browser);
 
         var exit = new ManualResetEventSlim(false);
         void RequestExit()

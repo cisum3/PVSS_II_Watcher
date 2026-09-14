@@ -134,9 +134,14 @@ Response: `{ ok, generation }` or 400. Unknown action → error.
 | apogeeDrv.alertId | Apogee | ApogeeDrv | Sample | |
 | apogeeDrv.queryTimeout | Apogee | ApogeeDrv | Sample | |
 | apogeeDrv.getDataFail | Apogee | ApogeeDrv | Sample | BucketBy device |
+| bacnetDrv.trendOverflow | BACnetDrv | GmsBACnet | ShipGate FindingAt=100 | “trend log object” wording |
+| bacnetDrv.trendSeq | BACnetDrv | GmsBACnet | ShipGate | companion to overflow |
+| bacnetDrv.alertId | BACnetDrv | GmsBACnet | ShipGate | |
+| bacnetDrv.queryTimeout | BACnetDrv | GmsBACnet | ShipGate | |
+| bacnetDrv.getDataFail | BACnetDrv | GmsBACnet | ShipGate | |
 | state.unexpected | Platform | — | FindingAt=500 | BucketBy subsystem/method |
 | trend.dataLoss | Trending | GmsBACnet | FindingAt=100 | |
-| trend.seqLess | Trending | — | FindingAt=100 | unscoped (both drivers) |
+| trend.seqLess | Trending | Ship: GmsBACnet+ApogeeDrv | FindingAt=100 | DevGate unscoped (0.4) |
 | driver.errorCode | Driver | — | FindingAt=250 | |
 | driver.offline | Driver | CoHo | FindingAt=250 | |
 | driver.readFile | Driver | CoHo | FindingAt=250 | |
@@ -151,7 +156,11 @@ Response: `{ ok, generation }` or 400. Unknown action → error.
 
 **Engine knobs:** `CuratedGroups` = BACnet, CNS, CoHo, Apogee; `RuleBucketCap` = 2000; ranking per PRD 6.2 in `Build-DetectionsObject`.
 
-**0.5.0 §2.1 exceptions (after single-scope parity gate):** multi-scope `Scope` list; BACnet-scoped Apogee-shaped families; interactive manager ranges `1-3,10`.
+**0.5.0 §2.1 exceptions (shipping = ShipGate):**
+- Multi-scope: `RuleDefinition.Scopes` list; `trend.seqLess` → `GmsBACnet` + `ApogeeDrv` (DevGate keeps unscoped 0.4 behavior).
+- BACnetDrv families (Scope=`GmsBACnet`, Group=`BACnetDrv`, not widening Apogee): `bacnetDrv.trendOverflow` (BACnet “trend log object” wording), `bacnetDrv.trendSeq`, `bacnetDrv.alertId`, `bacnetDrv.queryTimeout`, `bacnetDrv.getDataFail`.
+- Interactive manager ranges `1-3,10` (Cli.ParseManagerRange).
+- Toggle: `new RuleEngine(RuleGateMode.DevGate|ShipGate)`; default ShipGate.
 
 ---
 
@@ -174,7 +183,7 @@ Must port for parity. Primary home: `Process-LogLine` (977–1267), `Build-Findi
 | ApogeeDrv line count | comp contains ApogeeDrv | AnalysisState |
 | Project/manager lifecycle | ReProject*, RePmonMgrRestart, ReMgr*, ReDriverReady, ReBlocking* | AnalysisState |
 | Findings heuristics | `Build-Findings` thresholds + rule FindingAt loop | SnapshotBuilder |
-| Entire cache | Save/Try-Begin/Clear-EntireCache | **deferred** (§4.6) unless measured need |
+| Entire cache | Save/Try-Begin/Clear-EntireCache | **out of 0.5.0** (not shipping) |
 
 **INFO patterns:** only BACnet status INFO lines (`ReInfoBacStatus`) enter PatternsBySev INFO — not all INFO.
 
@@ -232,4 +241,4 @@ Publish must place/copy `ui\` beside `DesigoLogWatcher.exe` under `Watch\`. Do n
 - [x] ui\ asset list (§7)
 - [x] PS → C# map for T5–T7 / T9 (§8)
 
-**Non-goals for 0.5.0:** Blazor; cross-platform; Findings window-scaling; startup-plume; absolute dashboard From/To; chart ladder; Detections UI polish; catch-up % feel; dual-render unify; Entire-cache unless T12 warrants it.
+**Non-goals for 0.5.0:** Blazor; cross-platform; Findings window-scaling; startup-plume; absolute dashboard From/To; chart ladder; Detections UI polish; catch-up % feel; dual-render unify; **Entire-cache**.

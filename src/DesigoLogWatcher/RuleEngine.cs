@@ -21,25 +21,52 @@ public sealed class MeasureSpec
     public MeasureAgg Agg { get; init; } = MeasureAgg.Sum;
 }
 
-/// <summary>One row from PvssRules.ps1 (single-scope string for T6/dev-gate).</summary>
+/// <summary>§9.2 gate: DevGate = 0.4 single-scope parity; ShipGate = §2.1 exceptions on.</summary>
+public enum RuleGateMode
+{
+    DevGate,
+    ShipGate
+}
+
+/// <summary>One row from PvssRules.ps1 (Scope and/or Scopes for §2.1 multi-scope).</summary>
 public sealed class RuleDefinition
 {
     public required string Id { get; init; }
     public required string Group { get; init; }
     public required string Label { get; init; }
     public required Regex Re { get; init; }
+    /// <summary>Single component substring gate (0.4 Register-RuleSet).</summary>
     public string? Scope { get; init; }
+    /// <summary>Multi-scope list; when set, replaces <see cref="Scope"/> for matching.</summary>
+    public IReadOnlyList<string>? Scopes { get; init; }
     public Dictionary<string, BucketSpec>? BucketBy { get; init; }
     public Dictionary<string, MeasureSpec>? Measure { get; init; }
     public bool Sample { get; init; }
     public string? SampleSlot { get; init; }
     public string? PatternGroup { get; init; }
     public int? FindingAt { get; init; }
+
+    public bool MatchesComponent(string comp)
+    {
+        if (Scopes is { Count: > 0 })
+        {
+            foreach (var s in Scopes)
+            {
+                if (comp.IndexOf(s, StringComparison.OrdinalIgnoreCase) >= 0)
+                    return true;
+            }
+            return false;
+        }
+
+        if (Scope is not null)
+            return comp.IndexOf(Scope, StringComparison.OrdinalIgnoreCase) >= 0;
+        return true;
+    }
 }
 
 /// <summary>
 /// Data-driven rule engine (PvssRules.ps1 Add-RuleHit / Register-RuleSet).
-/// Single-scope only for the §9.2 dev gate; multi-scope is T8.
+/// Default rule table is ShipGate (§2.1); pass DevGate rules for 0.4 parity runs.
 /// </summary>
 public sealed class RuleEngine : IRuleHitSink
 {
@@ -50,7 +77,12 @@ public sealed class RuleEngine : IRuleHitSink
 
     public RuleEngine(IReadOnlyList<RuleDefinition>? rules = null)
     {
-        _rules = rules ?? DesigoLogWatcher.Rules.RuleDefinitions.All;
+        _rules = rules ?? DesigoLogWatcher.Rules.RuleDefinitions.ForGate(RuleGateMode.ShipGate);
+    }
+
+    public RuleEngine(RuleGateMode gate)
+        : this(DesigoLogWatcher.Rules.RuleDefinitions.ForGate(gate))
+    {
     }
 
     public IReadOnlyList<RuleDefinition> Rules => _rules;
@@ -78,8 +110,7 @@ public sealed class RuleEngine : IRuleHitSink
         var list = new List<RuleDefinition>();
         foreach (var r in _rules)
         {
-            if (r.Scope is not null &&
-                comp.IndexOf(r.Scope, StringComparison.OrdinalIgnoreCase) < 0)
+            if (!r.MatchesComponent(comp))
                 continue;
             list.Add(r);
         }

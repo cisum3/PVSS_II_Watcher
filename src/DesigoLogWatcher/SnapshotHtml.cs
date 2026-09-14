@@ -195,6 +195,7 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
                      ("#hourly", "Hourly", inc.Hourly), ("#project", "Project restarts", true),
                      ("#mgr-health", "Manager health", true), ("#managers", "Top managers", inc.Managers),
                      ("#patterns", "Patterns", inc.SeverityPatterns),
+                     ("#deep-dive", "Driver deep-dive", inc.DriverDeepDive),
                      ("#headlines", "Module headlines", inc.ModuleHeadlines),
                      ("#bacnet", "BACnet", inc.Bacnet), ("#cns", "CNS", inc.Cns),
                      ("#coho", "CoHo", inc.Coho), ("#apogee", "Apogee", inc.Apogee),
@@ -218,9 +219,14 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         // Options
         sb.AppendLine("<section id=\"options\"><h2>Options used</h2><div class=\"card\">");
         sb.AppendLine("<table class=\"data\"><thead><tr><th>Option</th><th>Value</th></tr></thead><tbody>");
-        var winTxt = Str(opt, "window") == "entire"
-            ? "entire file"
-            : string.Create(CultureInfo.InvariantCulture, $"last {Int(opt, "lastMinutes"):N0} minutes");
+        var winModeOpt = Str(opt, "window");
+        var winTxt = winModeOpt switch
+        {
+            "entire" => "entire file",
+            "hours" => string.Create(CultureInfo.InvariantCulture, $"last {Int(opt, "lastMinutes") / 60:N0} hours"),
+            "absolute" => "absolute From/To",
+            _ => string.Create(CultureInfo.InvariantCulture, $"last {Int(opt, "lastMinutes"):N0} minutes")
+        };
         foreach (var (k, v) in new (string, string)[]
                  {
                      ("Organize", Str(opt, "organize")),
@@ -285,6 +291,7 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         AppendManagerHealth(sb, Dict(snap, "managerHealth"));
         if (inc.Managers) AppendTopManagers(sb, snap);
         if (inc.SeverityPatterns) AppendPatterns(sb, Dict(snap, "patternsBySeverity"));
+        if (inc.DriverDeepDive) AppendDriverDeepDive(sb, snap);
         if (inc.ModuleHeadlines) AppendHeadlines(sb, Dict(snap, "moduleHeadlines"));
         if (inc.Bacnet) AppendBacnet(sb, Dict(snap, "bacnet"));
         if (inc.Cns) AppendCns(sb, Dict(snap, "cns"));
@@ -731,15 +738,47 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         sb.AppendLine("</tbody></table>");
     }
 
+    private static void AppendDriverDeepDive(StringBuilder sb, Dictionary<string, object?> snap)
+    {
+        sb.AppendLine("<section id=\"deep-dive\"><h2>Driver deep-dive</h2>");
+        var dds = Rows(snap, "driverDeepDive");
+        if (dds.Count == 0)
+            sb.AppendLine("<p class=\"muted\">No drivers selected.</p>");
+        foreach (var dd in dds)
+        {
+            sb.AppendLine("<div class=\"card\">");
+            sb.AppendLine($"<h3>{E(Str(dd, "name"))}</h3>");
+            sb.AppendLine(CultureInfo.InvariantCulture,
+                $"<p>Total lines: <strong>{Int(dd, "count"):N0}</strong></p>");
+            var sevs = AsObjDict(dd.TryGetValue("severities", out var sv) ? sv : null);
+            sb.AppendLine("<p class=\"meta\">" +
+                string.Join(" &middot; ",
+                    new[] { "FATAL", "SEVERE", "ERROR", "WARNING", "INFO" }
+                        .Select(s => string.Create(CultureInfo.InvariantCulture, $"{s} {Int(sevs, s):N0}"))) +
+                "</p>");
+            var bySev = Dict(dd, "patternsBySeverity");
+            foreach (var s in new[] { "FATAL", "SEVERE", "ERROR", "WARNING" })
+            {
+                var list = Rows(bySev, s);
+                sb.AppendLine($"<h4>Patterns &mdash; {s} <span class=\"meta\">({list.Count})</span></h4>");
+                if (list.Count == 0) sb.AppendLine("<p class=\"muted\">(none)</p>");
+                else AppendPatternTable(sb, list);
+            }
+            sb.AppendLine("</div>");
+        }
+        sb.AppendLine("</section>");
+    }
+
     private sealed record Sections(
         bool Bacnet, bool Cns, bool Coho, bool Apogee, bool ModuleHeadlines,
-        bool SeverityPatterns, bool Managers, bool Perf, bool Hourly, bool Detections);
+        bool SeverityPatterns, bool Managers, bool Perf, bool Hourly, bool Detections,
+        bool DriverDeepDive);
 
     private static Sections GetSections(Dictionary<string, object?> opt)
     {
         var organize = Str(opt, "organize");
         var bacnet = true; var cns = true; var coho = true; var apogee = true;
-        var headlines = false; var patterns = true; var full = true;
+        var headlines = false; var patterns = true; var full = true; var driver = false;
         if (string.Equals(organize, "Severity", StringComparison.OrdinalIgnoreCase))
         {
             bacnet = cns = coho = apogee = false;
@@ -750,10 +789,22 @@ footer { margin-top: 2rem; color: var(--text-meta); font-size: 0.8rem; }
         {
             full = false;
             patterns = false;
+            driver = true;
             bacnet = cns = coho = apogee = false;
+            foreach (var name in Arr(opt, "drivers"))
+            {
+                if (name.Contains("BACnet", StringComparison.OrdinalIgnoreCase)) bacnet = true;
+                if (name.Contains("ApplicationFramework", StringComparison.OrdinalIgnoreCase)
+                    || name.Contains("ICns", StringComparison.OrdinalIgnoreCase)) cns = true;
+                if (name.Contains("CoHo", StringComparison.OrdinalIgnoreCase))
+                { coho = true; apogee = true; bacnet = true; }
+                if (name.Contains("Apogee", StringComparison.OrdinalIgnoreCase)) apogee = true;
+            }
         }
         return new Sections(bacnet, cns, coho, apogee, headlines, patterns,
-            full, full, full, !string.Equals(organize, "Severity", StringComparison.OrdinalIgnoreCase));
+            full || driver, full, full,
+            !string.Equals(organize, "Severity", StringComparison.OrdinalIgnoreCase),
+            driver);
     }
 
     private static string E(string? s) => WebUtility.HtmlEncode(s ?? "");

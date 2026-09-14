@@ -331,6 +331,9 @@ Entire-cache is worth building (§4.6).
 
 Against **0.4.0** on static logs:
 
+**Executable checklist (pass/fail rows):** [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md) § “§9.2 verification checklist”.  
+Keep gate *rules* here; keep run results and tick-boxes in PROGRESS.
+
 **Ship includes the §2.1 exceptions** (multi-scope, BACnet-scoped rules, manager ranges).
 Byte-identical vs 0.4.0 is a **development checkpoint**, not the 0.5.0 release bar.
 
@@ -338,7 +341,7 @@ Byte-identical vs 0.4.0 is a **development checkpoint**, not the 0.5.0 release b
    - **Dev gate (pure port):** rule table matching 0.4.0 single-scope semantics (no new
      BACnet rules, multi-scope off) — snapshots byte-identical aside from the allowlist
      (`meta.generated`, tool/version banner, `perf.health` port/url, `gen`, documented
-     formatting normals). Proves the C# engine/renderers did not drift.
+     formatting normals including accepted `N0` thousand separators). Proves the C# engine/renderers did not drift.
    - **Ship gate (§2.1 on):** expect **known** count/section diffs vs 0.4.0 for multi-scope
      and new BACnet rules. Record those deltas in PROGRESS. **Fail only on unexpected
      diffs** — do not fail the release for expected non-identical reports.

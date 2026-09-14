@@ -1,0 +1,616 @@
+{
+  "meta": {
+    "tool": "PVSS Log Watch",
+    "version": "0.5.0-dev",
+    "generated": "2026.09.13 20:51:10",
+    "logPath": "c:\\Users\\Isaac\\Documents\\Cursor\\PVSII_Log\\docs\\PVSS_II_Examples\\PVSS_II_C1P.log",
+    "fileLength": 6987599,
+    "generation": 0,
+    "parsedLines": 58,
+    "severities": [
+      "FATAL",
+      "SEVERE",
+      "ERROR",
+      "WARNING"
+    ],
+    "areas": [
+      "SYS",
+      "IMPL",
+      "CTRL",
+      "PARAM",
+      "OTHER"
+    ]
+  },
+  "options": {
+    "organize": "All",
+    "severities": [
+      "FATAL",
+      "SEVERE",
+      "ERROR",
+      "WARNING"
+    ],
+    "areas": [
+      "SYS",
+      "IMPL",
+      "CTRL",
+      "PARAM",
+      "OTHER"
+    ],
+    "drivers": [],
+    "topN": 10,
+    "samplePerPattern": 1,
+    "bacFlapMin": 3,
+    "window": "absolute",
+    "lastMinutes": 60,
+    "format": "json"
+  },
+  "window": {
+    "mode": "absolute",
+    "lastMinutes": 60,
+    "first": "2026.09.04 14:30:39.398",
+    "last": "2026.09.04 14:43:21.010"
+  },
+  "findings": [
+    "MEDIUM: Critical-severity lines are 3.4% of parsed lines (2)."
+  ],
+  "severityCounts": {
+    "FATAL": 0,
+    "SEVERE": 2,
+    "ERROR": 0,
+    "WARNING": 2,
+    "INFO": 54
+  },
+  "areaCounts": {
+    "SYS": 42,
+    "IMPL": 13,
+    "CTRL": 3,
+    "PARAM": 0,
+    "OTHER": 0
+  },
+  "series": {
+    "granularity": "minute",
+    "byMinute": [
+      {
+        "t": "2026.09.04 14:30",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 1,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:31",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:32",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:33",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:34",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 1,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:35",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:36",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:38",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:40",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      },
+      {
+        "t": "2026.09.04 14:43",
+        "bacFailed": 0,
+        "bacOk": 0,
+        "projectRestart": 0,
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 0
+      }
+    ],
+    "projectUp": 0,
+    "projectStopped": 0
+  },
+  "hourly": {
+    "hourCount": 1,
+    "truncated": false,
+    "rows": [
+      {
+        "hour": "2026.09.04 14",
+        "total": 58,
+        "severe": 2,
+        "warning": 2
+      }
+    ],
+    "busiest": []
+  },
+  "topManagers": [
+    {
+      "name": "Siemens.Gms.ApplicationFramework(4)",
+      "count": 27,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 2,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 24
+      }
+    },
+    {
+      "name": "WCCOAGmsBACnet(1)",
+      "count": 19,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 18
+      }
+    },
+    {
+      "name": "Siemens.Gms.ApplicationFramework(0)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCILdata    (0)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCOActrl    (253)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCILevent   (0)",
+      "count": 2,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 2
+      }
+    },
+    {
+      "name": "WCCOAqueryCache(98)",
+      "count": 1,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 1
+      }
+    }
+  ],
+  "managers": [
+    {
+      "name": "Siemens.Gms.ApplicationFramework(4)",
+      "count": 27,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 2,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 24
+      }
+    },
+    {
+      "name": "WCCOAGmsBACnet(1)",
+      "count": 19,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 1,
+        "INFO": 18
+      }
+    },
+    {
+      "name": "Siemens.Gms.ApplicationFramework(0)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCILdata    (0)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCOActrl    (253)",
+      "count": 3,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 3
+      }
+    },
+    {
+      "name": "WCCILevent   (0)",
+      "count": 2,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 2
+      }
+    },
+    {
+      "name": "WCCOAqueryCache(98)",
+      "count": 1,
+      "severities": {
+        "FATAL": 0,
+        "SEVERE": 0,
+        "ERROR": 0,
+        "WARNING": 0,
+        "INFO": 1
+      }
+    }
+  ],
+  "patternsBySeverity": {
+    "FATAL": [],
+    "SEVERE": [
+      {
+        "pattern": "Siemens.Gms.ApplicationFramework(4), \u003CTS\u003E, IMPL, SEVERE, 0, GMSv9.0.44.0e,.NET-Wrapper.,,\u003CTIME\u003E,^4:\u00ABEventListSNI\u00BB IAuthorizationEvent.Unsubscribe\u21D7(\u003CKV\u003E, ccSub=\u003CNUM\u003E:proxy-sync, state=Subscribed, ccCon=\u003CNUM\u003E:proxy-async, forAsync=False)",
+        "count": 1,
+        "first": "2026.09.04 14:30:44.742",
+        "last": "2026.09.04 14:30:44.742",
+        "samples": [
+          "Siemens.Gms.ApplicationFramework(4), 2026.09.04 14:30:44.742, IMPL, SEVERE,      0, GMSv9.0.44.0e,.NET-Wrapper.,,02:30:44.742,^4:\u00ABEventListSNI\u00BB IAuthorizationEvent.Unsubscribe\u21D7(tid=38, ccSub=22616502:proxy-sync, state=Subscribed, ccCon=54861376:proxy-async, forAsync=False)"
+        ]
+      },
+      {
+        "pattern": "Siemens.Gms.ApplicationFramework(4), \u003CTS\u003E, IMPL, SEVERE, 0, GMSv9.0.44.0e,Orch.Mns,,\u003CTIME\u003E,^4:ManagedThreadId: 124",
+        "count": 1,
+        "first": "2026.09.04 14:34:24.814",
+        "last": "2026.09.04 14:34:24.814",
+        "samples": [
+          "Siemens.Gms.ApplicationFramework(4), 2026.09.04 14:34:24.814, IMPL, SEVERE,      0, GMSv9.0.44.0e,Orch.Mns,,02:34:24.812,^4:ManagedThreadId: 124 "
+        ]
+      }
+    ],
+    "ERROR": [],
+    "WARNING": [
+      {
+        "pattern": "Siemens.Gms.ApplicationFramework(4), \u003CTS\u003E, IMPL, WARNING, 0, GMSv9.0.44.0w,.NET-Wrapper.,,\u003CTIME\u003E,^4:Receiving reply from 5:Api19\u002BdpId (Guid1=2f1c05d4-9dfe-4aeb-aae5-6431bc135f1c ,Guid2=ccf07f88-943c-4531-87fa-a605b1ec512e) with classification=\u0027XMT-Mns\u0027 for which no client could be found: Content=\u0022\u003CMsg\u003E\u003CMsgHdr Name=\u0022IFacadeQueriesReply.OnGetIncidentsByEventId\u0022 Type=\u0022Reply\u0022 Cli\u2026Uy5EYXRhLlB2c3NEb21haW5Nb2RlbC5JbmNpZGVudFN0YXR1c0NoYW5nZQcAAAAL\u003C/MsgBody\u003E\u003C/Msg\u003E\u0022 (Length=3059)",
+        "count": 1,
+        "first": "2026.09.04 14:33:54.830",
+        "last": "2026.09.04 14:33:54.830",
+        "samples": [
+          "Siemens.Gms.ApplicationFramework(4), 2026.09.04 14:33:54.830, IMPL, WARNING,     0, GMSv9.0.44.0w,.NET-Wrapper.,,02:33:54.826,^4:Receiving reply from 5:Api19\u002BdpId (Guid1=2f1c05d4-9dfe-4aeb-aae5-6431bc135f1c ,Guid2=ccf07f88-943c-4531-87fa-a605b1ec512e) with classification=\u0027XMT-Mns\u0027 for which no client could be found: Content=\u0022\u003CMsg\u003E\u003CMsgHdr Name=\u0022IFacadeQueriesReply.OnGetIncidentsByEventId\u0022 Type=\u0022Reply\u0022 Cli\u2026Uy5EYXRhLlB2c3NEb21haW5Nb2RlbC5JbmNpZGVudFN0YXR1c0NoYW5nZQcAAAAL\u003C/MsgBody\u003E\u003C/Msg\u003E\u0022 (Length=30..."
+        ]
+      },
+      {
+        "pattern": "WCCOAGmsBACnet(1), \u003CTS\u003E, SYS, WARNING, 0, Could not get object list count for device \u003CN\u003E, trying 8000.",
+        "count": 1,
+        "first": "2026.09.04 14:36:49.306",
+        "last": "2026.09.04 14:36:49.306",
+        "samples": [
+          "WCCOAGmsBACnet(1), 2026.09.04 14:36:49.306, SYS,  WARNING,     0, Could not get object list count for device 7261, trying 8000."
+        ]
+      }
+    ]
+  },
+  "moduleHeadlines": {
+    "bacnet": {
+      "failed": 0,
+      "ok": 0,
+      "endedFailed": 0,
+      "endedOk": 0,
+      "flappers": 0,
+      "objectList": 1,
+      "collectTrend": 0,
+      "timeSync": 0,
+      "collectTrendProps": 0,
+      "timeSyncProps": 0
+    },
+    "cns": {
+      "resolveNodes": 0,
+      "reducedFunction": 0,
+      "tryRenew": 0,
+      "icns": 0
+    },
+    "coho": {
+      "stuck": 0
+    },
+    "apogee": {
+      "events": 0,
+      "updatePoints": 0,
+      "drvLines": 0,
+      "trendOverflow": 0,
+      "trendSeq": 0,
+      "alertId": 0,
+      "queryTimeout": 0,
+      "getDataFail": 0
+    }
+  },
+  "projectLifecycle": {
+    "up": 0,
+    "stopped": 0,
+    "shutdown": 0,
+    "startMode": 0,
+    "cycles": [],
+    "capped": false
+  },
+  "managerHealth": {
+    "totals": {
+      "starts": 1,
+      "stops": 1,
+      "restarts": 0,
+      "blocking": 0,
+      "unblocked": 0
+    },
+    "driverReady": 0,
+    "blockingSample": null,
+    "unblockingSample": null,
+    "managers": [
+      {
+        "name": "Siemens.Gms.ApplicationFramework(0)",
+        "starts": 1,
+        "stops": 0,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      },
+      {
+        "name": "Siemens.Gms.ApplicationFramework(4)",
+        "starts": 0,
+        "stops": 1,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      }
+    ]
+  },
+  "bacnet": {
+    "failed": 0,
+    "ok": 0,
+    "endedFailed": 0,
+    "endedOk": 0,
+    "flappers": 0,
+    "objectList": 1,
+    "failedDevices": 0,
+    "okDevices": 0,
+    "objectListDevices": 1,
+    "collectTrend": 0,
+    "timeSync": 0,
+    "collectTrendProps": 0,
+    "timeSyncProps": 0,
+    "collectTrendSample": null,
+    "timeSyncSample": null,
+    "collectTrendCodes": [],
+    "collectTrendTop": [],
+    "timeSyncCodes": [],
+    "timeSyncTop": [],
+    "failedSample": null,
+    "okSample": null,
+    "objectListSample": "WCCOAGmsBACnet(1), 2026.09.04 14:36:49.306, SYS,  WARNING,     0, Could not get object list count for device 7261, trying 8000.",
+    "activity": [],
+    "endedFailedList": [],
+    "objectListTop": [
+      {
+        "device": "7261",
+        "count": 1
+      }
+    ],
+    "lifecycle": {
+      "totals": {
+        "starts": 0,
+        "stops": 0,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      },
+      "managers": []
+    }
+  },
+  "cns": {
+    "resolveNodes": 0,
+    "reducedFunction": 0,
+    "icns": 0,
+    "tryRenew": 0,
+    "patterns": [],
+    "lifecycle": {
+      "totals": {
+        "starts": 1,
+        "stops": 1,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      },
+      "managers": [
+        {
+          "name": "Siemens.Gms.ApplicationFramework(0)",
+          "starts": 1,
+          "stops": 0,
+          "restarts": 0,
+          "blocking": 0,
+          "unblocked": 0
+        },
+        {
+          "name": "Siemens.Gms.ApplicationFramework(4)",
+          "starts": 0,
+          "stops": 1,
+          "restarts": 0,
+          "blocking": 0,
+          "unblocked": 0
+        }
+      ]
+    }
+  },
+  "coho": {
+    "stuck": 0,
+    "sample": null,
+    "topNames": [],
+    "lifecycle": {
+      "totals": {
+        "starts": 0,
+        "stops": 0,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      },
+      "managers": []
+    },
+    "blockingSample": null,
+    "unblockingSample": null
+  },
+  "apogee": {
+    "events": 0,
+    "updatePoints": 0,
+    "repetition": 0,
+    "other": 0,
+    "uniquePpcl": 0,
+    "sample": null,
+    "topPpcl": [],
+    "drvLines": 0,
+    "trendOverflow": 0,
+    "trendSeq": 0,
+    "alertId": 0,
+    "queryTimeout": 0,
+    "getDataFail": 0,
+    "trendDevices": 0,
+    "trendNames": 0,
+    "getDataDevices": 0,
+    "trendSample": null,
+    "alertSample": null,
+    "timeoutSample": null,
+    "getDataSample": null,
+    "topTrendDevices": [],
+    "topTrends": [],
+    "topGetDataDevices": [],
+    "lifecycle": {
+      "totals": {
+        "starts": 0,
+        "stops": 0,
+        "restarts": 0,
+        "blocking": 0,
+        "unblocked": 0
+      },
+      "managers": []
+    }
+  },
+  "detections": [],
+  "perf": {
+    "perfCategories": [
+      {
+        "name": "Driver/Device",
+        "count": 18
+      },
+      {
+        "name": "Connection",
+        "count": 7
+      }
+    ],
+    "unparsedLines": 1939
+  },
+  "driverDeepDive": []
+}

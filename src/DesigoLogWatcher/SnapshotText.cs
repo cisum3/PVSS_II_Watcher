@@ -36,9 +36,13 @@ public static class SnapshotText
             W($" Drivers       : {string.Join(", ", drivers)}");
         W(string.Create(CultureInfo.InvariantCulture, $" TopN          : {Int(opt, "topN")}"));
         W(string.Create(CultureInfo.InvariantCulture, $" Sample/patt   : {Int(opt, "samplePerPattern")}"));
-        var timeMode = Str(opt, "window") == "entire"
-            ? "entire file"
-            : string.Create(CultureInfo.InvariantCulture, $"last {Int(opt, "lastMinutes"):N0} minutes");
+        var timeMode = Str(opt, "window") switch
+        {
+            "entire" => "entire file",
+            "hours" => string.Create(CultureInfo.InvariantCulture, $"last {Math.Max(1, Int(opt, "lastMinutes") / 60):N0} hours"),
+            "absolute" => "absolute From/To",
+            _ => string.Create(CultureInfo.InvariantCulture, $"last {Int(opt, "lastMinutes"):N0} minutes")
+        };
         W($" Time mode     : {timeMode}");
         W($" Format        : {Str(opt, "format")}");
         W("");

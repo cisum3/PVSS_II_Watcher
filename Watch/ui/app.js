@@ -26,6 +26,7 @@
     severities: { FATAL: true, SEVERE: true, ERROR: true, WARNING: true, INFO: false },
     areas: { SYS: true, IMPL: true, CTRL: true, PARAM: true, OTHER: true },
     generation: null,
+    pulseSeq: 0,
     sectionGeneration: {},
     selectedManager: null,
     activeView: 'overview',
@@ -1324,12 +1325,15 @@
     opts = opts || {};
     var force = !!opts.force;
     var headersNote = '';
+    var seq = ++state.pulseSeq;
     var url = '/api/pulse?' + qsPulse();
     // sinceGeneration must be skipped when filters change — generation is unchanged but series/sections must refresh.
     if (!force && state.generation != null && !state.useMock) {
       url += '&sinceGeneration=' + encodeURIComponent(state.generation);
     }
     return apiGet(url).then(function (res) {
+      // Drop overlapping / out-of-order polls (nudge + timer, or a late mid-load response).
+      if (seq !== state.pulseSeq) return;
       if (res.status === 304) {
         if (state.lastPulseAt) {
           var sec = Math.round((Date.now() - state.lastPulseAt) / 1000);
@@ -1341,9 +1345,17 @@
         if (!state.pulse || !state.pulse.loading) setBanner('bannerLoading', '');
         return;
       }
+      var j = res.json;
+      // Ignore stale pulses (late overlapping poll, or a replayed mid-catch-up body).
+      // Generation stays fixed for the whole catch-up, so also reject loading=true once
+      // we already have a finished snapshot at this generation.
+      if (j && state.generation != null && j.generation != null) {
+        if (j.generation < state.generation) return;
+        if (j.loading && state.pulse && !state.pulse.loading && j.generation <= state.generation) return;
+      }
       var prev = state.generation;
-      applyPulse(res.json);
-      if (force || (state.activeView !== 'overview' && res.json.generation !== prev)) {
+      applyPulse(j);
+      if (force || (state.activeView !== 'overview' && j.generation !== prev)) {
         if (state.activeView !== 'overview') {
           loadSection(state.activeView);
           if (state.activeView === 'managers' && state.selectedManager) {
@@ -1352,6 +1364,7 @@
         }
       }
     }).catch(function (e) {
+      if (seq !== state.pulseSeq) return;
       setBanner('bannerLoading', '');
       setBanner('bannerError', String(e.message || e));
       setStatus('<span class="err">poll failed</span>');

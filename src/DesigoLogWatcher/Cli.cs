@@ -7,8 +7,9 @@ public enum ReportFormat
 {
     Text,
     Html,
-    Both,
-    Json
+    Json,
+    /// <summary>Write text + HTML + JSON. CLI also accepts legacy alias <c>Both</c>.</summary>
+    All
 }
 
 public enum OrganizeMode
@@ -43,7 +44,7 @@ public sealed class CliOptions
     public int SampleMaxChars { get; set; } = 500;
     public bool Report { get; set; }
     public string OutPath { get; set; } = "";
-    public ReportFormat Format { get; set; } = ReportFormat.Both;
+    public ReportFormat Format { get; set; } = ReportFormat.All;
     public OrganizeMode Organize { get; set; } = OrganizeMode.All;
     public string Severities { get; set; } = "";
     public string Areas { get; set; } = "";
@@ -110,7 +111,7 @@ public sealed class Cli
         Report:
           -Report                 Batch scan → write → exit (no port)
           -OutPath <path>         Output stem (default: <log>.analysis)
-          -Format Text|Html|Json|Both  (default Both)
+          -Format Text|Html|Json|All   (default All = text+html+json; Both accepted as alias)
           -Organize All|Severity|Driver
           -Driver <name|n>        Driver filter / list position
           -Interactive            Enter-defaulted prompts (manager ranges: 1-3,10)
@@ -331,8 +332,10 @@ public sealed class Cli
         "text" => ReportFormat.Text,
         "html" => ReportFormat.Html,
         "json" => ReportFormat.Json,
-        "both" => ReportFormat.Both,
-        _ => throw new ArgumentException($"-Format must be Text, Html, Json, or Both (got '{text}').")
+        "all" => ReportFormat.All,
+        // Legacy 0.4 name for text+html; in 0.5 All also writes JSON.
+        "both" => ReportFormat.All,
+        _ => throw new ArgumentException($"-Format must be Text, Html, Json, or All (got '{text}').")
     };
 
     private static OrganizeMode ParseEnumOrganize(string text) => text.Trim().ToLowerInvariant() switch

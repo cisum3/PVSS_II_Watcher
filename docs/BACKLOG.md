@@ -6,7 +6,8 @@ OfflineAnalyze **1.3** is absorbed as report mode; frozen copy under
 [`archive/PRD-V0.4.md`](archive/PRD-V0.4.md) · [`archive/PROGRESS-V0.4.md`](archive/PROGRESS-V0.4.md).
 
 **In progress:** **0.5.0** — C# single-file runtime rewrite.
-Spec: [`PRD-V0.5.md`](PRD-V0.5.md) (**pre-finalized**; lock → create `PROGRESS-V0.5.md`).
+Spec: [`PRD-V0.5.md`](PRD-V0.5.md) · tracker: [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md)
+(§9.2 verification checklist lives in PROGRESS; gate rules in PRD §9.2).
 
 **Cancelled as a PowerShell patch:** former **0.4.1** — do not implement in PS first.
 
@@ -26,9 +27,9 @@ operator-focused — no docs/backlog links. GitHub: [`CHANGELOG.md`](../CHANGELO
 
 _In PRD ship scope — not optional “if cheap”:_
 
-- **Multi-scope** (`Scope` as string or list)
-- **BACnet-scoped rules** for four Apogee-shaped families (do not widen Apogee scopes)
-- **Interactive manager pick ranges** (`1-3,10`)
+- **Multi-scope** (`Scope` as string or list) — **T8** (after single-scope §9.2 checklist)
+- **BACnet-scoped rules** for four Apogee-shaped families (do not widen Apogee scopes) — **T8**
+- **Interactive manager pick ranges** (`1-3,10`) — implemented (absolute ranks in interactive Driver pick)
 
 ## 0.5.1 (deferred from former 0.4.1)
 
@@ -36,6 +37,7 @@ _In PRD ship scope — not optional “if cheap”:_
 - **Host console catch-up %** feels inaccurate (throttle vs wrong %)
 - **Detections dual render** (HTML vs `app.js`)
 - Entire-cache **UX** polish if cache is built in 0.5.0 §4.6/5H and still needs work
+- **`Browser` config (chrome / msedge / exe path):** parsed and validated in 0.5; host still opens via shell default — port Open-WatchBrowser behavior if still missing at ship
 
 ---
 

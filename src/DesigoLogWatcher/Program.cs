@@ -49,8 +49,10 @@ public static class Program
         Console.WriteLine($"Log : {log}");
         Console.WriteLine($"Size: {fi.Length / (1024.0 * 1024.0):N2} MB");
 
+        var peekFirst = LogParser.GetProbeTimestamps(log, 0, 65_536L).First;
         var logEnd = LogParser.GetLogFileEndTimestamp(log);
-        var window = Cli.ResolveWindow(options, logEnd, defaultEntire: true);
+        var window = InteractiveReport.PromptWindow(options, peekFirst, logEnd);
+
         var engine = new RuleEngine();
         var state = new AnalysisState();
         var sw = System.Diagnostics.Stopwatch.StartNew();
@@ -73,7 +75,7 @@ public static class Program
                 }
                 else if (window.LastHours is int lh)
                 {
-                    var endTs = LogParser.GetLogFileEndTimestamp(log) ?? DateTime.Now;
+                    var endTs = logEnd ?? DateTime.Now;
                     var cutDt = endTs.AddHours(-lh);
                     cutoff = LogParser.ToCompareStamp(cutDt);
                     upper = LogParser.ToCompareStamp(endTs);
@@ -85,7 +87,14 @@ public static class Program
                         cutoff = LogParser.ToCompareStamp(start);
                     if (window.End is DateTime end)
                         upper = LogParser.ToCompareStamp(end);
+                    Console.WriteLine($"Window: absolute"
+                        + (cutoff is not null ? $" from {cutoff}" : "")
+                        + (upper is not null ? $" to {upper}" : ""));
                 }
+            }
+            else
+            {
+                Console.WriteLine("Window: entire file");
             }
 
             long startPos = 0;
@@ -115,16 +124,54 @@ public static class Program
 
         sw.Stop();
         Console.WriteLine($"Parsed {state.ParsedLines:N0} lines ({state.UnparsedLines:N0} unparsed) in {sw.Elapsed.TotalSeconds:N1}s.");
+        if (state.ParsedLines == 0)
+            Console.WriteLine("No log lines matched the WinCC OA header inside the selected window.");
 
-        var builder = new SnapshotBuilder(state, engine, config.Effective.TopN, config.Effective.BacFlapMin);
+        var defaultSev = options.WasBound(nameof(CliOptions.Severities))
+            ? Config.ParseSeverityList(options.Severities)
+            : config.Effective.DefaultSeverities.ToList();
+        if (defaultSev.Count == 0)
+            defaultSev = ["FATAL", "SEVERE", "ERROR", "WARNING"];
+        var choices = InteractiveReport.PromptAfterScan(
+            options, state, config.Effective.TopN, defaultSev);
+
+        if (choices.Quit)
+        {
+            Console.WriteLine("Quit selected - no report written.");
+            if (!options.NoPause)
+            {
+                Console.WriteLine("Press Enter to close.");
+                Console.ReadLine();
+            }
+            return 0;
+        }
+
+        var areas = options.WasBound(nameof(CliOptions.Areas))
+            ? Config.ParseAreaList(options.Areas)
+            : new List<string> { "SYS", "IMPL", "CTRL", "PARAM", "OTHER" };
+
+        var winMode = window.EntireLog ? "entire"
+            : window.LastHours is not null ? "hours"
+            : window.LastMinutes is not null ? "minutes"
+            : "absolute";
+        var lastMinutesLabel = window.LastMinutes
+            ?? (window.LastHours is int hours ? hours * 60 : config.Effective.DefaultWindowMinutes);
+
+        var builder = new SnapshotBuilder(state, engine, choices.TopN, config.Effective.BacFlapMin);
         var snap = builder.BuildSnapshot(
             log, fi.Length, Version,
-            options.Organize, options.Format,
+            choices.Organize, choices.Format,
+            severities: choices.Severities,
+            areas: areas,
+            drivers: choices.Drivers,
             windowEntire: window.EntireLog,
-            lastMinutes: window.LastMinutes ?? config.Effective.DefaultWindowMinutes);
+            lastMinutes: lastMinutesLabel,
+            topN: choices.TopN,
+            windowMode: winMode);
 
         var writer = new ReportWriter();
-        var (textPath, htmlPath, jsonPath) = writer.WriteFiles(snap, log, options.OutPath, options.Format);
+        var (textPath, htmlPath, jsonPath) = writer.WriteFiles(snap, log, options.OutPath, choices.Format);
+        Console.WriteLine();
         if (textPath is not null) Console.WriteLine($"Wrote {textPath}");
         if (htmlPath is not null) Console.WriteLine($"Wrote {htmlPath}");
         if (jsonPath is not null) Console.WriteLine($"Wrote {jsonPath}");

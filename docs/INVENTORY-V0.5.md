@@ -21,7 +21,7 @@
 | `SampleMaxChars` | ValidateRange 100–2000 | `500` | Truncate stored samples |
 | `Report` | switch | off | Batch mode; ignores Port/NoBrowser/RefreshSeconds |
 | `OutPath` | string | `''` | Report output path |
-| `Format` | Text\|Html\|Both | `Both` | Report (+ snapshot query uses html\|text\|json) |
+| `Format` | Text\|Html\|Json\|All | `All` | Report; `Both` accepted as alias for All. Snapshot download uses html\|text\|json |
 | `Organize` | All\|Severity\|Driver | `All` | Report/snapshot organization |
 | `Severities` | string | `''` | Comma list; also accepts 1–5 menu numbers |
 | `Areas` | string | `''` | SYS\|IMPL\|CTRL\|PARAM\|OTHER (+ 1–5) |
@@ -79,7 +79,7 @@ JSON keys: `ok`, `version`, `author`, `logPath`, `prefillPath`, `listeningUrl`, 
 ### GET `/api/pulse`
 
 Query: `severities` (comma; default FATAL/SEVERE/ERROR/WARNING on, INFO off), `areas`, `sinceGeneration` (304 if same gen and not loading).  
-Body: `Build-PulseObject` (overview pulse + loading progress). ETag = generation.
+Body: `Build-PulseObject` (overview pulse + loading progress).
 
 ### GET `/api/section`
 

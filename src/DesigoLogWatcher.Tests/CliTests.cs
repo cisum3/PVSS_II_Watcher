@@ -86,6 +86,14 @@ public class CliTests
     }
 
     [Fact]
+    public void Parse_Format_AllAndLegacyBoth()
+    {
+        Assert.Equal(ReportFormat.All, _cli.Parse(["-Format", "All"]).Format);
+        Assert.Equal(ReportFormat.All, _cli.Parse(["-Format", "Both"]).Format);
+        Assert.Equal(ReportFormat.Json, _cli.Parse(["-Format", "Json"]).Format);
+    }
+
+    [Fact]
     public void ToConfigOverrides_OnlyBound()
     {
         var o = _cli.Parse(["-Port", "9999"]);

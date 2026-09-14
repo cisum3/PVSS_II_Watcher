@@ -52,7 +52,7 @@ public class SnapshotReportTests
             {
                 Assert.True(doc.RootElement.TryGetProperty("meta", out _));
                 Assert.True(doc.RootElement.TryGetProperty("options", out var opt));
-                Assert.Equal("both", opt.GetProperty("format").GetString());
+                Assert.Equal("all", opt.GetProperty("format").GetString());
             }
 
             var html = writer.ToHtml(snap);
@@ -60,11 +60,13 @@ public class SnapshotReportTests
             Assert.Contains("Activity charts", html);
             Assert.Contains("siemens-petrol", html);
 
-            var (txt, htm, _) = writer.WriteFiles(snap, path, null, ReportFormat.Both);
+            var (txt, htm, js) = writer.WriteFiles(snap, path, null, ReportFormat.All);
             Assert.True(File.Exists(txt));
             Assert.True(File.Exists(htm));
+            Assert.True(File.Exists(js));
             File.Delete(txt!);
             File.Delete(htm!);
+            File.Delete(js!);
         }
         finally { File.Delete(path); }
     }

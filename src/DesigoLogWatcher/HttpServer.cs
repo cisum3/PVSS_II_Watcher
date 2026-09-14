@@ -145,11 +145,10 @@ public sealed class HttpServer : IDisposable
                 && !session.Loading)
             {
                 ctx.Response.StatusCode = 304;
-                ctx.Response.Headers["ETag"] = $"\"{session.Generation}\"";
                 ctx.Response.Close();
                 return;
             }
-            WriteJson(ctx, session.BuildPulse(ctx.Request.QueryString), etag: $"\"{session.Generation}\"");
+            WriteJson(ctx, session.BuildPulse(ctx.Request.QueryString));
             return;
         }
         if (path == "/api/section" && method == "GET")
@@ -192,14 +191,12 @@ public sealed class HttpServer : IDisposable
         WriteStatus(ctx, 404, "Not found");
     }
 
-    internal static void WriteJson(HttpListenerContext ctx, object obj, int code = 200, string? etag = null)
+    internal static void WriteJson(HttpListenerContext ctx, object obj, int code = 200)
     {
         var json = JsonSerializer.Serialize(obj);
         var bytes = Encoding.UTF8.GetBytes(json);
         ctx.Response.StatusCode = code;
         ctx.Response.ContentType = "application/json; charset=utf-8";
-        if (!string.IsNullOrEmpty(etag))
-            ctx.Response.Headers["ETag"] = etag;
         ctx.Response.ContentLength64 = bytes.Length;
         ctx.Response.OutputStream.Write(bytes, 0, bytes.Length);
         ctx.Response.Close();

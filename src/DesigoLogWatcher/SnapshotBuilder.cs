@@ -143,14 +143,20 @@ public sealed class SnapshotBuilder
         long fileLength,
         string version,
         OrganizeMode organize = OrganizeMode.All,
-        ReportFormat format = ReportFormat.Both,
+        ReportFormat format = ReportFormat.All,
         IReadOnlyList<string>? severities = null,
         IReadOnlyList<string>? areas = null,
+        IReadOnlyList<string>? drivers = null,
         bool windowEntire = true,
-        int lastMinutes = 60)
+        int lastMinutes = 60,
+        int? topN = null,
+        string? windowMode = null)
     {
         var sevList = severities ?? new[] { "FATAL", "SEVERE", "ERROR", "WARNING", "INFO" };
         var areaList = areas ?? new[] { "SYS", "IMPL", "CTRL", "PARAM", "OTHER" };
+        var driverList = drivers?.Where(d => !string.IsNullOrWhiteSpace(d)).Distinct(StringComparer.OrdinalIgnoreCase).ToArray()
+                         ?? Array.Empty<string>();
+        var effectiveTopN = topN is > 0 ? topN.Value : _topN;
         var sevFilter = ChartSeriesBuilder.SevFilterFromList(sevList);
         var areaFilter = ChartSeriesBuilder.AreaFilterFromList(areaList);
 
@@ -168,6 +174,18 @@ public sealed class SnapshotBuilder
         var series = ChartSeriesBuilder.Build(_data, sevFilter, areaFilter);
         var topManagers = ApiBuilders.FilteredTopManagers(_data, areaFilter, 20).ToArray();
         var managers = ApiBuilders.FilteredTopManagers(_data, areaFilter, 5000).ToArray();
+
+        object[] deepDive = [];
+        if (organize == OrganizeMode.Driver && driverList.Length > 0)
+        {
+            deepDive = driverList
+                .Select(d => (object)ApiBuilders.BuildManagerPayload(
+                    _data, d, sevFilter, effectiveTopN, generation: 0, areaFilter))
+                .ToArray();
+        }
+
+        var winMode = windowMode
+            ?? (windowEntire ? "entire" : "minutes");
 
         return new Dictionary<string, object?>
         {
@@ -188,17 +206,17 @@ public sealed class SnapshotBuilder
                 ["organize"] = organize.ToString(),
                 ["severities"] = sevList.ToArray(),
                 ["areas"] = areaList.ToArray(),
-                ["drivers"] = Array.Empty<string>(),
-                ["topN"] = _topN,
+                ["drivers"] = driverList,
+                ["topN"] = effectiveTopN,
                 ["samplePerPattern"] = 1,
                 ["bacFlapMin"] = _bacFlapMin,
-                ["window"] = windowEntire ? "entire" : "minutes",
+                ["window"] = winMode,
                 ["lastMinutes"] = lastMinutes,
                 ["format"] = FormatLabel(format)
             },
             ["window"] = new Dictionary<string, object?>
             {
-                ["mode"] = windowEntire ? "entire" : "minutes",
+                ["mode"] = winMode,
                 ["lastMinutes"] = windowEntire ? 0 : lastMinutes,
                 ["first"] = _data.FirstTs,
                 ["last"] = _data.LastTs
@@ -210,22 +228,22 @@ public sealed class SnapshotBuilder
             ["hourly"] = ChartSeriesBuilder.BuildHourly(_data, areaFilter),
             ["topManagers"] = topManagers,
             ["managers"] = managers,
-            ["patternsBySeverity"] = ApiBuilders.FilteredPatternsBySeverity(_data, sevFilter, areaFilter, _topN),
+            ["patternsBySeverity"] = ApiBuilders.FilteredPatternsBySeverity(_data, sevFilter, areaFilter, effectiveTopN),
             ["moduleHeadlines"] = BuildModuleHeadlines(endedFailed, endedOk, flappers),
             ["projectLifecycle"] = ApiBuilders.BuildProjectLifecycle(_data, areaFilter),
             ["managerHealth"] = BuildManagerHealth(),
-            ["bacnet"] = ApiBuilders.BuildBacnetSection(_data, _bacFlapMin, _topN),
-            ["cns"] = ApiBuilders.BuildCnsSection(_data, _topN),
-            ["coho"] = ApiBuilders.BuildCohoSection(_data, _topN),
-            ["apogee"] = ApiBuilders.BuildApogeeSection(_data, _topN),
-            ["detections"] = ApiBuilders.BuildDetectionsObject(_data, _rules.Rules, _topN),
+            ["bacnet"] = ApiBuilders.BuildBacnetSection(_data, _bacFlapMin, effectiveTopN),
+            ["cns"] = ApiBuilders.BuildCnsSection(_data, effectiveTopN),
+            ["coho"] = ApiBuilders.BuildCohoSection(_data, effectiveTopN),
+            ["apogee"] = ApiBuilders.BuildApogeeSection(_data, effectiveTopN),
+            ["detections"] = ApiBuilders.BuildDetectionsObject(_data, _rules.Rules, effectiveTopN),
             ["perf"] = new Dictionary<string, object?>
             {
                 ["perfCategories"] = ApiBuilders.TopByCount(_data.PerfCats, int.MaxValue)
                     .Select(kv => new Dictionary<string, object?> { ["name"] = kv.Key, ["count"] = kv.Value }).ToArray(),
                 ["unparsedLines"] = _data.UnparsedLines
             },
-            ["driverDeepDive"] = Array.Empty<object>()
+            ["driverDeepDive"] = deepDive
         };
     }
 
@@ -287,7 +305,7 @@ public sealed class SnapshotBuilder
         ReportFormat.Text => "text",
         ReportFormat.Html => "html",
         ReportFormat.Json => "json",
-        ReportFormat.Both => "both",
+        ReportFormat.All => "all",
         _ => format.ToString().ToLowerInvariant()
     };
 
@@ -319,21 +337,30 @@ public sealed class ReportWriter
             stem = System.Text.RegularExpressions.Regex.Replace(outPath, @"(?i)\.(txt|html?|json)$", "");
 
         string? textPath = null, htmlPath = null, jsonPath = null;
-        if (format is ReportFormat.Text or ReportFormat.Both)
+        if (format is ReportFormat.Text or ReportFormat.All)
         {
             textPath = stem + ".txt";
+            SetFormatLabel(snap, "text");
             File.WriteAllText(textPath, ToText(snap));
         }
-        if (format is ReportFormat.Html or ReportFormat.Both)
+        if (format is ReportFormat.Html or ReportFormat.All)
         {
             htmlPath = stem + ".html";
+            SetFormatLabel(snap, "html");
             File.WriteAllText(htmlPath, ToHtml(snap));
         }
-        if (format is ReportFormat.Json)
+        if (format is ReportFormat.Json or ReportFormat.All)
         {
             jsonPath = stem + ".json";
+            SetFormatLabel(snap, "json");
             File.WriteAllText(jsonPath, ToJson(snap));
         }
         return (textPath, htmlPath, jsonPath);
+    }
+
+    private static void SetFormatLabel(Dictionary<string, object?> snap, string label)
+    {
+        if (snap.TryGetValue("options", out var o) && o is Dictionary<string, object?> opt)
+            opt["format"] = label;
     }
 }

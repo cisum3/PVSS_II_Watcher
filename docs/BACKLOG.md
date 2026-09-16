@@ -1,10 +1,10 @@
 # Future backlog — PVSS Log Analyzer
 
 **Shipped baseline:** Watch **0.5.0** · Author: Cisum (2026-09-14)  
-Prior: **0.4.0** (2026-09-12). Spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) ·
-[`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md). Field zips:
-[`archive/DesigoLogWatcher_v0.5.0.zip`](archive/DesigoLogWatcher_v0.5.0.zip) ·
-[`archive/DesigoLogWatcher_v0.4.0.zip`](archive/DesigoLogWatcher_v0.4.0.zip).
+Prior: **0.4.0** (2026-09-12). Spec/tracker:
+[`archive/PRDs/PRD-V0.5.md`](archive/PRDs/PRD-V0.5.md) ·
+[`archive/PRDs/PROGRESS-V0.5.md`](archive/PRDs/PROGRESS-V0.5.md). Field zips:
+[`archive/Old Builds/`](archive/Old%20Builds/).
 
 **Rule:** Keep this short — bullets, not specs. Ship needs a version bump
 (`VERSION.txt` + `readMe.txt` / `CHANGELOG.txt`). Operator CHANGELOG stays free of
@@ -22,7 +22,9 @@ Visual-only UI tweaks (layout/CSS/copy that do not change analysis meaning) are 
 - Formal automated API key/schema checks vs 0.4 (health / pulse / section / manager)
 - **Detections UI** — visual polish (sample line dominates; bucket labels unclear; any
   other layout/CSS/copy fixes). Keep HTML snapshot vs `app.js` dual-render in sync.
-- **Host console catch-up %** feels inaccurate (throttle vs wrong %)
+- **Host console copy** — replace “catch-up” wording with clearer terms (e.g. Reading /
+  Parsing); light polish of existing console lines (same events, less jargon). Fix
+  progress % feel if still wrong (throttle vs value).
 - **Confirm log truncate / rotation** — synthetic smoke: shorten/rewrite the open log
   while the dashboard is running; expect reseek/restart path (unit covered; not
   field-tested at 0.5.0 ship)
@@ -44,6 +46,10 @@ Visual-only UI tweaks (layout/CSS/copy that do not change analysis meaning) are 
   Corpus first; ties into Findings scaling.
 - Rule-engine extensions if the field asks: cross-line correlation; declarative per-rule
   rate thresholds
+
+### Host / ops (beyond light console polish)
+- Structured / leveled console logging, optional log-to-file, or a redesigned operator
+  console experience (more than renaming and cleaning existing lines)
 
 ---
 

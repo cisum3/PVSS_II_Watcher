@@ -51,7 +51,7 @@ Field packages are operator-focused: use **[`readMe.txt`](readMe.txt)** for full
 
 - [`docs/BACKLOG.md`](docs/BACKLOG.md) — living ideas (0.5.1+)
 - [`docs/README.md`](docs/README.md) — what’s in `docs\`
-- [`docs/archive/`](docs/archive/) — frozen PRDs / progress / prior field zip (0.4.0)
+- [`docs/archive/`](docs/archive/) — frozen PRDs (`PRDs/`) and prior field builds (`Old Builds/`)
 
 ## Notes
 

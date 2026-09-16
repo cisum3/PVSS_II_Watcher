@@ -1,23 +1,33 @@
 # Archived product docs
 
-Historical — do not extend.
+Historical — do not extend. Living ideas: [`../BACKLOG.md`](../BACKLOG.md).
 
 **Shipped field baseline:** Watch **0.5.0** (Cisum), 2026-09-14 — C# single-file `DesigoLogWatcher.exe`.
 
+## Layout
+
 | Path | Notes |
 |------|--------|
-| [`PRD-V0.5.md`](PRD-V0.5.md) | 0.5.0 C# rewrite spec (locked; shipped) |
-| [`PROGRESS-V0.5.md`](PROGRESS-V0.5.md) | 0.5.0 tracker + §9.2 checklist (complete) |
+| [`PRDs/`](PRDs/) | Frozen PRD + PROGRESS docs (V1, V2, 0.4, 0.5) |
+| [`Old Builds/`](Old%20Builds/) | Prior field packages as zips (0.3 / 0.4 / 0.5, OfflineAnalyze) |
 | [`INVENTORY-V0.5.md`](INVENTORY-V0.5.md) | 0.4→0.5 contract inventory |
-| [`PRD-V0.4.md`](PRD-V0.4.md) | Rule engine + OfflineAnalyze absorb (shipped 0.4.0) |
-| [`PROGRESS-V0.4.md`](PROGRESS-V0.4.md) | 0.4.0 build tracker |
-| [`DesigoLogWatcher_v0.5.0.zip`](DesigoLogWatcher_v0.5.0.zip) | Frozen **0.5.0** field package (exe + ui + launchers/docs; no `src\`) |
-| [`DesigoLogWatcher_v0.4.0.zip`](DesigoLogWatcher_v0.4.0.zip) | Frozen **0.4.0** field package (PS host + `PvssRules.ps1`) |
-| [`Test-WatchSelf-0.4.ps1`](Test-WatchSelf-0.4.ps1) | 0.4 PowerShell self-test harness (obsolete for 0.5+) |
-| [`OfflineAnalyze/`](OfflineAnalyze/) | Frozen OfflineAnalyze **1.3** tree |
-| [`PRD.md`](PRD.md) / [`PROGRESS.md`](PROGRESS.md) | V1 |
-| [`PRD-V2.md`](PRD-V2.md) / [`PROGRESS-V2.md`](PROGRESS-V2.md) | Early Watch |
 
-Living future ideas: [`../BACKLOG.md`](../BACKLOG.md).
+### `PRDs/`
 
-**0.5.0 field package:** root `Run-*.cmd` + `readMe.txt` + `CHANGELOG.txt` + `Watch\DesigoLogWatcher.exe` + `ui\` + config/VERSION.
+| File | Notes |
+|------|--------|
+| [`PRD-V0.5.md`](PRDs/PRD-V0.5.md) / [`PROGRESS-V0.5.md`](PRDs/PROGRESS-V0.5.md) | 0.5.0 C# rewrite (shipped) |
+| [`PRD-V0.4.md`](PRDs/PRD-V0.4.md) / [`PROGRESS-V0.4.md`](PRDs/PROGRESS-V0.4.md) | 0.4.0 rule engine + OfflineAnalyze absorb |
+| [`PRD-V2.md`](PRDs/PRD-V2.md) / [`PROGRESS-V2.md`](PRDs/PROGRESS-V2.md) | Early Watch |
+| [`PRD.md`](PRDs/PRD.md) / [`PROGRESS.md`](PRDs/PROGRESS.md) | V1 / OfflineAnalyze era |
+
+### `Old Builds/`
+
+| File | Notes |
+|------|--------|
+| `DesigoLogWatcher_v0.5.0.zip` | 0.5.0 field package (exe + ui + launchers/docs; no `src\`) |
+| `DesigoLogWatcher_v0.4.0.zip` | 0.4.0 field package (PS host) |
+| `PVSS_II_Watcher_V0.3.0.zip` | 0.3.0 baseline |
+| `OfflineAnalyze.zip` | Frozen OfflineAnalyze **1.3** |
+
+**0.5.0 field package contents:** root `Run-*.cmd` + `readMe.txt` + `CHANGELOG.txt` + `LICENSE` + `Watch\DesigoLogWatcher.exe` + `ui\` + config/VERSION.

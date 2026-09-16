@@ -1,4 +1,4 @@
-# Watch preferences (DesigoLogWatcher.exe)
+﻿# Watch preferences (Watch-PvssLog.ps1)
 # Edit values below. Lines starting with # are ignored.
 # CLI flags override these when you launch with -Port / -LogPath / etc.
 # Invalid values are rejected, logged in the host console, and reset to defaults.
@@ -18,8 +18,8 @@ MaxPortTries=40
 
 # How often the dashboard polls once loading is done (seconds).
 # While a window is loading, the UI polls about every 0.5s for progress %.
-# RefreshSeconds: integer 1-60 (default 1)
-RefreshSeconds=1
+# RefreshSeconds: integer 1-60 (default 3)
+RefreshSeconds=3
 
 # Open a browser when the host starts.
 # OpenBrowser: true|false (default true)

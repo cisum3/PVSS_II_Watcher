@@ -5,14 +5,21 @@ Not shipped in field packages.
 | Path | Purpose |
 |------|---------|
 | [`BACKLOG.md`](BACKLOG.md) | Living ideas / improvements (keep short) |
-| [`archive/`](archive/) | Frozen PRDs, progress trackers, prior releases |
+| [`archive/`](archive/) | Frozen specs, trackers, and prior field builds |
 | `PVSS_II_Examples\` | Sample / site logs for local testing only (gitignored) |
 
 **Shipped baseline:** Watch **0.5.0** (2026-09-14) — `DesigoLogWatcher.exe` single-file host.
 
 **Next:** **0.5.1** items in [`BACKLOG.md`](BACKLOG.md).
 
-Archived 0.5.0 spec/tracker: [`archive/PRD-V0.5.md`](archive/PRD-V0.5.md) · [`archive/PROGRESS-V0.5.md`](archive/PROGRESS-V0.5.md) · [`archive/INVENTORY-V0.5.md`](archive/INVENTORY-V0.5.md).
+### `archive/` layout
+
+| Path | Purpose |
+|------|---------|
+| [`archive/PRDs/`](archive/PRDs/) | Frozen PRD + PROGRESS docs (V1 → V0.5) |
+| [`archive/Old Builds/`](archive/Old%20Builds/) | Field zips (and any extracted prior packages) |
+| [`archive/INVENTORY-V0.5.md`](archive/INVENTORY-V0.5.md) | 0.4→0.5 contract inventory |
+| [`archive/README.md`](archive/README.md) | Archive index |
 
 ## Field package (user-facing)
 

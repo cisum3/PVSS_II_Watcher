@@ -1,0 +1,118 @@
+<context>
+# Overview
+Watch / DesigoLogWatcher **0.5.1** is a **patch** release on top of shipped **0.5.0**
+(C# single-file host). Scope comes from `docs/BACKLOG.md` §0.5.1 only.
+
+Goal: close leftover 0.4 API parity gaps, polish operator-facing Detections UI and host
+console copy, and confirm truncate/rotation behavior with a synthetic smoke — **no new
+product modes**.
+
+Audience: same field operators as 0.5.0. Ship needs VERSION / CHANGELOG / readMe bump to
+0.5.1 when work is done.
+
+Out of scope (BACKLOG “Later” / parking lot): absolute dashboard windows, chart
+granularity ladder, Findings threshold scaling, startup plume research, structured
+logging redesign, same-port stale-tab deep dive.
+
+# Core Features
+
+## 1. Pulse API: restore `areaOtherNames`
+- What: Include `areaOtherNames` on `/api/pulse` as in Watch 0.4.0. AnalysisState already
+  tracks other area names; pulse currently omits the key (UI unused today).
+- Why: API parity with 0.4; avoids silent schema drift for any consumer.
+- How: Build the same payload shape 0.4 emitted (from existing state); add/adjust a unit
+  or API parity assertion.
+
+## 2. Formal API key/schema checks vs 0.4
+- What: Automated checks that top-level (and key nested) keys for `/api/health`,
+  `/api/pulse`, `/api/section/*`, `/api/manager` match 0.4 aside from documented
+  allowlist (e.g. additive `loadProgressPct` / `loadMessage` on health).
+- Why: Prevents further silent contract drift after the 0.5.0 port.
+- How: Prefer fixtures or a small test harness against a tiny log; document allowlisted
+  deltas. Do not require a full 50 MB corpus.
+
+## 3. Detections UI visual polish
+- What: Improve Detections presentation in `Watch/ui` (sample line dominance, unclear
+  bucket labels, other layout/CSS/copy). Keep HTML snapshot (`SnapshotHtml`) and
+  `app.js` dual-render in sync — visual/copy only; **do not** change detection meaning,
+  ranking, or counts.
+- Why: Operator readability; called out at 0.5.0 ship as patch-worthy.
+- How: Iterate on CSS/markup/JS rendering; spot-check dashboard + snapshot HTML on a
+  fixture with BACnetDrv / other detection groups.
+
+## 4. Host console copy and progress feel
+- What: Replace “catch-up” wording with clearer terms (e.g. Reading / Parsing). Light
+  polish of existing console lines (same events, less jargon). Fix progress % feel if
+  still wrong (throttle vs incorrect value).
+- Why: Operators find “catch-up” unclear; % trust matters during large Entire loads.
+- How: String/copy changes in host console paths; verify % against known file size /
+  position if adjusting calculation or throttle. No structured-logging redesign.
+
+## 5. Confirm log truncate / rotation path
+- What: Synthetic smoke — shorten/rewrite the open log while the dashboard is running;
+  expect reseek / restart path. Unit `Truncation_ReseeksToStart` already exists;
+  0.5.0 did not field-test live dashboard behavior.
+- Why: Only unchecked live I/O edge from 0.5.0 checklist (B5 waived).
+- How: Manual or automated test that rewrites a watched file shorter mid-session and
+  asserts recovery (generation bump / reload / continued tail). Document result in
+  CHANGELOG or PROGRESS note if anything unexpected.
+
+# User Experience
+- Dashboard and report workflows unchanged aside from clearer console text and nicer
+  Detections visuals.
+- No new CLI switches or config keys required unless a tiny diagnostic flag proves
+  necessary (prefer none).
+- Field package shape unchanged: exe + ui + launchers + docs + LICENSE.
+</context>
+<PRD>
+# Technical Architecture
+- Host: existing `src/DesigoLogWatcher` (HttpServer pulse builders, AnalysisState,
+  LogParser truncate detection, console write sites).
+- UI: `Watch/ui/app.js` (+ CSS/HTML as needed); report HTML via `SnapshotHtml` /
+  related builders for Detections dual-render sync.
+- Tests: `src/DesigoLogWatcher.Tests` — extend for `areaOtherNames` and API key
+  allowlist; optional truncate smoke helper.
+- Baseline compare: 0.4 behavior documented in archive / prior keydiff notes
+  (`areaOtherNames` missing on 0.5 pulse; health additive keys OK).
+
+# Development Roadmap
+
+## Phase A — API parity
+1. Emit `areaOtherNames` on `/api/pulse` matching 0.4 shape from existing state.
+2. Add automated API key/schema checks (health, pulse, section, manager) with
+   explicit allowlist for intentional 0.5 additives.
+3. Tests green; no UI dependency.
+
+## Phase B — Operator polish
+4. Detections UI visual polish; sync snapshot HTML render where the same content
+   is dual-rendered.
+5. Console: rename catch-up → Reading/Parsing (or equivalent); light line polish;
+   fix progress % feel if needed.
+
+## Phase C — Verification and ship
+6. Synthetic truncate/rotation confirm on live dashboard path; record pass/fail notes.
+7. Version bump to **0.5.1** (`VERSION.txt`, `Program.Version`, CHANGELOG.md/.txt,
+   readMe.txt); publish exe to `Watch\`; update BACKLOG (strike or move done 0.5.1
+   items). Field zip optional (same layout as 0.5.0, include LICENSE).
+
+# Logical Dependency Chain
+1. Pulse `areaOtherNames` first (small, unblocks schema harness expectations).
+2. API key/schema harness next (locks contract).
+3. Detections UI and console copy can proceed in parallel after A (no hard dep).
+4. Truncate smoke can run anytime after host is stable; do before version bump.
+5. Version / CHANGELOG / publish last.
+
+# Risks and Mitigations
+- Dual-render drift (UI vs HTML snapshot): treat “in sync” as acceptance for any
+  Detections visual change.
+- Progress % “fix” may be throttle-only: document if behavior is intentional after
+  investigation; only change calculation if wrong.
+- Truncate smoke may expose a real bug: fix in 0.5.1 if cheap; otherwise note in
+  CHANGELOG / Known bugs and keep patch focused.
+- Scope creep into BACKLOG “Later”: refuse; open a follow-up tag/PRD instead.
+
+# Appendix
+- Source of truth for scope: `docs/BACKLOG.md` §0.5.1.
+- Taskmaster tag: `v0_5_1` (empty; parse this PRD into that tag).
+- Suggest ~5–8 top-level tasks aligned to phases A–C above.
+</PRD>

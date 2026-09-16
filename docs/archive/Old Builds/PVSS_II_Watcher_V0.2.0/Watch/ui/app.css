@@ -1,0 +1,562 @@
+:root {
+  --siemens-petrol: #009999;
+  --siemens-snow: #ffffff;
+  --siemens-stone: #879baa;
+  --siemens-sand: #aaaa96;
+  --siemens-yellow-light: #ffb900;
+  --siemens-yellow-dark: #eb780a;
+  --siemens-red-light: #af235f;
+  --siemens-red-dark: #641946;
+  --siemens-blue-light: #55a0b9;
+  --siemens-blue-dark: #006487;
+  --siemens-green-light: #aab414;
+  --siemens-green-dark: #647d2d;
+  --siemens-gray-light: #505a64;
+  --siemens-gray-dark: #0f1923;
+
+  --bg-deep: #0f1923;
+  --bg-panel: #15202b;
+  --bg-elevated: #1c2834;
+  --border: rgba(135, 155, 170, 0.35);
+  --text: var(--siemens-snow);
+  --text-muted: var(--siemens-stone);
+  --text-meta: var(--siemens-sand);
+
+  --sev-info: #008000;
+  --sev-warning: #e07000;
+  --sev-severe: #c000a0;
+  --sev-fatal: #e00000;
+  --sev-error: #b00040;
+
+  --font: "Segoe UI", "Candara", "Calibri", sans-serif;
+  --mono: "Cascadia Mono", "Consolas", monospace;
+  --chrome-h: auto;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html, body {
+  margin: 0;
+  height: 100%;
+  background: var(--bg-deep);
+  color: var(--text);
+  font-family: var(--font);
+  font-size: 14px;
+}
+
+body {
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+}
+
+button, input, select {
+  font: inherit;
+  color: inherit;
+}
+
+button {
+  cursor: pointer;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  color: var(--text);
+  padding: 0.4rem 0.75rem;
+  border-radius: 2px;
+}
+
+button:hover:not(:disabled) {
+  border-color: var(--siemens-petrol);
+}
+
+button:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+button.primary {
+  background: var(--siemens-petrol);
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+  font-weight: 600;
+}
+
+button.danger {
+  border-color: var(--siemens-red-light);
+  color: #f2c0d4;
+}
+
+button.active {
+  background: rgba(0, 153, 153, 0.25);
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+}
+
+input[type="text"], input[type="number"] {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 0.4rem 0.55rem;
+  border-radius: 2px;
+  min-width: 0;
+}
+
+input:focus, button:focus {
+  outline: 2px solid var(--siemens-petrol);
+  outline-offset: 1px;
+}
+
+#chrome {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: var(--bg-panel);
+  border-bottom: 1px solid var(--border);
+  padding: 0.65rem 1rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
+.chrome-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  align-items: center;
+}
+
+.brand {
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--siemens-petrol);
+  margin-right: 0.5rem;
+}
+
+.app-version {
+  margin-right: 0.75rem;
+  font-size: 0.78rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.path-box {
+  flex: 1 1 18rem;
+  min-width: 12rem;
+}
+
+.path-box input {
+  width: 100%;
+}
+
+.path-box input::placeholder {
+  color: var(--text-meta);
+  opacity: 0.85;
+}
+
+.filter-row {
+  align-items: stretch;
+  gap: 0.65rem;
+}
+
+.filter-row-label {
+  align-self: center;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--siemens-petrol);
+  margin-right: 0.15rem;
+}
+
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4rem 0.55rem;
+  padding: 0.4rem 0.65rem;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.filter-group-title {
+  font-size: 0.78rem;
+  font-weight: 600;
+  color: var(--text-muted);
+  margin-right: 0.15rem;
+}
+
+.seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+
+.chip {
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  padding: 0.32rem 0.65rem;
+  min-height: 1.85rem;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  /* Off state: fill darker than chrome/panel so inactive chips read clearly */
+  background: #0a1118;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.03);
+  transition: background 0.12s ease, border-color 0.12s ease, box-shadow 0.12s ease, color 0.12s ease;
+}
+
+.chip:hover {
+  filter: brightness(1.12);
+  box-shadow: 0 0 0 1px rgba(0, 153, 153, 0.35);
+}
+
+.chip:active {
+  transform: translateY(1px);
+}
+
+.chip.active {
+  box-shadow: inset 0 -2px 0 rgba(0, 153, 153, 0.85);
+}
+
+.chip[data-sev="FATAL"] { border-color: var(--sev-fatal); color: #ffb0b0; }
+.chip[data-sev="SEVERE"] { border-color: var(--sev-severe); color: #f0a0e0; }
+.chip[data-sev="ERROR"] { border-color: var(--sev-error); color: #f0a0c0; }
+.chip[data-sev="WARNING"] { border-color: var(--sev-warning); color: #ffd0a0; }
+.chip[data-sev="INFO"] { border-color: var(--sev-info); color: #90d090; }
+
+.chip.active[data-sev="FATAL"] { background: rgba(224, 0, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-fatal); }
+.chip.active[data-sev="SEVERE"] { background: rgba(192, 0, 160, 0.28); box-shadow: inset 0 -2px 0 var(--sev-severe); }
+.chip.active[data-sev="ERROR"] { background: rgba(176, 0, 64, 0.28); box-shadow: inset 0 -2px 0 var(--sev-error); }
+.chip.active[data-sev="WARNING"] { background: rgba(224, 112, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-warning); }
+.chip.active[data-sev="INFO"] { background: rgba(0, 128, 0, 0.28); box-shadow: inset 0 -2px 0 var(--sev-info); }
+
+.chip-sev:not(.active) {
+  opacity: 0.78;
+}
+
+.chip-sev:not(.active):hover {
+  opacity: 1;
+}
+
+.chip-area:not(.active) {
+  opacity: 0.78;
+}
+
+.chip-area:not(.active):hover {
+  opacity: 1;
+}
+
+.status-line {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+.status-line .ok { color: var(--siemens-green-light); }
+.status-line .warn { color: var(--siemens-yellow-light); }
+.status-line .err { color: #f2a0c0; }
+
+.banner {
+  padding: 0.45rem 0.75rem;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  border-radius: 2px;
+  font-size: 0.9rem;
+}
+
+.banner.rotate { border-color: var(--siemens-blue-light); color: #b8dce8; }
+.banner.error { border-color: var(--siemens-red-light); color: #f2c0d4; }
+.banner.loading { border-color: var(--siemens-yellow-dark); color: #ffe0a0; }
+.banner[hidden] { display: none !important; }
+
+.layout {
+  flex: 1;
+  display: grid;
+  grid-template-columns: 11rem 1fr;
+  min-height: 0;
+}
+
+nav#nav {
+  background: var(--bg-panel);
+  border-right: 1px solid var(--border);
+  padding: 0.75rem 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+nav#nav button {
+  text-align: left;
+  border: none;
+  background: transparent;
+  padding: 0.5rem 0.65rem;
+  border-radius: 2px;
+  color: var(--text-muted);
+}
+
+nav#nav button:hover { background: rgba(0, 153, 153, 0.12); color: var(--text); }
+nav#nav button.active {
+  background: rgba(0, 153, 153, 0.22);
+  color: var(--siemens-snow);
+  box-shadow: inset 3px 0 0 var(--siemens-petrol);
+}
+
+main#view {
+  /* Padding must live on .view, not here — padding on the overflow
+     scroller offsets position:sticky table headers downward. */
+  padding: 0;
+  overflow: auto;
+  min-width: 0;
+}
+
+.view { display: none; }
+.view.active {
+  display: block;
+  padding: 1rem 1.15rem 2rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+h1, h2, h3 {
+  font-weight: 600;
+  margin: 0 0 0.65rem;
+}
+
+h1 { font-size: 1.15rem; color: var(--siemens-snow); }
+h2 { font-size: 1rem; color: var(--siemens-petrol); margin-top: 1.1rem; }
+h3 { font-size: 0.92rem; color: var(--text-muted); }
+
+.muted { color: var(--text-muted); }
+.meta { color: var(--text-meta); font-size: 0.85rem; }
+
+.window-span {
+  margin: -0.35rem 0 0.85rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
+}
+
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.5rem;
+  margin-bottom: 0.9rem;
+}
+
+.kpi {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.55rem 0.65rem;
+}
+
+.kpi .label { font-size: 0.72rem; letter-spacing: 0.04em; color: var(--text-muted); }
+.kpi .value { font-size: 1.25rem; font-weight: 700; font-variant-numeric: tabular-nums; }
+.kpi[data-sev="FATAL"] .value { color: var(--sev-fatal); }
+.kpi[data-sev="SEVERE"] .value { color: var(--sev-severe); }
+.kpi[data-sev="ERROR"] .value { color: var(--sev-error); }
+.kpi[data-sev="WARNING"] .value { color: var(--sev-warning); }
+.kpi[data-sev="INFO"] .value { color: var(--sev-info); }
+
+.findings {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.findings li {
+  background: var(--bg-panel);
+  border-left: 3px solid var(--siemens-petrol);
+  padding: 0.45rem 0.65rem;
+  border-radius: 0 2px 2px 0;
+}
+
+.project-restarts {
+  margin: 0.35rem 0 1rem;
+}
+.project-restarts .data {
+  max-width: 36rem;
+}
+.project-restarts .kind-up { color: #90d090; }
+.project-restarts .kind-shutdown { color: #ffd0a0; }
+.project-restarts .kind-stopped { color: #ffb0b0; }
+
+.charts {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.85rem;
+  margin: 0.75rem 0 1rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chart-panel {
+  background: var(--bg-panel);
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 0.55rem 0.65rem 0.75rem;
+  min-height: 14rem;
+  min-width: 0;
+  max-width: 100%;
+}
+
+.chart-panel h3 { margin-bottom: 0.35rem; }
+
+.chart-wrap {
+  position: relative;
+  height: 12rem;
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+
+.chart-wrap canvas {
+  max-width: 100% !important;
+}
+
+.chart-empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-meta);
+  font-size: 0.9rem;
+  z-index: 2;
+  pointer-events: none;
+  background: rgba(15, 25, 35, 0.55);
+}
+
+.chart-empty[hidden] {
+  display: none !important;
+}
+
+table.data {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.86rem;
+  font-variant-numeric: tabular-nums;
+}
+
+table.data th, table.data td {
+  text-align: left;
+  padding: 0.35rem 0.45rem;
+  border-bottom: 1px solid var(--border);
+  vertical-align: top;
+}
+
+table.data th {
+  color: var(--text-muted);
+  font-weight: 600;
+  background: var(--bg-elevated);
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  vertical-align: middle;
+  padding: 0.28rem 0.45rem 0.38rem;
+  line-height: 1.2;
+  box-shadow: 0 1px 0 var(--border);
+}
+
+table.data tr:hover td { background: rgba(0, 153, 153, 0.08); }
+table.data tr.selected td { background: rgba(0, 153, 153, 0.18); }
+table.data .mono { font-family: var(--mono); font-size: 0.8rem; word-break: break-word; }
+
+.mgr-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-bottom: 0.75rem;
+}
+
+.mgr-pill {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  padding: 0.25rem 0.5rem;
+  border-radius: 2px;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+
+.mgr-pill strong { color: var(--text); margin-right: 0.35rem; }
+
+.pattern-block { margin-bottom: 1.1rem; }
+.pattern-block h3 span { margin-left: 0.4rem; font-weight: 400; }
+
+.mgr-list-panel {
+  margin-bottom: 1rem;
+}
+
+.mgr-list-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.65rem;
+  margin-bottom: 0.45rem;
+  min-height: 1.75rem;
+}
+
+.mgr-list-toggle {
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+  background: rgba(0, 153, 153, 0.18);
+}
+
+.mgr-list-summary {
+  font-family: var(--mono);
+  font-size: 0.82rem;
+}
+
+.mgr-list-panel.is-collapsed #mgrListBody {
+  display: none;
+}
+
+.mgr-detail {
+  border-top: 1px solid var(--border);
+  padding-top: 0.85rem;
+  margin-top: 0.25rem;
+}
+
+.mgr-detail h2 {
+  margin-top: 0;
+}
+
+.idle-hint {
+  max-width: 36rem;
+  margin: 2rem auto;
+  text-align: center;
+  color: var(--text-muted);
+  line-height: 1.5;
+}
+
+.custom-mins { width: 5rem; }
+
+.unit-seg {
+  gap: 0.2rem;
+}
+
+.unit-chip {
+  min-width: 2.6rem;
+  padding: 0.32rem 0.5rem;
+  font-weight: 600;
+}
+
+.unit-chip.active {
+  background: rgba(0, 153, 153, 0.28);
+  border-color: var(--siemens-petrol);
+  color: var(--siemens-snow);
+  box-shadow: inset 0 -2px 0 var(--siemens-petrol);
+}
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: 1fr; }
+  nav#nav {
+    flex-direction: row;
+    flex-wrap: wrap;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+}

@@ -6,3 +6,6 @@ PROGRESS-*.md export-ignore
 docs/ export-ignore
 src/ export-ignore
 .github/ export-ignore
+.cursor/ export-ignore
+.taskmaster/ export-ignore
+.env.example export-ignore

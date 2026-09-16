@@ -2,6 +2,7 @@ Siemens Desigo CC PVSS_II Log Analyzer
 ======================================
 Version: 0.5.0
 Author: Cisum
+Latest release: https://github.com/cisum3/PVSS_II_Watcher/releases
 
 What this is
 ------------
